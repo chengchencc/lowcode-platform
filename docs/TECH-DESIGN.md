@@ -390,7 +390,7 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 |---|---|---|
 | **M1** ✅ | 仓库骨架 → 迁移 → 模型/安全/认证 → 组织 CRUD → 前端框架与组织三页 | 可登录、可维护组织（62 项测试 + 30 项端到端冒烟通过） |
 | **M2** ✅ | ①`form_schema` 校验 + `form_service` ②表单配置器 ③`expressions.py`（公式，纯后端先行）④通用表单渲染器 ⑤预览 | **能配出报销单表单**（已端到端验证） |
-| **M3** | ①`types/compile/conditions/machine/router` + 单测 ②`permissions.py` + 单测 ③`aggregate/approvers` + 单测 ④`validate.py` 校验器 ⑤`service.py` 事务编排 + 集成测试 ⑥流程配置器 | 单测覆盖 §4.3 语义矩阵；可发布报销流程 |
+| **M3** ✅ | ①`types/compile/conditions/machine/router` ②`permissions.py` ③`aggregate/approvers` ④`validate.py` 校验器 ⑤`service.py` 事务编排 ⑥流程配置器 | **单测覆盖 §4.3 语义矩阵**（120 纯核心 + 37 集成）；**可发布报销流程**（已端到端验证） |
 | **M4** | ①草稿/提交/重提 ②`render/timeline/task_service` ③发起中心与发起页 ④工作台四列表 + 实例详情页 ⑤撤回/撤销/终止 ⑥站内通知与角标轮询 | **PRD §9 场景一（请假）端到端跑通** |
 | **M5** | ①驳回重提轮次与快照对照 ②机制 C 追加字段 ③公式与级联下拉补齐 ④消息中心打磨 | **PRD §9 场景二（报销）端到端跑通** |
 | **M6** | ①示例流程库 ②归档列表与导出 ③审计查询打磨 ④Docker 一键起 ⑤文档与演示 | 可交付内部试用 |
@@ -399,8 +399,29 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 
 ## 8. 测试策略
 
-**现状**：138 项 pytest + 58 项前端测试（渲染 + 公式向量），
+**现状**：319 项 pytest + 60 项前端测试（渲染 + 公式向量），
 `ruff` 全绿、`vue-tsc` 无错、`vite build` 成功。`bash scripts/check.sh` 一次跑完五项。
+
+**M3 新增的测试**：
+- **引擎纯核心** `test_engine_core.py`（120 项，不依赖数据库）：
+  编译/条件/状态机/令牌推进/退回取消/聚合/字段权限 L0–L4/机制 C
+- **引擎集成** `test_engine_service.py`（37 项，真实库）：
+  §3.5 语义矩阵全枚举 —— 提交派发、条件走向、并行组 all/any、
+  节点级会签或签、依次审批、驳回→重提、退回（数据不回滚）、
+  撤回守卫、终止、字段权限逐节点揭晓、幂等、审批人未命中兜底
+- 流程 API 22 项
+
+**M3 实现中修掉的真 bug**（都是测试抓出来的）：
+1. `StartNode.fields_permission` 默认 `base="hidden"` **覆盖了 L0 默认语义** ——
+   发起阶段所有字段不可编辑，提交数据被整体丢弃。改为默认 `None`
+2. `autoflush=False` 让聚合读到脏数据 —— 会话不 flush 时查询看不到本事务
+   刚改的 task 状态，`group_state` 判为 OPEN，流程卡死在并行组
+3. **两套聚合模式词汇表大小写不一致** —— 流程定义是 `"any"/"all"`，
+   `AggregateMode` 是 `ANY/ALL`，字符串比较静默失败后落进 ALL 分支。
+   加 `normalize_mode()` 作为唯一归一化点
+4. 抄送派发后没有继续主线 —— 实例卡在 RUNNING
+5. 快照写入时机：提交快照应在派发**之前**写，否则 seq 与时间顺序颠倒
+6. 或签组汇合后未取消其余成员
 
 **公式的跨语言一致性**（决策 D4）：`docs/formula-test-vectors.json` 是前后端共享的
 测试向量 —— 后端 `test_engine_expressions.py` 与前端 `formula.spec.ts` 跑**同一份文件**。
