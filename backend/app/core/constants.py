@@ -186,3 +186,103 @@ class AttachmentStatus(StrEnum):
     TEMP = "TEMP"
     BOUND = "BOUND"
     DELETED = "DELETED"
+
+
+# --------------------------------------------------------------------------- 流程（M3）
+
+
+class FlowStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    DISABLED = "DISABLED"
+
+
+class FlowVersionStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
+
+
+class InstanceStatus(StrEnum):
+    """顶层生命周期状态机（PRD §3.5.1）。用户可感知的业务状态。"""
+
+    DRAFT = "DRAFT"          # 草稿，未提交
+    RUNNING = "RUNNING"      # 审批中（含并行多任务、退回节点重派）
+    REJECTED = "REJECTED"    # 已驳回，等发起人重填或放弃
+    APPROVED = "APPROVED"    # 已通过（归档）
+    WITHDRAWN = "WITHDRAWN"  # 已撤回/撤销
+    TERMINATED = "TERMINATED"  # 已终止
+
+
+#: 终态：不能再有任何令牌变化
+TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {InstanceStatus.APPROVED, InstanceStatus.WITHDRAWN, InstanceStatus.TERMINATED}
+)
+
+
+class TaskStatus(StrEnum):
+    PENDING = "PENDING"        # 活跃令牌
+    COMPLETED = "COMPLETED"    # 节点已通过
+    CANCELLED = "CANCELLED"    # 被取消（或签他人达成 / 驳回 / 退回 / 撤回 / 终止）
+
+
+class AssignmentStatus(StrEnum):
+    WAITING = "WAITING"      # 依次审批模式下还没轮到的
+    PENDING = "PENDING"      # 待办
+    DONE = "DONE"            # 已处理
+    CANCELLED = "CANCELLED"  # 已取消
+
+
+class AssignmentResult(StrEnum):
+    AGREE = "AGREE"
+    REJECT = "REJECT"
+    RETURN = "RETURN"
+    SUBMIT = "SUBMIT"   # 填写节点
+    READ = "READ"       # 抄送已读
+
+
+class TaskType(StrEnum):
+    APPROVAL = "APPROVAL"
+    FILL = "FILL"
+    CC = "CC"
+
+
+class AggregateMode(StrEnum):
+    """审批人模式（PRD §3.3.2）。"""
+
+    SINGLE = "SINGLE"          # 单人
+    SEQUENTIAL = "SEQUENTIAL"  # 多人依次
+    ALL = "ALL"                # 并行会签：全部同意才通过
+    ANY = "ANY"                # 并行或签：任一同意即通过
+
+
+class CancelReason(StrEnum):
+    ANY_SIGN_DONE = "ANY_SIGN_DONE"    # 或签他人已处理
+    REJECTED = "REJECTED"
+    RETURNED = "RETURNED"
+    WITHDRAWN = "WITHDRAWN"
+    TERMINATED = "TERMINATED"
+    RESUBMITTED = "RESUBMITTED"
+    GROUP_FAILED = "GROUP_FAILED"
+
+
+class SnapshotKind(StrEnum):
+    SUBMIT = "SUBMIT"
+    ACTION = "ACTION"
+    RETURN = "RETURN"
+    REJECT = "REJECT"
+    EXT_FIELD = "EXT_FIELD"
+    TERMINATE = "TERMINATE"
+    ARCHIVE = "ARCHIVE"
+
+
+class NotifType(StrEnum):
+    TASK_CREATED = "TASK_CREATED"
+    TASK_CANCELLED = "TASK_CANCELLED"
+    INSTANCE_APPROVED = "INSTANCE_APPROVED"
+    INSTANCE_REJECTED = "INSTANCE_REJECTED"
+    INSTANCE_RETURNED = "INSTANCE_RETURNED"
+    INSTANCE_WITHDRAWN = "INSTANCE_WITHDRAWN"
+    INSTANCE_TERMINATED = "INSTANCE_TERMINATED"
+    CC_RECEIVED = "CC_RECEIVED"
+    ABNORMAL_ASSIGN = "ABNORMAL_ASSIGN"
