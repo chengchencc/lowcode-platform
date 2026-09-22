@@ -10,6 +10,9 @@
 >
 > - 需求：`docs/PRD-lowcode-form-approval.md`
 > - 设计：`docs/TECH-DESIGN.md`（含引擎设计、API 契约、里程碑排期、**已知陷阱**）
+> - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
+>   —— 面向熟悉 Spring Boot / .NET Core 的工程师，用 IoC / JPA / Flyway 等已有概念
+>   对照 FastAPI + SQLAlchemy + Alembic，并标出 review 和调试时容易误判的地方
 
 ---
 
@@ -146,7 +149,7 @@ SQLAlchemy 的可移植写法（`BigInteger().with_variant(Integer, 'sqlite')`�
 ```
 lowcode-platform/
 ├─ scripts/               启动 / 校验 / 迁移脚本
-├─ docs/                  PRD 与技术设计
+├─ docs/                  PRD、技术设计、Python 技术栈入门
 ├─ backend/
 │  ├─ alembic/            迁移（0001 = M1 组织表）
 │  └─ app/
