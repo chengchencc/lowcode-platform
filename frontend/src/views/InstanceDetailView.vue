@@ -2,11 +2,12 @@
 /**
  * ★ 实例详情页（PRD §5「全部价值的交汇点」）。
  *
- * 三块：
- *   顶部  流程进度条（并行组并列、条件分支标出实际走向）
- *   中部  按**服务端下发的权限**渲染的分区表单（hidden 不渲染 / readonly 只读 / editable 可改）
- *   底部  处理历史时间线（可回放快照）
- * 外加处理操作区 —— 仅当我是当前处理人时出现。
+ * 版面自上而下：
+ *   标题栏  单号/状态/发起人 + **处理按钮**（同意/驳回/退回，仅当前处理人可见）
+ *           + 实例级操作（撤回/撤销/终止）
+ *   表单    按**服务端下发的权限**渲染的分区表单（hidden 不渲染 / readonly 只读 / editable 可改）
+ *   进度    并行组并列、条件分支标出实际走向（参考信息，放表单之后）
+ *   时间线  处理历史，可回放快照
  *
  * 数据一次取全（`GET /instances/{id}/render`），避免分多次请求拼装导致的撕裂状态。
  */
@@ -117,6 +118,14 @@ const canTerminate = computed(
     data.value?.my_role === 'ADMIN' &&
     !['APPROVED', 'WITHDRAWN', 'TERMINATED'].includes(data.value?.instance.status ?? ''),
 )
+
+/** 处理按钮（同意/驳回/退回）出现在标题栏的条件 */
+const showHeaderActions = computed(() => canEditForm.value && !activeSnapshotId.value)
+/** 实例级操作（撤回/撤销/终止）是否有可见项 —— 用于决定要不要分隔线 */
+const showInstanceOps = computed(
+  () => canWithdraw.value || canAbandon.value || canTerminate.value || !!activeSnapshotId.value,
+)
+
 async function doWithdraw(): Promise<void> {
   const ok = await feedback.confirm({
     title: '撤回该申请？',
@@ -215,7 +224,22 @@ const statusMeta = computed(() =>
               </div>
             </Space>
 
-            <Space>
+            <!-- 处理按钮放标题栏右上角：进页面第一眼就该看到「我要做什么」 -->
+            <Space :size="8" class="header-ops" wrap>
+              <ActionPanel
+                v-if="showHeaderActions"
+                :data="data"
+                :field-patch="fieldPatch"
+                @acted="load"
+                @clear-patch="clearPatch"
+              />
+
+              <a-divider
+                v-if="showHeaderActions && showInstanceOps"
+                type="vertical"
+                class="ops-divider"
+              />
+
               <Tag v-if="activeSnapshotId" color="orange" class="snapshot-tag">
                 <HistoryOutlined />
                 正在查看历史快照
@@ -233,14 +257,6 @@ const statusMeta = computed(() =>
           <div v-if="data.instance.status === 'TERMINATED' && data.instance.terminated_reason" class="terminated">
             终止原因：{{ data.instance.terminated_reason }}
           </div>
-        </Card>
-
-        <!-- ------------------------------------------------ 进度 -->
-        <Card title="审批进度" :bordered="false" class="block">
-          <ProgressBar
-            :nodes="data.progress"
-            :active-node-id="data.current_node?.node_id ?? null"
-          />
         </Card>
 
         <!-- ------------------------------------------------ 表单 -->
@@ -270,15 +286,13 @@ const statusMeta = computed(() =>
           />
         </Card>
 
-        <!-- ------------------------------------------------ 操作区 -->
-        <ActionPanel
-          v-if="canEditForm && !activeSnapshotId"
-          class="block"
-          :data="data"
-          :field-patch="fieldPatch"
-          @acted="load"
-          @clear-patch="clearPatch"
-        />
+        <!-- ------------------------------------------------ 进度 -->
+        <Card title="审批进度" :bordered="false" class="block">
+          <ProgressBar
+            :nodes="data.progress"
+            :active-node-id="data.current_node?.node_id ?? null"
+          />
+        </Card>
 
         <!-- ------------------------------------------------ 时间线 -->
         <Card title="处理历史" :bordered="false" class="block">
@@ -349,6 +363,14 @@ const statusMeta = computed(() =>
   flex-wrap: wrap;
   margin-top: 6px;
   font-size: 12px;
+}
+
+.header-ops {
+  align-items: center;
+}
+
+.ops-divider {
+  margin: 0 2px;
 }
 
 .snapshot-tag {

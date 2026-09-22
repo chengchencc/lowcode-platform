@@ -638,3 +638,28 @@ describe('菜单点击能真正跳转', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('实例详情页版面', () => {
+  // 版面要求（用户指定）：
+  //   处理按钮 → 标题栏右上角；审批进度 → 表单之后
+  // 用 DOM 文本的**先后顺序**断言，而不是找具体选择器 —— 后者会随样式调整碎掉。
+  it('处理按钮在表单之前（标题栏里），审批进度在表单之后', async () => {
+    const wrapper = await mountView(InstanceDetailView, '/instance/1')
+    await flushPromises()
+
+    // 去掉空白再找：antd 的 Button 会在两个中文字符间插入空格（insertSpace），
+    // 「同意」在 DOM 里是「同 意」
+    const html = wrapper.html().replace(/\s+/g, '')
+    const at = (text: string) => html.indexOf(text)
+
+    expect(at('同意'), '应渲染出「同意」按钮').toBeGreaterThan(-1)
+    expect(at('申请信息'), '应渲染出表单分区').toBeGreaterThan(-1)
+    expect(at('审批进度'), '应渲染出进度卡片').toBeGreaterThan(-1)
+
+    expect(at('同意'), '处理按钮应在表单之前（标题栏）').toBeLessThan(at('申请信息'))
+    expect(at('审批进度'), '审批进度应在表单之后').toBeGreaterThan(at('申请信息'))
+
+    wrapper.unmount()
+  })
+})

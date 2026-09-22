@@ -121,27 +121,24 @@ const ACTION_HINTS: Record<TaskAction, string> = {
 </script>
 
 <template>
-  <div v-if="data.allowed_actions.length" class="action-panel">
-    <div class="panel-head">
-      <span class="title">处理：{{ node?.name }}</span>
-      <a-tag v-if="changedKeys.length" color="orange">
-        有 {{ changedKeys.length }} 个字段被修改
+  <!-- 内联工具条，嵌在详情页标题栏右侧（不再独占一个面板） -->
+  <span v-if="data.allowed_actions.length" class="action-toolbar">
+    <template v-if="changedKeys.length">
+      <a-tag color="orange" class="changed-tag">
+        {{ changedKeys.length }} 个字段已修改
       </a-tag>
-      <span class="spacer" />
-      <a v-if="changedKeys.length" @click="emit('clear-patch')">放弃改动</a>
-    </div>
+      <a class="discard" @click="emit('clear-patch')">放弃</a>
+    </template>
 
-    <div class="buttons">
-      <AButton
-        v-for="act in data.allowed_actions"
-        :key="act"
-        :type="act === 'AGREE' || act === 'SUBMIT' ? 'primary' : 'default'"
-        :danger="act === 'REJECT'"
-        @click="open(act)"
-      >
-        {{ ACTION_LABELS[act] }}
-      </AButton>
-    </div>
+    <AButton
+      v-for="act in data.allowed_actions"
+      :key="act"
+      :type="act === 'AGREE' || act === 'SUBMIT' ? 'primary' : 'default'"
+      :danger="act === 'REJECT'"
+      @click="open(act)"
+    >
+      {{ ACTION_LABELS[act] }}
+    </AButton>
 
     <a-modal
       v-model:open="modalOpen"
@@ -213,43 +210,23 @@ const ACTION_HINTS: Record<TaskAction, string> = {
         :message="`本次将提交 ${changedKeys.length} 个字段的修改：${changedKeys.join('、')}`"
       />
     </a-modal>
-  </div>
-
-  <a-alert
-    v-else-if="data.my_role === 'INITIATOR' && data.instance.status === 'RUNNING'"
-    type="info"
-    show-icon
-    message="流程审批中，当前不在你这里处理"
-  />
+  </span>
 </template>
 
 <style scoped lang="scss">
-.action-panel {
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e6f4ff;
-}
-
-.panel-head {
-  display: flex;
+.action-toolbar {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
-
-  .title {
-    font-weight: 600;
-  }
-}
-
-.spacer {
-  flex: 1;
-}
-
-.buttons {
-  display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+}
+
+.changed-tag {
+  margin: 0;
+}
+
+.discard {
+  font-size: 12px;
 }
 
 .hint {
