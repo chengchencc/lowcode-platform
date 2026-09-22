@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { Empty } from 'ant-design-vue'
 import {
   DeleteOutlined,
   PlusOutlined,
   ReloadOutlined,
   TeamOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Empty, Input, Space, Table, Tag, Tree } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { ApiError } from '@/api/http'
@@ -15,15 +15,6 @@ import { useOrgStore } from '@/stores/org'
 import type { DeptMember, DeptNode } from '@/types/org'
 import { feedback } from '@/utils/feedback'
 
-const AButton = Button
-const ACard = Card
-const AEmpty = Empty
-const AInput = Input
-const AInputSearch = Input.Search
-const ASpace = Space
-const ATable = Table
-const ATag = Tag
-const ATree = Tree
 
 const org = useOrgStore()
 
@@ -337,28 +328,26 @@ onMounted(async () => {
   <div class="page-container">
     <a-row :gutter="16">
       <a-col :xs="24" :lg="8">
-        <ACard :bordered="false" class="tree-card">
+        <a-card :bordered="false" class="tree-card">
           <template #title>
-            <ASpace>
+            <a-space>
               <span>组织架构</span>
-              <ATag>{{ org.deptTree.length ? '已加载' : '空' }}</ATag>
-            </ASpace>
+              <a-tag>{{ org.deptTree.length ? '已加载' : '空' }}</a-tag>
+            </a-space>
           </template>
           <template #extra>
-            <AButton size="small" @click="org.loadDeptTree(true)">
+            <a-button size="small" @click="org.loadDeptTree(true)">
               <template #icon><ReloadOutlined /></template>
-            </AButton>
+            </a-button>
           </template>
 
-          <AInputSearch
-            v-model:value="searchKeyword"
+          <a-input-search             v-model:value="searchKeyword"
             placeholder="搜索部门名称或编码"
             allow-clear
             style="margin-bottom: 12px"
           />
 
-          <ATree
-            v-if="treeData.length"
+          <a-tree             v-if="treeData.length"
             :tree-data="filteredTree"
             :selected-keys="selectedId === null ? [] : [selectedId]"
             v-model:expanded-keys="expandedKeys"
@@ -373,32 +362,32 @@ onMounted(async () => {
                 </span>
               </span>
             </template>
-          </ATree>
-          <AEmpty v-else description="还没有部门" :image="AEmpty.PRESENTED_IMAGE_SIMPLE" />
+          </a-tree>
+          <a-empty v-else description="还没有部门" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
 
-          <AButton type="dashed" block style="margin-top: 12px" @click="startCreateRoot">
+          <a-button type="dashed" block style="margin-top: 12px" @click="startCreateRoot">
             <template #icon><PlusOutlined /></template>
             新建部门
-          </AButton>
-        </ACard>
+          </a-button>
+        </a-card>
       </a-col>
 
       <a-col :xs="24" :lg="16">
-        <ACard :bordered="false">
+        <a-card :bordered="false">
           <template #title>
             {{ selected ? `编辑：${selected.name}` : '新建部门' }}
           </template>
           <template #extra>
-            <ASpace v-if="selected">
-              <AButton size="small" @click="startCreateChild">
+            <a-space v-if="selected">
+              <a-button size="small" @click="startCreateChild">
                 <template #icon><PlusOutlined /></template>
                 添加子部门
-              </AButton>
-              <AButton size="small" danger @click="removeDept">
+              </a-button>
+              <a-button size="small" danger @click="removeDept">
                 <template #icon><DeleteOutlined /></template>
                 删除
-              </AButton>
-            </ASpace>
+              </a-button>
+            </a-space>
           </template>
 
           <a-form layout="vertical" style="max-width: 560px">
@@ -410,7 +399,7 @@ onMounted(async () => {
                   :validate-status="formErrors.name ? 'error' : undefined"
                   :help="formErrors.name"
                 >
-                  <AInput v-model:value="form.name" placeholder="如：技术部" />
+                  <a-input v-model:value="form.name" placeholder="如：技术部" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
@@ -420,8 +409,7 @@ onMounted(async () => {
                   :validate-status="formErrors.code ? 'error' : undefined"
                   :help="formErrors.code || (selected ? '编码创建后不可修改' : undefined)"
                 >
-                  <AInput
-                    v-model:value="form.code"
+                  <a-input                     v-model:value="form.code"
                     :disabled="!!selected"
                     placeholder="如：TECH"
                   />
@@ -480,31 +468,30 @@ onMounted(async () => {
             </a-row>
 
             <a-form-item v-if="selected && selected.manager_name" label="当前主管">
-              <ATag color="blue">{{ selected.manager_name }}</ATag>
+              <a-tag color="blue">{{ selected.manager_name }}</a-tag>
             </a-form-item>
 
-            <ASpace>
-              <AButton type="primary" :loading="saving" @click="save">
+            <a-space>
+              <a-button type="primary" :loading="saving" @click="save">
                 {{ selected ? '保存修改' : '创建部门' }}
-              </AButton>
-              <AButton @click="selected ? loadFormFrom(selected) : startCreateRoot()">重置</AButton>
-            </ASpace>
+              </a-button>
+              <a-button @click="selected ? loadFormFrom(selected) : startCreateRoot()">重置</a-button>
+            </a-space>
           </a-form>
-        </ACard>
+        </a-card>
 
-        <ACard v-if="selected" :bordered="false" style="margin-top: 16px">
+        <a-card v-if="selected" :bordered="false" style="margin-top: 16px">
           <template #title>
-            <ASpace>
+            <a-space>
               <TeamOutlined />
               <span>直属成员（{{ members.length }}）</span>
-            </ASpace>
+            </a-space>
           </template>
           <template #extra>
-            <AButton size="small" type="primary" @click="openMemberModal">调整成员</AButton>
+            <a-button size="small" type="primary" @click="openMemberModal">调整成员</a-button>
           </template>
 
-          <ATable
-            :columns="memberColumns"
+          <a-table             :columns="memberColumns"
             :data-source="members"
             :loading="membersLoading"
             row-key="id"
@@ -517,13 +504,13 @@ onMounted(async () => {
                 {{ record.position || '—' }}
               </template>
               <template v-else-if="column.key === 'status'">
-                <ATag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
+                <a-tag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
                   {{ record.status === 'ACTIVE' ? '启用' : '停用' }}
-                </ATag>
+                </a-tag>
               </template>
             </template>
-          </ATable>
-        </ACard>
+          </a-table>
+        </a-card>
       </a-col>
     </a-row>
 

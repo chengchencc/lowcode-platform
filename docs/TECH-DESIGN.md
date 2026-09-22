@@ -29,7 +29,7 @@
 | **D8** | 根组件 `<a-app>` + `App.useApp()` | antd 4 的 message/Modal 静态方法不消费 ConfigProvider 上下文，中文 locale 会丢 |
 | **D9** | **时间一律 naive UTC，由应用层生成** | SQLite 的 `CURRENT_TIMESTAMP` 是 UTC、MySQL 的 `NOW()` 是会话时区，用数据库默认值会让开发库与生产库差 8 小时。前端负责补 `Z` 再转本地（`utils/datetime.ts`） |
 | **D10** | 全链路 **snake_case** | PRD 示例 JSON 用了 camelCase。统一成 snake_case，避免同一份数据在 Python/JSON/TS 三处三套命名 |
-| **D11** | 前端**不做**组件自动导入 | 自动导入生成的 `.d.ts` 在全新 clone 上不存在，会让 `vue-tsc` 先于 `vite build` 失败。显式 import 换来零生成物依赖 |
+| **D11** | Ant Design Vue **全量全局注册**（`app.use(Antd)`），模板统一写 `<a-xxx>` | 见 §6.3。代价是 antd 单独成 1.44MB / gzip 438KB 的 vendor chunk；收益是消灭「组件没注册但没人报错」这一整类静默 bug |
 
 ---
 
@@ -314,7 +314,32 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
    ActionPanel + TimelineList + SnapshotDialog + DiffViewer + ExtFieldDialog`。
    装配顺序：`loadRender(instanceId, assignmentId?)` → 渲染各部分。
 
-### 6.3 D8 的落地（Ant Design Vue 特有）
+### 6.3 为什么全量注册 antd（而非按需/逐文件 import）
+
+**这是踩过坑之后的决定。** M1 曾经出现「整片界面只剩品牌名和一行纯文本」——所有 `<a-input>`、`<a-form-item>` 都没注册，Vue 把它们当成未知自定义元素渲染成空标签。
+
+关键在于**两道关卡都不会拦下它**：
+
+| 关卡 | 为什么放行 |
+|---|---|
+| `vue-tsc --noEmit` | 模板里未注册的 kebab-case 标签被当作未知自定义元素，不报错 |
+| `vite build` | 未注册组件只是运行时告警，构建照常成功 |
+
+于是问题只在浏览器里可见。当时的应对是换回按需/显式 import——但那只是把「必须记得 import」的负担转移给人，M2–M6 还有大量页面，同类问题必然复发。
+
+改为**全局注册**后，任意 `.vue` 里写 `<a-xxx>` 都可用，这类失败模式从根上消失。代价与权衡：
+
+| | 全量注册（现状） | 按需 import |
+|---|---|---|
+| antd 体积 | 1.44MB / gzip 438KB（独立 vendor chunk，可长期缓存） | 约 500KB / gzip 170KB |
+| 漏注册风险 | 无 | 每次写新页面都可能漏 |
+| 代码噪声 | 无 | 每个文件 10+ 行组件 import |
+
+面向单组织 ≤1000 人的内部系统，首屏 438KB 的 vendor 包在一次加载后长期缓存，代价可接受；且已用 `manualChunks` 把它与业务代码分离。
+
+**如果之后要优化体积**：因为已有 §8 的渲染测试兜底（未注册组件会让测试失败），可以安全地换回 `unplugin-vue-components` 按需导入——届时记得把生成的 `components.d.ts` 一并提交，否则全新 clone 上 `vue-tsc` 会先于 `vite build` 执行而找不到类型。
+
+### 6.4 D8 的落地（Ant Design Vue 特有）
 
 `App.vue` 用 `<a-config-provider :locale="zhCN"><a-app>` 包裹，`AppFrame.vue` 作为
 `<a-app>` 的**子组件**调用 `App.useApp()` 并把实例注册到 `utils/feedback.ts`，
@@ -341,7 +366,14 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 
 ## 8. 测试策略
 
-**M1 现状**：62 项 pytest（认证 / 用户 / 部门 / 角色 / 审计）+ `ruff check` 全绿 + `vue-tsc` 无错。
+**M1 现状**：62 项 pytest（认证 / 用户 / 部门 / 角色 / 审计）+ 11 项前端渲染测试
++ `ruff check` 全绿 + `vue-tsc` 无错。`bash scripts/check.sh` 一次跑完五项。
+
+**前端渲染测试（`src/__tests__/render.spec.ts`）为什么必须有**：它是唯一能发现
+「组件没注册 / 页面没渲染」的关卡（原因见 §9 第一条）。做法是挂载每个页面，
+既断言真实 DOM（`input`、`button.ant-btn`、`.ant-menu` 等），又监听 `console.warn`
+把任何 `Failed to resolve component` 判定为失败。它已经实打实抓到过一次
+`UserSelect.vue` 里残留的未注册 `<Select>`。
 
 **隔离机制**：每个测试跑在一个外层事务里，结束后回滚。用 SQLAlchemy 2.0 的
 `join_transaction_mode="create_savepoint"`，业务代码里的 `session.commit()`
@@ -370,6 +402,9 @@ savepoint 的 `RELEASE` 在 SQLite 中等于 `COMMIT`，数据会真的落盘（
 
 | 陷阱 | 现象 | 处理 |
 |---|---|---|
+| **未注册的 antd 组件不会被任何构建关卡发现** | 页面渲染成空标签（只剩品牌名和裸文本），但 `vue-tsc` 与 `vite build` 都通过 | 已改为全局注册（§6.3）；`src/__tests__/render.spec.ts` 挂载每个页面并断言无 `Failed to resolve component` 告警。**新增页面请补进 `MOUNTED_VIEWS`** |
+| **jsdom 30 在本项目起不来** | `html-encoding-sniffer` 用 `require()` 加载 ESM，Vitest worker 启动即失败（`ERR_REQUIRE_ESM`） | 测试环境用 `happy-dom` |
+| **Vite 6 的 `defineConfig` 需要 vitest 类型引用** | `test` 配置块报类型错误 | `vite.config.ts` 首行加 `/// <reference types="vitest/config" />` |
 | **`alembic.ini` 必须纯 ASCII** | alembic 用 `encoding="locale"`（中文 Windows 上是 GBK）读它，写 UTF-8 中文注释会在加载阶段直接 `UnicodeDecodeError` | 该文件是仓库唯一例外；原因在该文件头部与 `alembic/env.py` 中均有说明 |
 | **pysqlite 不主动发 BEGIN** | `connection.begin()` 只是名义事务，最外层 `RELEASE SAVEPOINT` 等于 `COMMIT`，测试数据串场（表现为分页 total 数字翻倍） | `tests/conftest.py` 中设 `isolation_level=None` + 监听 `begin` 事件显式发 BEGIN |
 | **`PageParams` 所在模块不能加 `from __future__ import annotations`** | 注解被推迟成字符串后，FastAPI 无法还原 `Annotated[int, Query(...)]`，请求处理时抛 `PydanticUserError` | `core/pagination.py` 不写该 import，文件头有说明 |

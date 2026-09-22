@@ -64,7 +64,7 @@ bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
 | `scripts/setup.sh` | 首次搭建（幂等） |
 | `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
-| `scripts/check.sh` | 全套校验：pytest + ruff + vue-tsc + vite build，逐项汇总 |
+| `scripts/check.sh` | 全套校验：pytest + ruff + vue-tsc + vitest + vite build，逐项汇总 |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 

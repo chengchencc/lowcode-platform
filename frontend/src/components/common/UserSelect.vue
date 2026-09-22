@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Select } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { useOrgStore } from '@/stores/org'
@@ -82,7 +81,7 @@ function onChange(value: unknown): void {
 </script>
 
 <template>
-  <Select
+  <a-select
     :value="modelValue ?? undefined"
     :mode="multiple ? 'multiple' : undefined"
     :options="options"

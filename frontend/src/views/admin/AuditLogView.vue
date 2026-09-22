@@ -1,18 +1,11 @@
 <script setup lang="ts">
 import { ReloadOutlined } from '@ant-design/icons-vue'
-import { Button, Card, Select, Space, Table, Tag } from 'ant-design-vue'
 import { onMounted, reactive, ref } from 'vue'
 
 import { auditApi, type AuditLogItem } from '@/api/modules/role'
 import { AUDIT_ACTION_LABELS, AUDIT_BIZ_LABELS } from '@/stores/app'
 import { formatDateTime } from '@/utils/datetime'
 
-const AButton = Button
-const ACard = Card
-const ASelect = Select
-const ASpace = Space
-const ATable = Table
-const ATag = Tag
 
 const rows = ref<AuditLogItem[]>([])
 const loading = ref(false)
@@ -63,19 +56,17 @@ onMounted(load)
 
 <template>
   <div class="page-container">
-    <ACard :bordered="false">
+    <a-card :bordered="false">
       <div class="page-toolbar">
-        <ASpace>
-          <ASelect
-            v-model:value="query.biz_type"
+        <a-space>
+          <a-select             v-model:value="query.biz_type"
             :options="bizOptions"
             placeholder="对象类型"
             style="width: 150px"
             allow-clear
           />
-          <AButton type="primary" @click="search">查询</AButton>
-          <AButton
-            @click="
+          <a-button type="primary" @click="search">查询</a-button>
+          <a-button             @click="
               () => {
                 query.biz_type = undefined
                 search()
@@ -84,13 +75,12 @@ onMounted(load)
           >
             <template #icon><ReloadOutlined /></template>
             重置
-          </AButton>
-        </ASpace>
+          </a-button>
+        </a-space>
         <span class="text-muted">共 {{ paging.total }} 条记录（只增不改）</span>
       </div>
 
-      <ATable
-        :columns="columns"
+      <a-table         :columns="columns"
         :data-source="rows"
         :loading="loading"
         row-key="id"
@@ -116,13 +106,13 @@ onMounted(load)
           </template>
 
           <template v-else-if="column.key === 'biz_type'">
-            <ATag>{{ AUDIT_BIZ_LABELS[record.biz_type] ?? record.biz_type }}</ATag>
+            <a-tag>{{ AUDIT_BIZ_LABELS[record.biz_type] ?? record.biz_type }}</a-tag>
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <ATag :color="record.action === 'DELETE' ? 'red' : 'blue'">
+            <a-tag :color="record.action === 'DELETE' ? 'red' : 'blue'">
               {{ AUDIT_ACTION_LABELS[record.action] ?? record.action }}
-            </ATag>
+            </a-tag>
           </template>
 
           <template v-else-if="column.key === 'summary'">
@@ -133,7 +123,7 @@ onMounted(load)
             <span class="text-mono">{{ record.ip || '—' }}</span>
           </template>
         </template>
-      </ATable>
-    </ACard>
+      </a-table>
+    </a-card>
   </div>
 </template>

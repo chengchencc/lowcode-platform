@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { Card, Descriptions, Tag } from 'ant-design-vue'
 
 import { useAuthStore } from '@/stores/auth'
 import { formatDateTime } from '@/utils/datetime'
 
-const ACard = Card
-const ADescriptions = Descriptions
-const ADescriptionsItem = Descriptions.Item
-const ATag = Tag
 
 const auth = useAuthStore()
 
@@ -24,35 +19,35 @@ const milestones = [
 
 <template>
   <div class="page-container">
-    <ACard class="welcome-card" :bordered="false">
+    <a-card class="welcome-card" :bordered="false">
       <h2>你好，{{ auth.displayName }}</h2>
       <p class="text-muted">
         欢迎使用 FlowForm。当前处于 <strong>M1（骨架与组织）</strong> 阶段，
         登录与组织管理已经可用；表单配置与审批流将在后续里程碑开放。
       </p>
-      <ADescriptions :column="{ xs: 1, sm: 2 }" size="small" bordered style="margin-top: 16px">
-        <ADescriptionsItem label="账号">{{ auth.user?.username }}</ADescriptionsItem>
-        <ADescriptionsItem label="所属部门">
+      <a-descriptions :column="{ xs: 1, sm: 2 }" size="small" bordered style="margin-top: 16px">
+        <a-descriptions-item label="账号">{{ auth.user?.username }}</a-descriptions-item>
+        <a-descriptions-item label="所属部门">
           {{ auth.user?.dept_name ?? '未分配' }}
-        </ADescriptionsItem>
-        <ADescriptionsItem label="角色">
+        </a-descriptions-item>
+        <a-descriptions-item label="角色">
           <template v-if="auth.user?.roles.length">
-            <ATag v-for="role in auth.user.roles" :key="role.code" color="blue">
+            <a-tag v-for="role in auth.user.roles" :key="role.code" color="blue">
               {{ role.name }}
-            </ATag>
+            </a-tag>
           </template>
           <span v-else class="text-muted">无</span>
-        </ADescriptionsItem>
-        <ADescriptionsItem label="上次登录">
+        </a-descriptions-item>
+        <a-descriptions-item label="上次登录">
           {{ formatDateTime(auth.user?.last_login_at) }}
-        </ADescriptionsItem>
-      </ADescriptions>
-    </ACard>
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-card>
 
-    <ACard title="里程碑进度" :bordered="false" style="margin-top: 16px">
+    <a-card title="里程碑进度" :bordered="false" style="margin-top: 16px">
       <ul class="milestones">
         <li v-for="item in milestones" :key="item.key" :class="{ done: item.done }">
-          <ATag :color="item.done ? 'green' : 'default'">{{ item.key }}</ATag>
+          <a-tag :color="item.done ? 'green' : 'default'">{{ item.key }}</a-tag>
           <div class="milestone-body">
             <strong>{{ item.title }}</strong>
             <span class="text-muted">{{ item.desc }}</span>
@@ -60,7 +55,7 @@ const milestones = [
           <span class="milestone-state">{{ item.done ? '已完成' : '待开发' }}</span>
         </li>
       </ul>
-    </ACard>
+    </a-card>
   </div>
 </template>
 

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { DeleteOutlined, EditOutlined, PlusOutlined, TeamOutlined } from '@ant-design/icons-vue'
-import { Button, Card, Input, Space, Table, Tag } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { ApiError } from '@/api/http'
@@ -10,13 +9,6 @@ import type { DeptMember, Role } from '@/types/org'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
 
-const AButton = Button
-const ACard = Card
-const AInput = Input
-const AInputSearch = Input.Search
-const ASpace = Space
-const ATable = Table
-const ATag = Tag
 
 const rows = ref<Role[]>([])
 const loading = ref(false)
@@ -193,18 +185,17 @@ async function removeMember(userId: number): Promise<void> {
 
 <template>
   <div class="page-container">
-    <ACard :bordered="false">
+    <a-card :bordered="false">
       <div class="page-toolbar">
-        <AInputSearch
-          v-model:value="keyword"
+        <a-input-search           v-model:value="keyword"
           placeholder="搜索角色名称或标识"
           allow-clear
           style="width: 240px"
         />
-        <AButton type="primary" @click="openCreate">
+        <a-button type="primary" @click="openCreate">
           <template #icon><PlusOutlined /></template>
           新建角色
-        </AButton>
+        </a-button>
       </div>
 
       <a-alert
@@ -215,8 +206,7 @@ async function removeMember(userId: number): Promise<void> {
         style="margin-bottom: 16px"
       />
 
-      <ATable
-        :columns="columns"
+      <a-table         :columns="columns"
         :data-source="filtered"
         :loading="loading"
         row-key="id"
@@ -238,15 +228,15 @@ async function removeMember(userId: number): Promise<void> {
           </template>
 
           <template v-else-if="column.key === 'origin'">
-            <ATag :color="record.is_builtin ? 'gold' : 'default'">
+            <a-tag :color="record.is_builtin ? 'gold' : 'default'">
               {{ record.is_builtin ? '内置' : '自定义' }}
-            </ATag>
+            </a-tag>
           </template>
 
           <template v-else-if="column.key === 'status'">
-            <ATag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
+            <a-tag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
               {{ record.status === 'ACTIVE' ? '启用' : '停用' }}
-            </ATag>
+            </a-tag>
           </template>
 
           <template v-else-if="column.key === 'created_at'">
@@ -254,17 +244,16 @@ async function removeMember(userId: number): Promise<void> {
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <ASpace :size="4">
-              <AButton type="link" size="small" @click="openMembers(record as Role)">
+            <a-space :size="4">
+              <a-button type="link" size="small" @click="openMembers(record as Role)">
                 <template #icon><TeamOutlined /></template>
                 成员
-              </AButton>
-              <AButton type="link" size="small" @click="openEdit(record as Role)">
+              </a-button>
+              <a-button type="link" size="small" @click="openEdit(record as Role)">
                 <template #icon><EditOutlined /></template>
                 编辑
-              </AButton>
-              <AButton
-                type="link"
+              </a-button>
+              <a-button                 type="link"
                 size="small"
                 danger
                 :disabled="record.is_builtin"
@@ -272,12 +261,12 @@ async function removeMember(userId: number): Promise<void> {
               >
                 <template #icon><DeleteOutlined /></template>
                 删除
-              </AButton>
-            </ASpace>
+              </a-button>
+            </a-space>
           </template>
         </template>
-      </ATable>
-    </ACard>
+      </a-table>
+    </a-card>
 
     <a-modal
       v-model:open="editorOpen"
@@ -294,8 +283,7 @@ async function removeMember(userId: number): Promise<void> {
           :validate-status="formErrors.code ? 'error' : undefined"
           :help="formErrors.code || (isCreate ? '用于流程定义中引用，创建后不可修改' : '创建后不可修改')"
         >
-          <AInput
-            v-model:value="form.code"
+          <a-input             v-model:value="form.code"
             :disabled="!isCreate"
             placeholder="小写字母开头，如 finance_manager"
           />
@@ -306,7 +294,7 @@ async function removeMember(userId: number): Promise<void> {
           :validate-status="formErrors.name ? 'error' : undefined"
           :help="formErrors.name"
         >
-          <AInput v-model:value="form.name" placeholder="如：财务经理" />
+          <a-input v-model:value="form.name" placeholder="如：财务经理" />
         </a-form-item>
         <a-form-item label="说明">
           <a-textarea v-model:value="form.description" :rows="2" placeholder="选填" />
@@ -344,8 +332,7 @@ async function removeMember(userId: number): Promise<void> {
           style="margin-bottom: 16px"
         />
 
-        <ATable
-          :columns="memberColumns"
+        <a-table           :columns="memberColumns"
           :data-source="memberRows"
           row-key="id"
           size="small"
@@ -360,15 +347,15 @@ async function removeMember(userId: number): Promise<void> {
               {{ record.status || '—' }}
             </template>
             <template v-else-if="column.key === 'username'">
-              <ASpace>
+              <a-space>
                 <span class="text-mono">{{ record.username }}</span>
-                <AButton type="link" size="small" danger @click="removeMember((record as DeptMember).id)">
+                <a-button type="link" size="small" danger @click="removeMember((record as DeptMember).id)">
                   移除
-                </AButton>
-              </ASpace>
+                </a-button>
+              </a-space>
             </template>
           </template>
-        </ATable>
+        </a-table>
       </a-spin>
     </a-modal>
   </div>

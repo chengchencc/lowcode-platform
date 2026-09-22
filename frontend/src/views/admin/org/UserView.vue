@@ -8,7 +8,6 @@ import {
   ReloadOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Input, Select, Space, Switch, Table, Tag, Upload } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { ApiError } from '@/api/http'
@@ -18,16 +17,6 @@ import type { UserInput, UserItem, UserStatus } from '@/types/org'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
 
-const AButton = Button
-const ACard = Card
-const AInput = Input
-const AInputSearch = Input.Search
-const ASelect = Select
-const ASpace = Space
-const ASwitch = Switch
-const ATable = Table
-const ATag = Tag
-const AUpload = Upload
 
 const org = useOrgStore()
 
@@ -337,11 +326,10 @@ function downloadTemplate(): void {
 
 <template>
   <div class="page-container">
-    <ACard :bordered="false">
+    <a-card :bordered="false">
       <div class="page-toolbar">
-        <ASpace wrap>
-          <AInputSearch
-            v-model:value="query.keyword"
+        <a-space wrap>
+          <a-input-search             v-model:value="query.keyword"
             placeholder="用户名 / 姓名 / 邮箱 / 手机号"
             style="width: 240px"
             allow-clear
@@ -357,11 +345,10 @@ function downloadTemplate(): void {
             tree-default-expand-all
           />
           <span class="inline-label">
-            <ASwitch v-model:checked="query.include_sub_depts" size="small" />
+            <a-switch v-model:checked="query.include_sub_depts" size="small" />
             含子部门
           </span>
-          <ASelect
-            v-model:value="query.status"
+          <a-select             v-model:value="query.status"
             :options="[
               { value: 'ACTIVE', label: '启用' },
               { value: 'DISABLED', label: '停用' },
@@ -370,27 +357,26 @@ function downloadTemplate(): void {
             style="width: 110px"
             allow-clear
           />
-          <AButton type="primary" @click="search">查询</AButton>
-          <AButton @click="resetQuery">
+          <a-button type="primary" @click="search">查询</a-button>
+          <a-button @click="resetQuery">
             <template #icon><ReloadOutlined /></template>
             重置
-          </AButton>
-        </ASpace>
+          </a-button>
+        </a-space>
 
-        <ASpace>
-          <AButton @click="openImport">
+        <a-space>
+          <a-button @click="openImport">
             <template #icon><UploadOutlined /></template>
             导入 CSV
-          </AButton>
-          <AButton type="primary" @click="openCreate">
+          </a-button>
+          <a-button type="primary" @click="openCreate">
             <template #icon><PlusOutlined /></template>
             新建用户
-          </AButton>
-        </ASpace>
+          </a-button>
+        </a-space>
       </div>
 
-      <ATable
-        :columns="columns"
+      <a-table         :columns="columns"
         :data-source="rows"
         :loading="loading"
         row-key="id"
@@ -408,7 +394,7 @@ function downloadTemplate(): void {
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'username'">
             <span class="text-mono">{{ record.username }}</span>
-            <ATag v-if="record.is_superuser" color="gold" style="margin-left: 6px">超管</ATag>
+            <a-tag v-if="record.is_superuser" color="gold" style="margin-left: 6px">超管</a-tag>
           </template>
 
           <template v-else-if="column.key === 'dept_name'">
@@ -422,9 +408,9 @@ function downloadTemplate(): void {
 
           <template v-else-if="column.key === 'roles'">
             <template v-if="record.roles.length">
-              <ATag v-for="role in record.roles" :key="role.id" color="blue">
+              <a-tag v-for="role in record.roles" :key="role.id" color="blue">
                 {{ role.name }}
-              </ATag>
+              </a-tag>
             </template>
             <span v-else class="text-muted">—</span>
           </template>
@@ -435,9 +421,9 @@ function downloadTemplate(): void {
           </template>
 
           <template v-else-if="column.key === 'status'">
-            <ATag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
+            <a-tag :color="record.status === 'ACTIVE' ? 'green' : 'default'">
               {{ record.status === 'ACTIVE' ? '启用' : '停用' }}
-            </ATag>
+            </a-tag>
           </template>
 
           <template v-else-if="column.key === 'last_login_at'">
@@ -445,31 +431,30 @@ function downloadTemplate(): void {
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <ASpace :size="4">
-              <AButton type="link" size="small" @click="openEdit(record as UserItem)">
+            <a-space :size="4">
+              <a-button type="link" size="small" @click="openEdit(record as UserItem)">
                 <template #icon><EditOutlined /></template>
                 编辑
-              </AButton>
-              <AButton type="link" size="small" @click="openResetPassword(record as UserItem)">
+              </a-button>
+              <a-button type="link" size="small" @click="openResetPassword(record as UserItem)">
                 <template #icon><KeyOutlined /></template>
                 重置密码
-              </AButton>
-              <AButton
-                type="link"
+              </a-button>
+              <a-button                 type="link"
                 size="small"
                 :loading="togglingId === record.id"
                 @click="toggleStatus(record as UserItem)"
               >
                 {{ record.status === 'ACTIVE' ? '停用' : '启用' }}
-              </AButton>
-              <AButton type="link" size="small" danger @click="removeUser(record as UserItem)">
+              </a-button>
+              <a-button type="link" size="small" danger @click="removeUser(record as UserItem)">
                 <template #icon><DeleteOutlined /></template>
-              </AButton>
-            </ASpace>
+              </a-button>
+            </a-space>
           </template>
         </template>
-      </ATable>
-    </ACard>
+      </a-table>
+    </a-card>
 
     <!-- 新建 / 编辑 -->
     <a-modal
@@ -490,8 +475,7 @@ function downloadTemplate(): void {
               :validate-status="formErrors.username ? 'error' : undefined"
               :help="formErrors.username"
             >
-              <AInput
-                v-model:value="form.username"
+              <a-input                 v-model:value="form.username"
                 :disabled="!isCreate"
                 placeholder="登录账号，创建后不可修改"
               />
@@ -504,7 +488,7 @@ function downloadTemplate(): void {
               :validate-status="formErrors.real_name ? 'error' : undefined"
               :help="formErrors.real_name"
             >
-              <AInput v-model:value="form.real_name" placeholder="真实姓名" />
+              <a-input v-model:value="form.real_name" placeholder="真实姓名" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -516,7 +500,7 @@ function downloadTemplate(): void {
           :validate-status="formErrors.password ? 'error' : undefined"
           :help="formErrors.password"
         >
-          <AInput v-model:value="form.password" placeholder="至少 6 位" />
+          <a-input v-model:value="form.password" placeholder="至少 6 位" />
           <template #extra>
             <span class="text-muted">建议让用户首次登录后自行修改</span>
           </template>
@@ -529,12 +513,12 @@ function downloadTemplate(): void {
               :validate-status="formErrors.email ? 'error' : undefined"
               :help="formErrors.email"
             >
-              <AInput v-model:value="form.email" placeholder="选填" />
+              <a-input v-model:value="form.email" placeholder="选填" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
             <a-form-item label="手机号">
-              <AInput v-model:value="form.phone" placeholder="选填" />
+              <a-input v-model:value="form.phone" placeholder="选填" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -555,14 +539,13 @@ function downloadTemplate(): void {
           </a-col>
           <a-col :span="12">
             <a-form-item label="职位">
-              <AInput v-model:value="form.position" placeholder="选填" />
+              <a-input v-model:value="form.position" placeholder="选填" />
             </a-form-item>
           </a-col>
         </a-row>
 
         <a-form-item label="角色" :validate-status="formErrors.role_ids ? 'error' : undefined" :help="formErrors.role_ids">
-          <ASelect
-            v-model:value="form.role_ids"
+          <a-select             v-model:value="form.role_ids"
             mode="multiple"
             :options="roleOptions"
             placeholder="可多选；角色决定审批人解析与发起范围"
@@ -597,7 +580,7 @@ function downloadTemplate(): void {
         :validate-status="passwordError ? 'error' : undefined"
         :help="passwordError"
       >
-        <AInput v-model:value="passwordValue" placeholder="至少 6 位" />
+        <a-input v-model:value="passwordValue" placeholder="至少 6 位" />
       </a-form-item>
     </a-modal>
 
@@ -611,23 +594,22 @@ function downloadTemplate(): void {
         style="margin-bottom: 16px"
       />
 
-      <ASpace style="margin-bottom: 16px">
-        <AUpload
-          :before-upload="handleFile"
+      <a-space style="margin-bottom: 16px">
+        <a-upload           :before-upload="handleFile"
           :show-upload-list="false"
           accept=".csv,text/csv"
           :disabled="importing"
         >
-          <AButton type="primary" :loading="importing">
+          <a-button type="primary" :loading="importing">
             <template #icon><UploadOutlined /></template>
             选择 CSV 文件
-          </AButton>
-        </AUpload>
-        <AButton @click="downloadTemplate">
+          </a-button>
+        </a-upload>
+        <a-button @click="downloadTemplate">
           <template #icon><DownloadOutlined /></template>
           下载模板
-        </AButton>
-      </ASpace>
+        </a-button>
+      </a-space>
 
       <template v-if="importResult">
         <a-alert
@@ -637,8 +619,7 @@ function downloadTemplate(): void {
           :description="`未提供密码的行使用默认密码：${importResult.default_password}`"
           style="margin-bottom: 12px"
         />
-        <ATable
-          v-if="importResult.failed.length"
+        <a-table           v-if="importResult.failed.length"
           :columns="[
             { title: '行号', dataIndex: 'line', width: 80 },
             { title: '用户名', dataIndex: 'username', width: 140 },

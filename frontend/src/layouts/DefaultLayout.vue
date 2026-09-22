@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MenuProps } from 'ant-design-vue'
 import {
   ApartmentOutlined,
   AuditOutlined,
@@ -14,7 +15,6 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { Layout, Menu, type MenuProps } from 'ant-design-vue'
 import { computed, h, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -24,10 +24,6 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { feedback } from '@/utils/feedback'
 
-const ALayout = Layout
-const ALayoutSider = Layout.Sider
-const ALayoutHeader = Layout.Header
-const ALayoutContent = Layout.Content
 
 const route = useRoute()
 const router = useRouter()
@@ -157,9 +153,8 @@ async function handleLogout(): Promise<void> {
 </script>
 
 <template>
-  <ALayout class="app-layout">
-    <ALayoutSider
-      v-model:collapsed="app.sidebarCollapsed"
+  <a-layout class="app-layout">
+    <a-layout-sider       v-model:collapsed="app.sidebarCollapsed"
       :trigger="null"
       collapsible
       theme="dark"
@@ -169,18 +164,17 @@ async function handleLogout(): Promise<void> {
         <span class="logo-mark">FF</span>
         <span v-if="!app.sidebarCollapsed" class="logo-text">FlowForm</span>
       </div>
-      <Menu
-        theme="dark"
+      <a-menu         theme="dark"
         mode="inline"
         :items="menuItems"
         :selected-keys="selectedKeys"
         v-model:open-keys="openKeys"
         @click="onMenuClick"
       />
-    </ALayoutSider>
+    </a-layout-sider>
 
-    <ALayout>
-      <ALayoutHeader class="app-header">
+    <a-layout>
+      <a-layout-header class="app-header">
         <component
           :is="app.sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined"
           class="collapse-btn"
@@ -212,12 +206,12 @@ async function handleLogout(): Promise<void> {
             </template>
           </a-dropdown>
         </div>
-      </ALayoutHeader>
+      </a-layout-header>
 
-      <ALayoutContent class="app-content">
+      <a-layout-content class="app-content">
         <router-view />
-      </ALayoutContent>
-    </ALayout>
+      </a-layout-content>
+    </a-layout>
 
     <a-modal
       v-model:open="passwordOpen"
@@ -261,7 +255,7 @@ async function handleLogout(): Promise<void> {
         </a-form-item>
       </a-form>
     </a-modal>
-  </ALayout>
+  </a-layout>
 </template>
 
 <style scoped lang="scss">
