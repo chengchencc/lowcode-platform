@@ -57,11 +57,7 @@ const menuItems = computed<MenuProps['items']>(() => {
       icon: () => h(PartitionOutlined),
       children: [
         { key: 'form-templates', label: '表单模板', icon: () => h(FormOutlined) },
-        {
-          key: 'flows',
-          label: h('span', { class: 'menu-soon' }, ['流程模板', h('em', 'M3')]),
-          disabled: true,
-        },
+        { key: 'flow-templates', label: '流程模板', icon: () => h(PartitionOutlined) },
         {
           key: 'instances',
           label: h('span', { class: 'menu-soon' }, ['实例管理', h('em', 'M4')]),
@@ -104,7 +100,7 @@ const selectedKeys = computed<string[]>(() => [String(route.name ?? 'dashboard')
 const openKeys = ref<string[]>(['org', 'design'])
 
 /** 可直接跳转的菜单项（没有子菜单的那些）。 */
-const NAVIGABLE = new Set(['dashboard', 'audit', 'form-templates'])
+const NAVIGABLE = new Set(['dashboard', 'audit', 'form-templates', 'flow-templates'])
 
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)

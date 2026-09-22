@@ -52,6 +52,18 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '表单配置器', roles: ['designer'], hidden: true },
       },
       {
+        path: 'admin/flows',
+        name: 'flow-templates',
+        component: () => import('@/views/admin/flow/FlowTemplateListView.vue'),
+        meta: { title: '流程模板', roles: ['designer'] },
+      },
+      {
+        path: 'admin/flows/:id/design',
+        name: 'flow-designer',
+        component: () => import('@/views/admin/flow/FlowDesignerView.vue'),
+        meta: { title: '流程配置器', roles: ['designer'], hidden: true },
+      },
+      {
         path: 'admin/org/users',
         name: 'org-users',
         component: () => import('@/views/admin/org/UserView.vue'),

@@ -71,6 +71,67 @@ vi.mock('@/api/modules/role', () => ({
   },
 }))
 
+/** 流程配置器一进来就会拉模板/版本/表单 schema，给一份最小的可用数据。 */
+vi.mock('@/api/modules/flow', () => {
+  const definition = {
+    model_version: 1,
+    start: { id: 'start', type: 'start', name: '发起', fields_permission: null },
+    steps: [
+      {
+        id: 's1', type: 'approval', name: '部门经理审批',
+        assignee: { mode: 'SINGLE', sources: [{ type: 'dept_manager' }] },
+        reject_policy: 'reject_to_initiator', return_targets: null, timeout_hours: null,
+        opinion_required: false, attachment_required: false,
+        fields_permission: { base: 'readonly', partitions: {}, overrides: {}, conditional_overrides: [] },
+      },
+      {
+        id: 'c1', type: 'condition', name: '按金额分流',
+        branches: [
+          { id: 'b1', name: '大额',
+            when: { op: 'and', conditions: [{ field: 'amount', cmp: '>', value: 2000 }] },
+            steps: [{ id: 's2', type: 'fill', name: '财务补充',
+              assignee: { mode: 'SINGLE', sources: [] }, return_targets: null, timeout_hours: null,
+              fields_permission: { base: 'hidden', partitions: {}, overrides: {}, conditional_overrides: [] } }] },
+          { id: 'else', name: '否则', when: null, steps: [] },
+        ],
+      },
+    ],
+    end: { id: 'end', type: 'end', name: '结束' },
+  }
+  const version = {
+    id: 1, template_id: 1, version_no: 1, status: 'DRAFT', remark: null,
+    locked_form_version_id: 1, locked_form_version_no: 1,
+    created_by: 1, published_at: null, created_at: null,
+    definition, validation_report: null,
+  }
+  return {
+    flowApi: {
+      listTemplates: vi.fn().mockResolvedValue([]),
+      getTemplate: vi.fn().mockResolvedValue({
+        id: 1, name: '费用报销流程', code: null, category: null, status: 'DRAFT',
+        description: null, form_template_id: 1, form_template_name: '报销单',
+        initiator_scope: { type: 'all' },
+        current_version_id: null, current_version_no: null,
+        locked_form_version_id: null, locked_form_version_no: null,
+        draft_version_id: 1, version_count: 1, node_count: 2,
+        created_by: 1, created_at: null, updated_at: null,
+      }),
+      createTemplate: vi.fn(),
+      updateTemplate: vi.fn(),
+      setTemplateStatus: vi.fn(),
+      deleteTemplate: vi.fn(),
+      listVersions: vi.fn().mockResolvedValue([]),
+      createVersion: vi.fn().mockResolvedValue(version),
+      getVersion: vi.fn().mockResolvedValue(version),
+      saveVersion: vi.fn().mockResolvedValue(version),
+      deleteVersion: vi.fn(),
+      validateVersion: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
+      publishVersion: vi.fn().mockResolvedValue(version),
+      returnTargets: vi.fn().mockResolvedValue([]),
+    },
+  }
+})
+
 /** 表单配置器一进来就会拉模板与版本，这里给一份最小的可用数据。 */
 vi.mock('@/api/modules/form', () => {
   const schema = {
@@ -166,6 +227,8 @@ vi.mock('@/api/modules/form', () => {
 })
 
 import AuditLogView from '@/views/admin/AuditLogView.vue'
+import FlowDesignerView from '@/views/admin/flow/FlowDesignerView.vue'
+import FlowTemplateListView from '@/views/admin/flow/FlowTemplateListView.vue'
 import FormDesignerView from '@/views/admin/form/FormDesignerView.vue'
 import FormTemplateListView from '@/views/admin/form/FormTemplateListView.vue'
 import DeptView from '@/views/admin/org/DeptView.vue'
@@ -191,6 +254,8 @@ function makeRouter(initialPath = '/'): Router {
       { path: '/admin/audit', name: 'audit', component: STUB },
       { path: '/admin/forms', name: 'form-templates', component: STUB },
       { path: '/admin/forms/:id/design', name: 'form-designer', component: STUB },
+      { path: '/admin/flows', name: 'flow-templates', component: STUB },
+      { path: '/admin/flows/:id/design', name: 'flow-designer', component: STUB },
       { path: initialPath, name: 'fallback', component: STUB },
     ],
   })
@@ -238,6 +303,8 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['AuditLogView', AuditLogView],
   ['FormTemplateListView', FormTemplateListView],
   ['FormDesignerView', FormDesignerView, '/admin/forms/1/design'],
+  ['FlowTemplateListView', FlowTemplateListView],
+  ['FlowDesignerView', FlowDesignerView, '/admin/flows/1/design'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
