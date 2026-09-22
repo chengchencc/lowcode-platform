@@ -39,6 +39,38 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '工作台首页', icon: 'dashboard' },
       },
       {
+        path: 'start-center',
+        name: 'start-center',
+        component: () => import('@/views/StartCenterView.vue'),
+        meta: { title: '发起中心' },
+      },
+      {
+        // 发起填写页；带 ?draftId= 即草稿续填
+        path: 'start/:flowTemplateId',
+        name: 'start-form',
+        component: () => import('@/views/StartFormView.vue'),
+        meta: { title: '发起流程', hidden: true },
+      },
+      {
+        path: 'workbench/:type(todo|done|mine|cc)',
+        name: 'workbench',
+        component: () => import('@/views/WorkbenchView.vue'),
+        meta: { title: '工作台' },
+      },
+      {
+        // 实例详情页是独立整页：进度条 + 分区表单 + 时间线需要横向空间
+        path: 'instance/:id',
+        name: 'instance-detail',
+        component: () => import('@/views/InstanceDetailView.vue'),
+        meta: { title: '单据详情', hidden: true },
+      },
+      {
+        path: 'messages',
+        name: 'messages',
+        component: () => import('@/views/NotificationCenterView.vue'),
+        meta: { title: '消息中心' },
+      },
+      {
         path: 'admin/forms',
         name: 'form-templates',
         component: () => import('@/views/admin/form/FormTemplateListView.vue'),

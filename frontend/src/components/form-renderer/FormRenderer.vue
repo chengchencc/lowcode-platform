@@ -15,7 +15,7 @@ import { computed } from 'vue'
 
 import SectionBlock from '@/components/form-renderer/SectionBlock.vue'
 import { resolveFieldStates } from '@/components/form-renderer/useFieldState'
-import type { FormSchema } from '@/types/form'
+import type { FieldState, FormSchema } from '@/types/form'
 import { evaluateSchemaFormulas } from '@/utils/formula'
 
 const props = withDefaults(
@@ -25,15 +25,25 @@ const props = withDefaults(
     mode?: 'edit' | 'readonly' | 'preview'
     /** 没有任何可见字段时的提示语 */
     emptyText?: string
+    /**
+     * 服务端下发的字段权限表。
+     *
+     * 给了就用它（实例详情页、发起页 —— 权限由节点矩阵决定）；
+     * 不给则按 schema 推导（设计器的表单预览 —— 那时还没有流程节点）。
+     * 这一个开关就是 M3 设计 `resolveFieldStates` 时预留的接入点。
+     */
+    permissions?: Record<string, FieldState> | null
   }>(),
-  { mode: 'edit', emptyText: '该表单还没有配置字段' },
+  { mode: 'edit', emptyText: '该表单还没有配置字段', permissions: null },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [Record<string, unknown>] }>()
 
 const mode = computed(() => props.mode ?? 'edit')
 
-const states = computed(() => resolveFieldStates(props.schema, mode.value))
+const states = computed(
+  () => props.permissions ?? resolveFieldStates(props.schema, mode.value),
+)
 
 /** 前端即时重算的公式结果。提交时服务端会再算一遍并覆盖。 */
 const computedValues = computed(() => {

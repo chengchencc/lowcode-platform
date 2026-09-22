@@ -26,6 +26,7 @@ from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.engine.validate import ValidationIssue, has_errors, validate_flow_definition
 from app.models import (
     Department,
+    FlowInstance,
     FlowTemplate,
     FlowVersion,
     FormTemplate,
@@ -300,8 +301,23 @@ def delete_template(
 ) -> None:
     """删除流程模板（连同全部版本）。
 
-    暂无「有运行中实例则不可删」的检查 —— M4 引入实例后要在这里补上。
+    **有实例引用时拒绝删除**：`flow_instances.flow_version_id` 指向版本，
+    硬删会撞外键（用户看到 500）。语义上也该拒绝 ——
+    已经跑过的单据不能因为模板被删就失去追溯依据。要停用改用「停用」。
     """
+    instance_count = db.scalar(
+        select(func.count(FlowInstance.id)).where(
+            FlowInstance.flow_template_id == template.id
+        )
+    ) or 0
+    if instance_count:
+        raise ConflictError(
+            f"该流程已有 {instance_count} 个流程实例，不能删除。"
+            "如需停止使用，请改为「停用」；实例会保留以支持追溯。",
+            code="FLOW_HAS_INSTANCES",
+            extra={"instance_count": instance_count},
+        )
+
     biz_id, name = template.id, template.name
     db.delete(template)
     audit_service.record(

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.clock import utcnow
 from app.core.constants import AuditAction, AuditBizType, FormStatus, FormVersionStatus
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
-from app.models import FormTemplate, FormVersion, User
+from app.models import FlowTemplate, FlowVersion, FormTemplate, FormVersion, User
 from app.schemas.form import (
     FormTemplateCreate,
     FormTemplateUpdate,
@@ -273,9 +273,27 @@ def delete_template(
 ) -> None:
     """删除模板（连同全部版本）。
 
-    暂无引用检查 —— M3 引入 flow_versions.locked_form_version_id 后，
-    这里要加上「被流程版本锁定的表单版本不可删除」的校验。
+    **被流程版本锁定时拒绝删除**：`flow_versions.locked_form_version_id` 指向这些
+    版本，硬删会撞外键；语义上也该拒绝 —— 运行中的实例要按锁定的 schema 渲染，
+    模板没了就渲染不出来。要停止使用请改为「停用」。
     """
+    referencing = list(
+        db.scalars(
+            select(FlowVersion.template_id)
+            .join(FlowTemplate, FlowTemplate.id == FlowVersion.template_id)
+            .where(FlowVersion.locked_form_version_id.in_(select(FormVersion.id).where(
+                FormVersion.template_id == template.id
+            )))
+        ).all()
+    )
+    if referencing:
+        raise ConflictError(
+            f"该表单已被 {len(set(referencing))} 个流程模板引用（发布时锁定了它的版本），"
+            "不能删除。如需停止使用，请改为「停用」。",
+            code="FORM_REFERENCED_BY_FLOW",
+            extra={"flow_template_ids": sorted(set(referencing))},
+        )
+
     biz_id, name = template.id, template.name
     db.delete(template)  # versions 走 cascade="all, delete-orphan"
     audit_service.record(

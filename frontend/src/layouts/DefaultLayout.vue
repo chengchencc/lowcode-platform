@@ -16,20 +16,61 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { computed, h, reactive, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '@/api/modules/auth'
+import { taskApi } from '@/api/modules/instance'
 import { ApiError } from '@/api/http'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import type { TodoSummary } from '@/types/instance'
 import { feedback } from '@/utils/feedback'
+
+/** 待办角标轮询间隔（F7.2 要求 ≤10s 感知） */
+const POLL_INTERVAL_MS = 10_000
 
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const app = useAppStore()
+
+// --------------------------------------------------------------------------- 待办角标
+
+/**
+ * 角标计数（F7.2「≤10s 感知新任务」）。
+ *
+ * V1 用轮询而不是 WebSocket —— 千人内部系统下每 10s 一次轻量查询完全够用，
+ * 而 WebSocket 要处理重连、鉴权、多标签页，成本远高于收益。
+ */
+const summary = ref<TodoSummary>({ todo: 0, cc_unread: 0, mine_running: 0 })
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshSummary(): Promise<void> {
+  try {
+    summary.value = await taskApi.summary()
+  } catch {
+    // 轮询失败静默 —— 网络抖动不该弹提示打断用户
+  }
+}
+
+onMounted(() => {
+  void refreshSummary()
+  pollTimer = setInterval(() => void refreshSummary(), POLL_INTERVAL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
+
+/** 处理完任务后立刻刷新角标，不等到下一次轮询 */
+watch(
+  () => route.fullPath,
+  () => void refreshSummary(),
+)
+
+provide('refreshTodoSummary', refreshSummary)
 
 /** M2–M4 的入口先以禁用态占位，让导航结构与 PRD §5 的信息架构保持一致。 */
 const menuItems = computed<MenuProps['items']>(() => {
@@ -41,15 +82,19 @@ const menuItems = computed<MenuProps['items']>(() => {
     },
     {
       key: 'start-center',
-      label: h('span', { class: 'menu-soon' }, ['发起中心', h('em', 'M2')]),
+      label: '发起中心',
       icon: () => h(RocketOutlined),
-      disabled: true,
     },
     {
       key: 'workbench',
-      label: h('span', { class: 'menu-soon' }, ['工作台', h('em', 'M4')]),
+      label: h('span', { class: 'menu-label' }, [
+        '工作台',
+        // 待办角标（F7.2）
+        summary.value.todo
+          ? h('em', { class: 'menu-badge' }, String(summary.value.todo))
+          : null,
+      ]),
       icon: () => h(ScheduleOutlined),
-      disabled: true,
     },
     {
       key: 'design',
@@ -87,9 +132,13 @@ const menuItems = computed<MenuProps['items']>(() => {
 
   items.push({
     key: 'messages',
-    label: h('span', { class: 'menu-soon' }, ['消息中心', h('em', 'M4')]),
+    label: h('span', { class: 'menu-label' }, [
+      '消息中心',
+      summary.value.cc_unread
+        ? h('em', { class: 'menu-badge' }, String(summary.value.cc_unread))
+        : null,
+    ]),
     icon: () => h(MessageOutlined),
-    disabled: true,
   })
 
   return items
@@ -100,7 +149,15 @@ const selectedKeys = computed<string[]>(() => [String(route.name ?? 'dashboard')
 const openKeys = ref<string[]>(['org', 'design'])
 
 /** 可直接跳转的菜单项（没有子菜单的那些）。 */
-const NAVIGABLE = new Set(['dashboard', 'audit', 'form-templates', 'flow-templates'])
+const NAVIGABLE = new Set([
+  'dashboard',
+  'audit',
+  'form-templates',
+  'flow-templates',
+  'start-center',
+  'workbench',
+  'messages',
+])
 
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)
@@ -369,5 +426,26 @@ async function handleLogout(): Promise<void> {
     background: rgba(255, 255, 255, 0.18);
     color: rgba(255, 255, 255, 0.65);
   }
+}
+
+.menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* 待办/未读角标（F7.2） */
+.menu-badge {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 16px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff4d4f;
+  color: #fff;
+  text-align: center;
 }
 </style>

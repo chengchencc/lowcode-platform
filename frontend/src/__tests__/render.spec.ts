@@ -132,6 +132,94 @@ vi.mock('@/api/modules/flow', () => {
   }
 })
 
+/** M4：发起与工作台。详情页一次取全，所以 mock 也要给全。 */
+vi.mock('@/api/modules/instance', () => {
+  const instance = {
+    id: 1, code: 'LX20260922-0001', title: '请假 5 天', status: 'RUNNING', round: 1,
+    flow_template_id: 1, flow_template_name: '请假申请', flow_version_id: 1, form_version_id: 1,
+    initiator_id: 1, initiator_name: '张三', initiator_dept_name: '技术部',
+    current_node_keys: ['直属上级审批'], abnormal: false,
+    pending_count: 1, done_count: 1, my_pending_count: 1,
+    created_at: null, started_at: null, finished_at: null, last_action_at: null,
+    terminated_reason: null,
+  }
+  const render = {
+    instance,
+    my_role: 'CURRENT_HANDLER',
+    assignment: { assignment_id: 1, task_id: 1, user_id: 1, status: 'PENDING', seq: 0, acted_at: null },
+    current_node: {
+      node_id: 's1', name: '直属上级审批', type: 'approval', type_label: '审批',
+      assignee_mode: 'SINGLE', opinion_required: false, attachment_required: false,
+    },
+    schema_data: { sections: [{ key: 's', title: '申请信息', stage: 'apply', fields: [
+      { key: 'reason', label: '事由', type: 'text' },
+    ] }] },
+    values: { reason: '旅行' },
+    permissions: { reason: { visible: true, editable: false, required: false, reason: 'L0' } },
+    progress: [
+      { node_id: 's1', name: '直属上级审批', type: 'approval', type_label: '审批',
+        status: 'ACTIVE', assignees: [], activation_seq: 1 },
+      { node_id: 'c1', name: '按天数分流', type: 'condition', type_label: '条件分支',
+        branches: [{ branch_id: 'b1', name: '长假', is_else: false, taken: false, nodes: [] }] },
+      { node_id: 'p1', name: '财务双签', type: 'parallel', type_label: '并行', mode: 'all',
+        status: 'PENDING', members: [
+          { node_id: 'm1', name: '会计审批', type: 'approval', type_label: '审批', status: 'PENDING' },
+        ] },
+    ],
+    actions: [
+      { action_id: 1, action: 'SUBMIT', action_label: '提交', node_key: null, node_name: null,
+        actor_id: 1, actor_name: '张三', opinion: null, round: 1, from_status: 'DRAFT',
+        to_status: 'RUNNING', changed_fields: [], attachments: [], snapshot_id: 1,
+        snapshot_seq: 1, created_at: '2026-09-22T10:00:00' },
+    ],
+    allowed_actions: ['AGREE', 'REJECT', 'RETURN'],
+    return_targets: [],
+    attachments: [],
+    snapshot: null,
+    ext_fields: [],
+  }
+  const emptyPage = { items: [], total: 0, page: 1, size: 20 }
+  return {
+    instanceApi: {
+      availableFlows: vi.fn().mockResolvedValue([]),
+      startOptions: vi.fn().mockResolvedValue({
+        flow_template_id: 1, flow_template_name: '请假申请',
+        flow_version_id: 1, flow_version_no: 1, form_version_id: 1, form_version_no: 1,
+        schema_data: { sections: [{ key: 's', title: '申请信息', stage: 'apply', fields: [
+          { key: 'reason', label: '事由', type: 'text', required: true },
+        ] }] },
+        permissions: { reason: { visible: true, editable: true, required: true, reason: 'L0' } },
+        initiator_select_nodes: [], nodes: [],
+      }),
+      createDraft: vi.fn().mockResolvedValue(instance),
+      listDrafts: vi.fn().mockResolvedValue([]),
+      updateDraft: vi.fn().mockResolvedValue(instance),
+      deleteDraft: vi.fn(),
+      submit: vi.fn().mockResolvedValue(instance),
+      resubmit: vi.fn().mockResolvedValue(instance),
+      render: vi.fn().mockResolvedValue(render),
+      timeline: vi.fn().mockResolvedValue([]),
+      snapshotDiff: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue(emptyPage),
+      withdraw: vi.fn(), abandon: vi.fn(), terminate: vi.fn(),
+    },
+    taskApi: {
+      todo: vi.fn().mockResolvedValue(emptyPage),
+      done: vi.fn().mockResolvedValue(emptyPage),
+      cc: vi.fn().mockResolvedValue(emptyPage),
+      mine: vi.fn().mockResolvedValue(emptyPage),
+      summary: vi.fn().mockResolvedValue({ todo: 2, cc_unread: 1, mine_running: 0 }),
+      getAssignment: vi.fn(), returnTargets: vi.fn().mockResolvedValue([]),
+      act: vi.fn(), markRead: vi.fn(),
+    },
+    notificationApi: {
+      list: vi.fn().mockResolvedValue(emptyPage),
+      unreadCount: vi.fn().mockResolvedValue({ count: 0 }),
+      markRead: vi.fn(), markManyRead: vi.fn(), markAllRead: vi.fn(),
+    },
+  }
+})
+
 /** 表单配置器一进来就会拉模板与版本，这里给一份最小的可用数据。 */
 vi.mock('@/api/modules/form', () => {
   const schema = {
@@ -231,6 +319,11 @@ import FlowDesignerView from '@/views/admin/flow/FlowDesignerView.vue'
 import FlowTemplateListView from '@/views/admin/flow/FlowTemplateListView.vue'
 import FormDesignerView from '@/views/admin/form/FormDesignerView.vue'
 import FormTemplateListView from '@/views/admin/form/FormTemplateListView.vue'
+import InstanceDetailView from '@/views/InstanceDetailView.vue'
+import NotificationCenterView from '@/views/NotificationCenterView.vue'
+import StartCenterView from '@/views/StartCenterView.vue'
+import StartFormView from '@/views/StartFormView.vue'
+import WorkbenchView from '@/views/WorkbenchView.vue'
 import DeptView from '@/views/admin/org/DeptView.vue'
 import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
@@ -256,6 +349,11 @@ function makeRouter(initialPath = '/'): Router {
       { path: '/admin/forms/:id/design', name: 'form-designer', component: STUB },
       { path: '/admin/flows', name: 'flow-templates', component: STUB },
       { path: '/admin/flows/:id/design', name: 'flow-designer', component: STUB },
+      { path: '/start-center', name: 'start-center', component: STUB },
+      { path: '/start/:flowTemplateId', name: 'start-form', component: STUB },
+      { path: '/workbench/:type', name: 'workbench', component: STUB },
+      { path: '/instance/:id', name: 'instance-detail', component: STUB },
+      { path: '/messages', name: 'messages', component: STUB },
       { path: initialPath, name: 'fallback', component: STUB },
     ],
   })
@@ -305,6 +403,11 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['FormDesignerView', FormDesignerView, '/admin/forms/1/design'],
   ['FlowTemplateListView', FlowTemplateListView],
   ['FlowDesignerView', FlowDesignerView, '/admin/flows/1/design'],
+  ['StartCenterView', StartCenterView],
+  ['StartFormView', StartFormView, '/start/1'],
+  ['WorkbenchView', WorkbenchView, '/workbench/todo'],
+  ['InstanceDetailView', InstanceDetailView, '/instance/1'],
+  ['NotificationCenterView', NotificationCenterView],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {

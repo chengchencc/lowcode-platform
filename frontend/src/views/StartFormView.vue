@@ -1,0 +1,329 @@
+<script setup lang="ts">
+/**
+ * 发起填写页（F3.2 / F3.3 / F3.4 / F3.5）。
+ *
+ * - 按**发起节点的字段权限**渲染：`visible_at_start=false` 的补充字段此阶段完全不出现
+ * - 自动暂存：改动後 2s 落草稿（F3.3「自动暂存」），不生成审批任务
+ * - 流程含「发起人指定审批人」的节点时，提交前先选人（F3.5）
+ */
+import { ArrowLeftOutlined, CheckOutlined, SaveOutlined, UserSwitchOutlined } from '@ant-design/icons-vue'
+import { Button, Card, Modal, Space, Tag } from 'ant-design-vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import { ApiError } from '@/api/http'
+import { instanceApi } from '@/api/modules/instance'
+import { userApi } from '@/api/modules/user'
+import { FormRenderer } from '@/components/form-renderer'
+import type { FieldState } from '@/types/form'
+import type { StartOptions } from '@/types/instance'
+import { buildInitialValues, validateValues } from '@/utils/formValue'
+import { feedback } from '@/utils/feedback'
+
+const route = useRoute()
+const router = useRouter()
+
+const flowTemplateId = computed(() => Number(route.params.flowTemplateId))
+const draftId = computed(() => {
+  const raw = route.query.draftId
+  return raw ? Number(raw) : null
+})
+
+const options = ref<StartOptions | null>(null)
+const instanceId = ref<number | null>(null)
+const title = ref('')
+const values = ref<Record<string, unknown>>({})
+const loading = ref(false)
+const submitting = ref(false)
+const saving = ref(false)
+const lastSavedAt = ref<Date | null>(null)
+const dirty = ref(false)
+
+const permissions = computed<Record<string, FieldState>>(() => {
+  const raw: Record<string, FieldState> = {}
+  for (const [key, perm] of Object.entries(options.value?.permissions ?? {})) {
+    raw[key] = { visible: perm.visible, editable: perm.editable, required: perm.required }
+  }
+  return raw
+})
+
+const needsAssigneePick = computed(() => (options.value?.initiator_select_nodes.length ?? 0) > 0)
+
+// --------------------------------------------------------------------------- 加载
+
+async function load(): Promise<void> {
+  loading.value = true
+  try {
+    options.value = await instanceApi.startOptions(flowTemplateId.value)
+    title.value = options.value.flow_template_name
+
+    if (draftId.value) {
+      // 续填：草稿值优先于默认值
+      const drafts = await instanceApi.listDrafts()
+      const draft = drafts.find((d) => d.id === draftId.value)
+      if (draft) {
+        instanceId.value = draft.id
+        title.value = draft.title
+        const all = await instanceApi.render(draft.id)
+        values.value = { ...buildInitialValues(options.value.schema_data), ...all.values }
+        return
+      }
+    }
+    values.value = buildInitialValues(options.value.schema_data)
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+    await router.replace({ name: 'start-center' })
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
+
+// --------------------------------------------------------------------------- 自动暂存
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+function onFormChange(next: Record<string, unknown>): void {
+  values.value = next
+  dirty.value = true
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => void saveDraft(true), 2000)
+}
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+})
+
+async function saveDraft(quiet = false): Promise<void> {
+  if (!options.value || !dirty.value) return
+  saving.value = true
+  try {
+    if (instanceId.value === null) {
+      const created = await instanceApi.createDraft({
+        flow_template_id: flowTemplateId.value,
+        title: title.value,
+        data: values.value,
+      })
+      instanceId.value = created.id
+    } else {
+      await instanceApi.updateDraft(instanceId.value, { title: title.value, data: values.value })
+    }
+    lastSavedAt.value = new Date()
+    dirty.value = false
+    if (!quiet) feedback.success('已暂存')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    saving.value = false
+  }
+}
+
+// --------------------------------------------------------------------------- 提交
+
+const pickModalOpen = ref(false)
+const pickAssignees = ref<Record<string, number[]>>({})
+const candidateUsers = ref<Array<{ value: number; label: string }>>([])
+
+/** 表单校验失败时把问题指明给用户，而不是让后端 400 回来 */
+function localIssues() {
+  if (!options.value) return []
+  return validateValues(options.value.schema_data, values.value, permissions.value)
+}
+
+async function prepareSubmit(): Promise<void> {
+  const issues = localIssues()
+  if (issues.length) {
+    feedback.error(`还有必填项未完成：${issues.slice(0, 3).map((i) => i.label).join('、')}`)
+    return
+  }
+
+  if (needsAssigneePick.value) {
+    // 拉候选人（简化实现：给全部启用用户；精确范围由服务端的 scope 决定）
+    const users = await userApi.options({ limit: 200 })
+    candidateUsers.value = users.map((u) => ({ value: u.id, label: `${u.real_name}（${u.username}）` }))
+    pickModalOpen.value = true
+    return
+  }
+
+  await doSubmit({})
+}
+
+async function doSubmit(picks: Record<string, number[]>): Promise<void> {
+  if (!options.value) return
+  // 先确保草稿已落库（没有草稿则先建）
+  await saveDraft(true)
+  if (instanceId.value === null) {
+    feedback.error('暂存失败，请重试')
+    return
+  }
+
+  submitting.value = true
+  try {
+    const result = await instanceApi.submit(instanceId.value, {
+      data: values.value,
+      assignee_picks: picks,
+    })
+    feedback.success('已提交，流程开始流转')
+    await router.replace({ name: 'instance-detail', params: { id: result.id } })
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    submitting.value = false
+  }
+}
+
+function confirmPicks(): void {
+  const missing = (options.value?.initiator_select_nodes ?? []).filter(
+    (n) => !pickAssignees.value[n.node_id]?.length,
+  )
+  if (missing.length) {
+    feedback.error(`请为「${missing[0].node_name}」选择审批人`)
+    return
+  }
+  pickModalOpen.value = false
+  void doSubmit(pickAssignees.value)
+}
+</script>
+
+<template>
+  <div class="page-container">
+    <a-spin :spinning="loading">
+      <template v-if="options">
+        <Card :bordered="false" class="block" :body-style="{ padding: '12px 18px' }">
+          <div class="header">
+            <Space>
+              <Button type="text" @click="router.push({ name: 'start-center' })">
+                <template #icon><ArrowLeftOutlined /></template>
+              </Button>
+              <span class="title">{{ options.flow_template_name }}</span>
+              <Tag color="green">流程 v{{ options.flow_version_no }}</Tag>
+              <Tag color="blue">表单 v{{ options.form_version_no }}</Tag>
+            </Space>
+
+            <Space>
+              <span class="text-muted save-hint">
+                <template v-if="saving">暂存中…</template>
+                <template v-else-if="dirty">有未保存的改动</template>
+                <template v-else-if="lastSavedAt">已暂存</template>
+              </span>
+              <Button :loading="saving" @click="saveDraft(false)">
+                <template #icon><SaveOutlined /></template>
+                暂存
+              </Button>
+              <Button
+                type="primary"
+                :loading="submitting"
+                @click="prepareSubmit"
+              >
+                <template #icon><CheckOutlined /></template>
+                提交
+              </Button>
+            </Space>
+          </div>
+
+          <a-form-item label="标题" class="title-field">
+            <a-input v-model:value="title" placeholder="给这次申请起个名字" :maxlength="255" />
+          </a-form-item>
+        </Card>
+
+        <Card :bordered="false" class="block">
+          <FormRenderer
+            :schema="options.schema_data"
+            :model-value="values"
+            :permissions="permissions"
+            mode="edit"
+            @update:model-value="onFormChange"
+          />
+        </Card>
+
+        <div class="footer-actions">
+          <Button size="large" @click="saveDraft(false)">暂存草稿</Button>
+          <Button type="primary" size="large" :loading="submitting" @click="prepareSubmit">
+            提交审批
+          </Button>
+        </div>
+      </template>
+    </a-spin>
+
+    <!-- ------------------------------------------------ 发起人指定审批人（F3.5） -->
+    <Modal
+      v-model:open="pickModalOpen"
+      title="指定审批人"
+      :confirm-loading="submitting"
+      ok-text="确认并提交"
+      cancel-text="返回修改"
+      @ok="confirmPicks"
+    >
+      <a-alert
+        type="info"
+        show-icon
+        class="mb"
+        message="该流程有节点需要你指定审批人，请选择后再提交"
+      />
+      <a-form-item
+        v-for="node in options?.initiator_select_nodes ?? []"
+        :key="node.node_id"
+        :label="node.node_name"
+        required
+      >
+        <a-select
+          v-model:value="pickAssignees[node.node_id]"
+          :options="candidateUsers"
+          mode="multiple"
+          placeholder="选择审批人"
+          show-search
+          option-filter-prop="label"
+        />
+      </a-form-item>
+      <div class="text-muted tiny">
+        <UserSwitchOutlined />
+        候选人范围由流程配置决定
+      </div>
+    </Modal>
+  </div>
+</template>
+
+<style scoped lang="scss">
+.block {
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.save-hint {
+  font-size: 12px;
+}
+
+.title-field {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.footer-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0 24px;
+}
+
+.mb {
+  margin-bottom: 12px;
+}
+
+.tiny {
+  font-size: 11px;
+}
+</style>

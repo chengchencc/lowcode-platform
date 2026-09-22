@@ -695,3 +695,71 @@ class TestNotifications:
 
         assert client.get(f"{BASE}/notifications", headers=a_h).json()["total"] == 0
         assert client.get(f"{BASE}/notifications", headers=b_h).json()["total"] == 0
+
+
+class TestReferencedTemplateGuard:
+    """被引用时不能删模板 —— 硬删会撞外键，用户看到 500 而不是可理解的提示。"""
+
+    def test_cannot_delete_flow_with_instances(self, db, client, admin_headers):
+        initiator = _user(db)
+        approver = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+
+        init_h = login_as(client, initiator.username, PASSWORD)
+        _submit_simple(client, init_h, template.id)
+
+        resp = client.delete(f"{BASE}/flow-templates/{template.id}", headers=admin_headers)
+        assert resp.status_code == 409, resp.text
+        detail = resp.json()["detail"]
+        assert detail["code"] == "FLOW_HAS_INSTANCES"
+        assert detail["extra"]["instance_count"] == 1
+
+    def test_cannot_delete_form_locked_by_flow(self, db, client, admin_headers):
+        initiator = _user(db)
+        approver = _user(db)
+        template, form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+        _ = initiator
+
+        resp = client.delete(
+            f"{BASE}/form-templates/{form.template_id}", headers=admin_headers
+        )
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["detail"]["code"] == "FORM_REFERENCED_BY_FLOW"
+
+
+class TestEngineErrorMapping:
+    """引擎异常要映射成可判断的错误码，而不是 500 + traceback。
+
+    `EngineError` 不继承 `AppError`（引擎刻意不依赖 core.errors），
+    漏接会让「已通过的实例不可终止」这类正常拒绝变成 500。
+    """
+
+    def test_illegal_transition_returns_422(self, db, client, admin_headers):
+        initiator = _user(db)
+        approver = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+
+        init_h = login_as(client, initiator.username, PASSWORD)
+        approver_h = login_as(client, approver.username, PASSWORD)
+        instance = _submit_simple(client, init_h, template.id)
+
+        # 先走到通过
+        aid = client.get(f"{BASE}/tasks/todo", headers=approver_h).json()["items"][0]["assignment_id"]
+        client.post(f"{BASE}/tasks/assignments/{aid}/act", headers=approver_h, json={"action": "AGREE"})
+
+        # 已通过（终态）不能终止
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/terminate",
+            headers=admin_headers, json={"reason": "试试"},
+        )
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["code"] == "ILLEGAL_TRANSITION"

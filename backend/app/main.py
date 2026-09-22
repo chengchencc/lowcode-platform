@@ -6,8 +6,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app import __version__
@@ -53,6 +54,56 @@ def _bootstrap() -> None:
         raise
 
 
+def _register_engine_handlers(app: FastAPI) -> None:
+    """把引擎异常映射成统一的错误体。
+
+    `EngineError` 不属于 `AppError` 家族（引擎刻意不依赖 core.errors），
+    如果不在这里接住，像「已通过的实例不可终止」这种正常的业务拒绝
+    会变成 500 + 一大段 traceback —— 前端拿不到可判断的错误码，
+    响应体也大到会让客户端读失败。
+
+    注册点选在应用装配处（而不是 core/errors.py），因为只有这里
+    可以同时引用 core 与 engine 而不破坏分层。
+    """
+    from app.engine.errors import EngineError, TokenConflict
+    from app.engine.machine import IllegalTransition
+
+    @app.exception_handler(IllegalTransition)
+    async def _illegal_transition(_: Request, exc: IllegalTransition) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "ILLEGAL_TRANSITION",
+                    "message": str(exc),
+                    "extra": {"current": exc.current, "action": exc.action},
+                }
+            },
+        )
+
+    @app.exception_handler(TokenConflict)
+    async def _token_conflict(_: Request, exc: TokenConflict) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": "TOKEN_CONFLICT", "message": str(exc)}},
+        )
+
+    @app.exception_handler(EngineError)
+    async def _engine_error(_: Request, exc: EngineError) -> JSONResponse:
+        # 兜底：流程定义问题（FlowInvalid）等 —— 对使用者来说都是「这次请求不成立」
+        node_id = getattr(exc, "node_id", None)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": type(exc).__name__.upper(),
+                    "message": str(exc),
+                    "extra": {"node_id": node_id} if node_id else {},
+                }
+            },
+        )
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
@@ -74,6 +125,7 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+    _register_engine_handlers(app)
     app.include_router(api_router, prefix=settings.api_prefix)
 
     @app.get("/", include_in_schema=False)
