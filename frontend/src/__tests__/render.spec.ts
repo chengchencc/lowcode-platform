@@ -19,6 +19,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouter, createWebHistory, type Router } from 'vue-router'
 
+import { FormRenderer } from '@/components/form-renderer'
+
 // ---- 接口全部 mock：这些测试只关心「组件渲染出来了没」，不关心数据 ----
 
 vi.mock('@/api/modules/auth', () => ({
@@ -69,7 +71,103 @@ vi.mock('@/api/modules/role', () => ({
   },
 }))
 
+/** 表单配置器一进来就会拉模板与版本，这里给一份最小的可用数据。 */
+vi.mock('@/api/modules/form', () => {
+  const schema = {
+    model_version: 1,
+    layout: { label_position: 'top', columns: 2 },
+    sections: [
+      {
+        key: 'sec_apply',
+        title: '申请信息',
+        stage: 'apply',
+        sort: 1,
+        fields: [
+          { key: 'reason', label: '事由', type: 'text', required: true, visible_at_start: true },
+          {
+            key: 'items',
+            label: '明细',
+            type: 'subtable',
+            columns: [
+              { key: 'name', label: '名称', type: 'text' },
+              {
+                key: 'amount',
+                label: '小计',
+                type: 'formula',
+                formula: { type: 'arithmetic', expression: '1 + 1' },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const version = {
+    id: 1,
+    template_id: 1,
+    version_no: 1,
+    status: 'DRAFT',
+    remark: null,
+    created_by: 1,
+    published_at: null,
+    created_at: null,
+    schema_data: schema,
+    referenced_by_flows: [],
+  }
+  return {
+    formApi: {
+      listTemplates: vi.fn().mockResolvedValue([]),
+      groups: vi.fn().mockResolvedValue([]),
+      getTemplate: vi.fn().mockResolvedValue({
+        id: 1,
+        name: '报销单',
+        code: null,
+        group_name: null,
+        icon: null,
+        status: 'DRAFT',
+        description: null,
+        current_version_id: null,
+        current_version_no: null,
+        draft_version_id: 1,
+        version_count: 1,
+        field_count: 4,
+        created_by: 1,
+        created_at: null,
+        updated_at: null,
+      }),
+      createTemplate: vi.fn(),
+      updateTemplate: vi.fn(),
+      setTemplateStatus: vi.fn(),
+      copyTemplate: vi.fn(),
+      deleteTemplate: vi.fn(),
+      exportTemplate: vi.fn(),
+      importTemplate: vi.fn(),
+      listVersions: vi.fn().mockResolvedValue([]),
+      createVersion: vi.fn().mockResolvedValue(version),
+      getVersion: vi.fn().mockResolvedValue(version),
+      saveVersion: vi.fn().mockResolvedValue(version),
+      deleteVersion: vi.fn(),
+      validateVersion: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
+      publishVersion: vi.fn().mockResolvedValue(version),
+      previewVersion: vi.fn().mockResolvedValue({
+        version_id: 1,
+        template_id: 1,
+        schema_data: schema,
+        sample_data: {},
+        computed_fields: [],
+      }),
+    },
+    fileApi: {
+      upload: vi.fn(),
+      remove: vi.fn(),
+      downloadUrl: (id: number) => `/api/v1/files/${id}/download`,
+    },
+  }
+})
+
 import AuditLogView from '@/views/admin/AuditLogView.vue'
+import FormDesignerView from '@/views/admin/form/FormDesignerView.vue'
+import FormTemplateListView from '@/views/admin/form/FormTemplateListView.vue'
 import DeptView from '@/views/admin/org/DeptView.vue'
 import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
@@ -80,7 +178,8 @@ import NotFoundView from '@/views/NotFoundView.vue'
 
 const STUB = { template: '<div />' }
 
-function makeRouter(): Router {
+/** 需要带路由参数的页面（设计器读 route.params.id）传 path 进去。 */
+function makeRouter(initialPath = '/'): Router {
   return createRouter({
     history: createWebHistory(),
     routes: [
@@ -90,6 +189,9 @@ function makeRouter(): Router {
       { path: '/admin/org/depts', name: 'org-depts', component: STUB },
       { path: '/admin/org/roles', name: 'org-roles', component: STUB },
       { path: '/admin/audit', name: 'audit', component: STUB },
+      { path: '/admin/forms', name: 'form-templates', component: STUB },
+      { path: '/admin/forms/:id/design', name: 'form-designer', component: STUB },
+      { path: initialPath, name: 'fallback', component: STUB },
     ],
   })
 }
@@ -106,9 +208,9 @@ function watchUnresolved() {
   return { messages, restore: () => spy.mockRestore() }
 }
 
-async function mountView(component: unknown) {
-  const router = makeRouter()
-  await router.push('/')
+async function mountView(component: unknown, path = '/') {
+  const router = makeRouter(path)
+  await router.push(path)
   await router.isReady()
   return mount(component as never, {
     global: { plugins: [createPinia(), router, Antd] },
@@ -120,8 +222,12 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-/** 所有需要挂载一遍的页面。新增页面请补进这里。 */
-const MOUNTED_VIEWS: Array<[string, unknown]> = [
+/**
+ * 所有需要挂载一遍的页面。**新增页面请补进这里** ——
+ * 这是唯一能发现「组件没注册 / 页面渲染不出来」的关卡（见文件头说明）。
+ * 第三个元素是可选的挂载路径（需要路由参数的页面用）。
+ */
+const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['LoginView', LoginView],
   ['DashboardView', DashboardView],
   ['NotFoundView', NotFoundView],
@@ -130,14 +236,16 @@ const MOUNTED_VIEWS: Array<[string, unknown]> = [
   ['DeptView', DeptView],
   ['RoleView', RoleView],
   ['AuditLogView', AuditLogView],
+  ['FormTemplateListView', FormTemplateListView],
+  ['FormDesignerView', FormDesignerView, '/admin/forms/1/design'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
-  for (const [name, component] of MOUNTED_VIEWS) {
+  for (const [name, component, path] of MOUNTED_VIEWS) {
     it(`${name} 挂载无 "Failed to resolve component" 告警`, async () => {
       const { messages, restore } = watchUnresolved()
       try {
-        const wrapper = await mountView(component)
+        const wrapper = await mountView(component, path ?? '/')
         expect(wrapper.html()).not.toBe('')
         expect(messages, `未注册的组件/指令：\n${messages.join('\n')}`).toEqual([])
         wrapper.unmount()
@@ -146,6 +254,67 @@ describe('所有页面都能渲染且没有未注册的组件', () => {
       }
     })
   }
+})
+
+describe('表单渲染器（三态）', () => {
+  const schema = {
+    model_version: 1,
+    sections: [
+      {
+        key: 'sec_apply',
+        title: '申请信息',
+        stage: 'apply' as const,
+        fields: [
+          { key: 'reason', label: '事由', type: 'text' as const, required: true, visible_at_start: true },
+          {
+            key: 'supplement',
+            label: '财务补充金额',
+            type: 'number' as const,
+            visible_at_start: false,
+          },
+        ],
+      },
+      {
+        key: 'sec_supplement',
+        title: '财务补充',
+        stage: 'supplement' as const,
+        fields: [
+          { key: 'invoiceNo', label: '发票号', type: 'text' as const, visible_at_start: false },
+        ],
+      },
+    ],
+  }
+
+  it('编辑态下 visible_at_start=false 的字段不渲染', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(FormRenderer, {
+      props: { schema, modelValue: {}, mode: 'edit' },
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+    expect(wrapper.text()).toContain('事由')
+    // 「财务补充金额」在申请区且标记为发起隐藏 → 不该出现
+    expect(wrapper.text()).not.toContain('财务补充金额')
+    // 整个「财务补充」分区里只有一个隐藏字段 → 整块不渲染（机制 B）
+    expect(wrapper.text()).not.toContain('发票号')
+    wrapper.unmount()
+  })
+
+  it('只读态下所有字段都渲染且没有输入框', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(FormRenderer, {
+      props: { schema, modelValue: { reason: '出差', invoiceNo: 'INV-1' }, mode: 'readonly' },
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+    expect(wrapper.text()).toContain('事由')
+    expect(wrapper.text()).toContain('发票号')
+    expect(wrapper.text()).toContain('INV-1')
+    expect(wrapper.findAll('input').length).toBe(0)
+    wrapper.unmount()
+  })
 })
 
 describe('LoginView 渲染出可交互的登录表单', () => {

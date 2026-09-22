@@ -49,8 +49,43 @@ export const useOrgStore = defineStore('org', () => {
     return rolePromise
   }
 
-  function searchUsers(params: { keyword?: string; dept_id?: number | null }): Promise<UserOption[]> {
-    return userApi.options({ ...params, limit: 50 })
+  async function searchUsers(params: {
+    keyword?: string
+    dept_id?: number | null
+  }): Promise<UserOption[]> {
+    const list = await userApi.options({ ...params, limit: 50 })
+    rememberUsers(list)
+    return list
+  }
+
+  // ---- id → 名称 ----------------------------------------------------------
+  // 人员/部门控件的**只读**态只有 id，必须换成人名/部门名才有意义。
+  // 部门树常驻内存；人员则缓存「曾经出现在候选项里的那些人」。
+  // 没缓存到的显示 `#id` —— M4 的实例渲染接口会由服务端直接给名字。
+
+  const userNameCache = ref(new Map<number, string>())
+
+  function rememberUsers(users: UserOption[]): void {
+    if (!users.length) return
+    const next = new Map(userNameCache.value)
+    for (const u of users) next.set(u.id, u.real_name)
+    userNameCache.value = next
+  }
+
+  function userName(id: number): string {
+    return userNameCache.value.get(id) ?? `#${id}`
+  }
+
+  function deptName(id: number): string {
+    const walk = (nodes: DeptNode[]): string | null => {
+      for (const node of nodes) {
+        if (node.id === id) return node.name
+        const hit = walk(node.children)
+        if (hit) return hit
+      }
+      return null
+    }
+    return walk(deptTree.value) ?? `#${id}`
   }
 
   /** 组织数据变更后由页面调用，避免展示陈旧数据。 */
@@ -85,6 +120,9 @@ export const useOrgStore = defineStore('org', () => {
     loadDeptTree,
     loadRoles,
     searchUsers,
+    rememberUsers,
+    userName,
+    deptName,
     invalidateDepts,
     invalidateRoles,
     flatDepts,

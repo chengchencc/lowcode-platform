@@ -4,6 +4,7 @@ import {
   ApartmentOutlined,
   AuditOutlined,
   DashboardOutlined,
+  FormOutlined,
   KeyOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -55,9 +56,17 @@ const menuItems = computed<MenuProps['items']>(() => {
       label: '审批管理',
       icon: () => h(PartitionOutlined),
       children: [
-        { key: 'forms', label: '表单模板', disabled: true },
-        { key: 'flows', label: '流程模板', disabled: true },
-        { key: 'instances', label: '实例管理', disabled: true },
+        { key: 'form-templates', label: '表单模板', icon: () => h(FormOutlined) },
+        {
+          key: 'flows',
+          label: h('span', { class: 'menu-soon' }, ['流程模板', h('em', 'M3')]),
+          disabled: true,
+        },
+        {
+          key: 'instances',
+          label: h('span', { class: 'menu-soon' }, ['实例管理', h('em', 'M4')]),
+          disabled: true,
+        },
       ],
     },
   ]
@@ -92,12 +101,15 @@ const menuItems = computed<MenuProps['items']>(() => {
 
 const selectedKeys = computed<string[]>(() => [String(route.name ?? 'dashboard')])
 
-const openKeys = ref<string[]>(['org'])
+const openKeys = ref<string[]>(['org', 'design'])
+
+/** 可直接跳转的菜单项（没有子菜单的那些）。 */
+const NAVIGABLE = new Set(['dashboard', 'audit', 'form-templates'])
 
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)
-  if (key === 'dashboard' || key === 'audit' || key.startsWith('org-')) {
-    router.push({ name: key })
+  if (NAVIGABLE.has(key) || key.startsWith('org-')) {
+    void router.push({ name: key })
   }
 }
 

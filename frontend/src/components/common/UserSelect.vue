@@ -64,6 +64,8 @@ watch(
 async function search(keyword: string): Promise<void> {
   loading.value = true
   try {
+    // org.searchUsers 内部会把结果记进名字缓存 ——
+    // 表单只读态要靠它把人员 id 换成人名
     const users = await org.searchUsers({ keyword: keyword || undefined })
     fetched.value = users
     remember(users)

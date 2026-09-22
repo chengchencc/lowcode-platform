@@ -25,10 +25,16 @@ export function setupGuards(router: Router): void {
 
     // 角色门槛。is_admin / is_designer 由后端 /auth/me 计算，前端只做导航层拦截，
     // 真正的权限判定始终在后端（前端绕过了也拿不到数据）。
-    const needsAdmin = to.meta.adminOnly || to.matched.some((r) => r.meta.adminOnly)
-    if (needsAdmin && !auth.isAdmin) {
-      return { name: 'dashboard' }
+    const needed = new Set<string>(to.meta.roles ?? [])
+    for (const record of to.matched) {
+      for (const role of record.meta.roles ?? []) needed.add(role)
     }
+
+    const needsAdmin = to.meta.adminOnly || to.matched.some((r) => r.meta.adminOnly)
+    const needsDesigner = needed.has('designer')
+
+    if (needsAdmin && !auth.isAdmin) return { name: 'dashboard' }
+    if (needsDesigner && !auth.isDesigner) return { name: 'dashboard' }
 
     return true
   })

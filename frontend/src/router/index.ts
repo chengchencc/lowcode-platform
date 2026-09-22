@@ -39,6 +39,19 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '工作台首页', icon: 'dashboard' },
       },
       {
+        path: 'admin/forms',
+        name: 'form-templates',
+        component: () => import('@/views/admin/form/FormTemplateListView.vue'),
+        meta: { title: '表单模板', roles: ['designer'] },
+      },
+      {
+        // 设计器做成独立整页：配置表单需要横向空间，塞进带侧边栏的布局里太挤
+        path: 'admin/forms/:id/design',
+        name: 'form-designer',
+        component: () => import('@/views/admin/form/FormDesignerView.vue'),
+        meta: { title: '表单配置器', roles: ['designer'], hidden: true },
+      },
+      {
         path: 'admin/org/users',
         name: 'org-users',
         component: () => import('@/views/admin/org/UserView.vue'),
