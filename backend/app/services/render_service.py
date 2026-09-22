@@ -30,8 +30,11 @@ from app.core.constants import (
     TaskType,
 )
 from app.engine.compile import compile_definition
+from app.engine.ext_fields import merge_ext_fields
 from app.engine.permissions import (
+    ExtFieldView,
     FieldPermission,
+    apply_ext_fields,
     resolve_field_permissions,
     resolve_view_permissions,
 )
@@ -65,7 +68,10 @@ def render_instance(
 
     version = instance_service.version_of(db, instance)
     compiled = compile_definition(version.definition)
-    form_schema = instance_service.form_schema_of(db, instance)
+    # 把机制 C 的动态字段并进模板 schema —— 前端因此不必区分两者
+    form_schema = merge_ext_fields(
+        instance_service.form_schema_of(db, instance), instance.ext_fields
+    )
 
     # ---- 当前待办（决定权限与可执行动作）----
     assignment = _resolve_assignment(db, instance, viewer, assignment_id)
@@ -123,7 +129,8 @@ def render_instance(
             if current_node and assignment
             else None
         ),
-        "schema_data": version and _schema_json(db, instance),
+        # 渲染用的 schema 是「模板 ⊕ 动态字段」的那一份 —— 前端照它渲染即可
+        "schema_data": form_schema.model_dump(mode="json"),
         "values": values,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
         "progress": build_progress(db, instance, compiled),
@@ -134,13 +141,6 @@ def render_instance(
         "snapshot": viewing_snapshot,
         "ext_fields": _ext_fields(instance),
     }
-
-
-def _schema_json(db: Session, instance: FlowInstance) -> dict[str, Any]:
-    from app.models import FormVersion
-
-    form_version = db.get(FormVersion, instance.form_version_id)
-    return form_version.schema if form_version else {}
 
 
 # --------------------------------------------------------------------------- 权限
@@ -180,6 +180,8 @@ def _resolve_permissions(
     assignment: TaskAssignment | None,
     snapshot: bool,
 ) -> dict[str, FieldPermission]:
+    ext_views = _ext_views(instance)
+
     # 看历史快照 → 一律归档视角（历史没有「现在谁在处理」这回事）
     if snapshot:
         return resolve_view_permissions(form_schema)
@@ -190,11 +192,19 @@ def _resolve_permissions(
         node = compiled.nodes.get(task.node_key)
         if node is not None:
             rule = getattr(node.raw, "fields_permission", None)
-            return resolve_field_permissions(
+            permissions = resolve_field_permissions(
                 form_schema=form_schema,
                 node_type=node.type,
                 rule=rule,
                 values=instance.current_data or {},
+            )
+            return apply_ext_fields(
+                permissions,
+                ext_views,
+                node_id=node.id,
+                node_ancestors=compiled.ancestors(
+                    Cursor(node.id, tuple(task.gates or ()), instance.round)
+                ),
             )
 
     # 已终态 → 归档视角：补充字段此时才揭晓（PRD 验收点）
@@ -203,12 +213,33 @@ def _resolve_permissions(
 
     # 运行中的其他相关人（发起人 / 已完成的历史处理人）→ 严格按发起阶段能看到的来，
     # 避免补充字段提前泄露给申请人
-    return resolve_field_permissions(
+    start_id = compiled.definition.start.id
+    permissions = resolve_field_permissions(
         form_schema=form_schema,
         node_type="start",
         rule=compiled.definition.start.fields_permission,
         values=instance.current_data or {},
     )
+    # 这些人不在任何节点上，没有「本节点的动态字段可写」这回事 —— 只按发起点判可见性
+    return apply_ext_fields(
+        permissions, ext_views, node_id=start_id, node_ancestors=[start_id]
+    )
+
+
+def _ext_views(instance: FlowInstance) -> list[ExtFieldView]:
+    """机制 C 的动态字段 → 权限求值（L5）需要的形态。"""
+    return [
+        ExtFieldView(
+            field_key=f.field_key,
+            label=f.label,
+            type=f.type,
+            required=bool(f.required),
+            editable_node_ids=tuple(f.editable_node_ids or ()),
+            visible_from_node_id=f.visible_from_node_id,
+        )
+        for f in instance.ext_fields
+        if f.status == "ACTIVE"
+    ]
 
 
 def _allowed_actions(node) -> list[str]:

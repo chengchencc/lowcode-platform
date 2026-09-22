@@ -162,6 +162,39 @@ def returned(
     return out
 
 
+def ext_field_added(
+    *,
+    instance_id: int,
+    instance_title: str,
+    field_key: str,
+    label: str,
+    node_name: str | None,
+    recipients: Sequence[int],
+) -> list[NotificationDraft]:
+    """运行中追加了字段（机制 C）—— 当前处理人需要知道要多填一个。"""
+    out: list[NotificationDraft] = []
+    where = f"「{node_name}」" if node_name else "本节点"
+    for user_id in dict.fromkeys(recipients):
+        out.append(
+            NotificationDraft(
+                user_id=user_id,
+                type=NotifType.EXT_FIELD_ADDED,
+                title=f"新增字段：{instance_title}",
+                content=f"{where}新增了「{label}」，请一并填写",
+                link=_link(instance_id),
+                # field_key 才有唯一性 —— 同一个实例上追加两个**同名字段**也要各通知一次
+                dedup_key=f"EXT:{instance_id}:{field_key}:U:{user_id}",
+                payload={
+                    "instance_id": instance_id,
+                    "field_key": field_key,
+                    "label": label,
+                    "node_name": node_name,
+                },
+            )
+        )
+    return out
+
+
 def abnormal_assignment(
     *,
     instance_id: int,

@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.core.constants import FlowStatus
 from app.models import FlowTemplate
 from tests.conftest import login_as
@@ -763,3 +765,132 @@ class TestEngineErrorMapping:
         )
         assert resp.status_code == 422, resp.text
         assert resp.json()["detail"]["code"] == "ILLEGAL_TRANSITION"
+
+
+# --------------------------------------------------------------------------- 机制 C：运行中追加字段
+
+
+class TestExtFieldApi:
+    """F5.1 机制 C 的接口层：谁能加、加完前端拿到什么、怎么停用。
+
+    「设计者」在 PRD §2 里**没有审批数据管理权** —— 他只能对自己看得见的实例
+    追加字段，所以这里的用例都用「设计者本人发起」的单据。
+    """
+
+    @pytest.fixture
+    def designer(self, db, designer_role):
+        from tests.conftest import make_user
+
+        return make_user(db, username="ext_designer", password=PASSWORD, role=designer_role)
+
+    def _prepare(self, db, client, initiator):
+        approver = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+
+        init_h = login_as(client, initiator.username, PASSWORD)
+        approver_h = login_as(client, approver.username, PASSWORD)
+        instance = _submit_simple(client, init_h, template.id)
+        return instance, init_h, approver_h
+
+    def _append(self, client, instance_id: int, headers, **body) -> tuple[dict, str]:
+        """追加一个字段，返回 (响应体, field_key)。"""
+        payload = {"label": "合同编号", "type": "text"} | body
+        resp = client.post(
+            f"{BASE}/instances/{instance_id}/ext-fields", headers=headers, json=payload
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        key = next(f for f in data["ext_fields"] if f["label"] == payload["label"])["field_key"]
+        return data, key
+
+    def test_designer_appends_and_render_merges(self, db, client, designer):
+        instance, designer_h, approver_h = self._prepare(db, client, designer)
+
+        data, key = self._append(client, instance["id"], designer_h, required=True)
+
+        # 返回体就是详情页数据：动态字段已并进 schema，前端不必自己拼
+        keys = [f["key"] for s in data["schema_data"]["sections"] for f in s["fields"]]
+        assert key in keys
+        assert key.startswith("ext_1_")
+        assert data["ext_fields"][0]["label"] == "合同编号"
+
+        # 设计者是发起人、不是处理人 → 看不到（追加点之后才可见）
+        assert data["permissions"][key]["visible"] is False
+
+        # 处理人：看得见、可编辑、必填
+        render = client.get(
+            f"{BASE}/instances/{instance['id']}/render", headers=approver_h
+        ).json()
+        assert render["permissions"][key]["editable"] is True
+        assert render["permissions"][key]["required"] is True
+
+        # 处理人填进去 → 落库
+        todo = client.get(f"{BASE}/tasks/todo", headers=approver_h).json()
+        aid = todo["items"][0]["assignment_id"]
+        act = client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=approver_h,
+            json={"action": "AGREE", "field_patch": {key: "HT-2026-001"}},
+        )
+        assert act.status_code == 200, act.text
+        detail = client.get(
+            f"{BASE}/instances/{instance['id']}/render", headers=approver_h
+        ).json()
+        assert detail["values"][key] == "HT-2026-001"
+
+    def test_normal_user_forbidden(self, db, client):
+        """看得见单据、但不是设计者/管理员 → 不许改结构。"""
+        initiator = _user(db)
+        instance, init_h, _approver_h = self._prepare(db, client, initiator)
+
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/ext-fields", headers=init_h,
+            json={"label": "合同编号", "type": "text"},
+        )
+
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"]["code"] == "DESIGNER_REQUIRED"
+
+    def test_unrelated_designer_cannot_touch_instance(self, db, client, designer):
+        """PRD §2：设计者没有审批数据管理权 —— 不是相关人的实例连看都看不到。"""
+        initiator = _user(db)
+        instance, _init_h, _approver_h = self._prepare(db, client, initiator)
+        designer_h = login_as(client, designer.username, PASSWORD)
+
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/ext-fields", headers=designer_h,
+            json={"label": "合同编号", "type": "text"},
+        )
+
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"]["code"] == "INSTANCE_FORBIDDEN"
+
+    def test_invalid_type_rejected_with_code(self, db, client, designer):
+        instance, designer_h, _approver_h = self._prepare(db, client, designer)
+
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/ext-fields", headers=designer_h,
+            json={"label": "明细", "type": "subtable"},
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["code"] == "EXT_FIELD_INVALID"
+
+    def test_disable_removes_from_render(self, db, client, designer):
+        instance, designer_h, _approver_h = self._prepare(db, client, designer)
+        _data, key = self._append(client, instance["id"], designer_h)
+
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/ext-fields/{key}/disable",
+            headers=designer_h,
+        )
+
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        assert payload["ext_fields"] == []
+        assert key not in payload["permissions"]
+        assert key not in [
+            f["key"] for s in payload["schema_data"]["sections"] for f in s["fields"]
+        ]

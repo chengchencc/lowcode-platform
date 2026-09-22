@@ -19,8 +19,9 @@ from app.core.constants import (
 )
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.core.idgen import create_with_code
-from app.core.policy import is_admin
+from app.core.policy import is_admin, is_designer
 from app.engine.compile import compile_definition
+from app.engine.ext_fields import ExtFieldSpec
 from app.engine.permissions import (
     resolve_field_permissions,
 )
@@ -339,6 +340,44 @@ def terminate(db: Session, instance: FlowInstance, *, actor: User, reason: str, 
     if not is_admin(actor):
         raise ForbiddenError("只有平台管理员可以终止流程", code="ADMIN_REQUIRED")
     return engine_for(db).terminate(instance=instance, actor=actor, reason=reason, request_id=request_id)
+
+
+# --------------------------------------------------------------------------- 机制 C：运行中追加字段
+
+
+def add_ext_field(
+    db: Session,
+    instance: FlowInstance,
+    *,
+    actor: User,
+    spec: ExtFieldSpec,
+    request_id: str | None = None,
+):
+    """给某个实例追加动态字段（PRD F5.1）。
+
+    两道门槛缺一不可：
+    1. **看得见这张单**（PRD §2 —— 设计者无审批数据管理权，不是相关人就看不了）
+    2. **管理员或设计者**（F5.1：这是「改单据结构」的动作，不是业务动作）
+
+    先校验再落库 —— 否则会出现「写成功但响应 403」这种前端没法处理的状态。
+    """
+    assert_can_view(db, instance, actor)
+    if not is_designer(actor):
+        raise ForbiddenError("只有平台管理员或设计者可以追加字段", code="DESIGNER_REQUIRED")
+    return engine_for(db).add_ext_field(
+        instance=instance, actor=actor, spec=spec, request_id=request_id
+    )
+
+
+def disable_ext_field(
+    db: Session, instance: FlowInstance, *, actor: User, field_key: str, request_id: str | None = None
+):
+    assert_can_view(db, instance, actor)
+    if not is_designer(actor):
+        raise ForbiddenError("只有平台管理员或设计者可以停用字段", code="DESIGNER_REQUIRED")
+    return engine_for(db).disable_ext_field(
+        instance=instance, actor=actor, field_key=field_key, request_id=request_id
+    )
 
 
 # --------------------------------------------------------------------------- 可见性

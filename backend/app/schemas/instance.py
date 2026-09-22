@@ -141,6 +141,23 @@ class TodoSummary(BaseModel):
     mine_running: int = 0
 
 
+# --------------------------------------------------------------------------- 机制 C
+
+
+class ExtFieldCreate(BaseModel):
+    """运行中追加一个字段（PRD F5.1 / §3.4 机制 C）。"""
+
+    label: str = Field(min_length=1, max_length=64)
+    type: str
+    required: bool = False
+    #: 可编辑的节点 id；不给则由服务端填「当前待办节点」
+    editable_node_ids: list[str] = Field(default_factory=list)
+    #: 归入哪个分区；不给则落到虚拟分区「扩展字段」
+    section_key: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    placeholder: str | None = Field(default=None, max_length=128)
+
+
 # --------------------------------------------------------------------------- 通知
 
 

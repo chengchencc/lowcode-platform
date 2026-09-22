@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.clock import utcnow
 from app.core.constants import (
+    TERMINAL_STATUSES,
     AggregateMode,
     AssignmentResult,
     AssignmentStatus,
@@ -55,6 +56,12 @@ from app.engine.approvers import (
 )
 from app.engine.compile import compile_definition
 from app.engine.errors import FlowInvalid, IllegalTransition
+from app.engine.ext_fields import (
+    ExtFieldSpec,
+    make_field_key,
+    merge_ext_fields,
+    normalize_spec,
+)
 from app.engine.fields import apply_field_patch
 from app.engine.machine import (
     EVENT_ABANDON,
@@ -66,7 +73,12 @@ from app.engine.machine import (
     EVENT_WITHDRAW,
     assert_transition,
 )
-from app.engine.permissions import FieldPermission, resolve_field_permissions
+from app.engine.permissions import (
+    ExtFieldView,
+    FieldPermission,
+    apply_ext_fields,
+    resolve_field_permissions,
+)
 from app.engine.router import (
     allowed_return_targets,
     cancel_set_for_return,
@@ -89,6 +101,7 @@ from app.models import (
     FlowVersion,
     FormVersion,
     InstanceAction,
+    InstanceExtField,
     Notification,
     Task,
     TaskAssignment,
@@ -215,14 +228,17 @@ class EngineService:
         cursor = Cursor(task.node_key, tuple(task.gates), task.round)
 
         # ---- 字段写入 ----
-        permissions = self._permissions_for(instance, compiled, task.node_key)
+        form_schema = self._schema_for(instance)
+        permissions = self._permissions_for(
+            instance, compiled, task.node_key, gates=task.gates, round_no=task.round
+        )
         values, diffs = apply_field_patch(
             current=instance.current_data or {},
             patch=dict(field_patch or {}),
             permissions=permissions,
-            form_schema=self._form_schema(instance),
+            form_schema=form_schema,
         )
-        self._assert_required(permissions, values, self._form_schema(instance), partial=True)
+        self._assert_required(permissions, values, form_schema, partial=True)
 
         # ---- 意见 / 附件必填（可在节点上配置） ----
         self._assert_opinion_and_attachment(node, action, opinion, attachment_ids)
@@ -429,6 +445,204 @@ class EngineService:
             )
         self.db.commit()
 
+    # ==================================================================== 机制 C：动态追加字段
+
+    def add_ext_field(
+        self,
+        *,
+        instance: FlowInstance,
+        actor: User,
+        spec: ExtFieldSpec,
+        request_id: str | None = None,
+    ) -> EngineResult:
+        """运行中给**该实例**追加一个字段（PRD §3.4 机制 C）。
+
+        只作用于该实例、不入模板；默认只读，仅目标节点可编辑；
+        追加点之前的节点不可见。追加行为本身进审计与快照。
+        """
+        self._lock(instance.id)
+        if instance.status in TERMINAL_STATUSES:
+            raise UnprocessableError(
+                f"实例已是{_status_label(instance.status)}，不能再追加字段",
+                code="EXT_FIELD_NOT_ALLOWED",
+            )
+
+        normalized = normalize_spec(spec)
+
+        # 可编辑节点：没指定就用**当前待办节点**（PRD：「默认当前待办节点」）
+        active_nodes = self._active_node_keys(instance.id)
+        target_nodes = list(normalized.editable_node_ids) or active_nodes
+        if not target_nodes:
+            raise UnprocessableError(
+                "实例当前没有待办节点，无法确定可编辑节点",
+                code="NO_ACTIVE_NODE",
+            )
+
+        # 可见起点：追加点所在节点。它之前的节点看不到这个字段
+        visible_from = active_nodes[0] if active_nodes else target_nodes[0]
+
+        instance.ext_field_seq += 1
+        field_key = make_field_key(instance.ext_field_seq, normalized.label)
+
+        row = InstanceExtField(
+            instance_id=instance.id,
+            field_key=field_key,
+            label=normalized.label,
+            type=normalized.type,
+            section_key=normalized.section_key,
+            config={
+                **(normalized.config or {}),
+                **({"placeholder": normalized.placeholder} if normalized.placeholder else {}),
+            }
+            or None,
+            required=normalized.required,
+            editable_node_ids=target_nodes,
+            visible_from_node_id=visible_from,
+            status="ACTIVE",
+            source_node_key=visible_from,
+            seq=instance.ext_field_seq,
+            created_by=actor.id,
+        )
+        self.db.add(row)
+        self.db.flush()
+
+        # 并入实例 schema：渲染时不必区分模板字段与扩展字段
+        instance.data_schema = self._schema_for(instance).model_dump(mode="json")
+
+        now = self.clock()
+        action_row = self._write_action(
+            instance=instance, task=None, assignment=None, actor=actor,
+            action="ADD_EXT_FIELD",
+            opinion=f"追加字段「{normalized.label}」",
+            attachment_ids=(), changed_fields=[],
+            request_id=request_id, to_status=instance.status,
+        )
+        instance.last_action_at = now
+
+        result = EngineResult(instance_status=instance.status)
+        result.action_id = action_row.id
+        result.events.append(
+            self._event("EXT_FIELD_ADDED", instance, visible_from, {
+                "field_key": field_key,
+                "label": normalized.label,
+                "type": normalized.type,
+                "editable_nodes": target_nodes,
+            })
+        )
+
+        # 通知当前处理人：他要多填一个字段
+        handlers = [
+            a.user_id for t in self._pending_tasks(instance.id) for a in t.assignments
+            if a.status == AssignmentStatus.PENDING
+        ]
+        node_name = None
+        if visible_from and visible_from in self._compiled(instance).nodes:
+            node_name = self._compiled(instance).nodes[visible_from].name
+        result.notifications.extend(
+            notify.ext_field_added(
+                instance_id=instance.id,
+                instance_title=instance.title,
+                field_key=field_key,
+                label=normalized.label,
+                node_name=node_name,
+                recipients=handlers,
+            )
+        )
+
+        snap = self._write_snapshot(
+            instance=instance, kind=SnapshotKind.EXT_FIELD,
+            actor_id=actor.id, action_id=action_row.id,
+        )
+        action_row.snapshot_id = snap.id
+        result.snapshot_id = snap.id
+
+        self._persist_notifications(result.notifications)
+        self.db.commit()
+        self.db.refresh(instance)
+        return result
+
+    def disable_ext_field(
+        self,
+        *,
+        instance: FlowInstance,
+        actor: User,
+        field_key: str,
+        request_id: str | None = None,
+    ) -> EngineResult:
+        """停用动态字段。
+
+        **不可物理删除**（PRD F5.3）—— 历史快照里还有它的值，
+        删掉定义会让那些快照渲染不出来。停用后界面上消失，但数据与定义都留着。
+        """
+        self._lock(instance.id)
+        if instance.status in TERMINAL_STATUSES:
+            raise UnprocessableError(
+                f"实例已是{_status_label(instance.status)}，不能再改动字段",
+                code="EXT_FIELD_NOT_ALLOWED",
+            )
+
+        row = self.db.scalar(
+            select(InstanceExtField).where(
+                InstanceExtField.instance_id == instance.id,
+                InstanceExtField.field_key == field_key,
+            )
+        )
+        if row is None:
+            raise NotFoundError("动态字段不存在", code="EXT_FIELD_NOT_FOUND")
+        if row.status != "ACTIVE":
+            raise ConflictError("该字段已经停用", code="EXT_FIELD_ALREADY_DISABLED")
+
+        row.status = "DISABLED"
+        self.db.flush()
+
+        instance.data_schema = self._schema_for(instance).model_dump(mode="json")
+
+        action_row = self._write_action(
+            instance=instance, task=None, assignment=None, actor=actor,
+            action="DISABLE_EXT_FIELD",
+            opinion=f"停用字段「{row.label}」",
+            attachment_ids=(), changed_fields=[],
+            request_id=request_id, to_status=instance.status,
+        )
+        instance.last_action_at = self.clock()
+
+        result = EngineResult(instance_status=instance.status)
+        result.action_id = action_row.id
+        result.events.append(
+            self._event("EXT_FIELD_DISABLED", instance, row.visible_from_node_id, {
+                "field_key": field_key,
+            })
+        )
+
+        snap = self._write_snapshot(
+            instance=instance, kind=SnapshotKind.EXT_FIELD,
+            actor_id=actor.id, action_id=action_row.id,
+        )
+        action_row.snapshot_id = snap.id
+        result.snapshot_id = snap.id
+
+        self.db.commit()
+        self.db.refresh(instance)
+        return result
+
+    def _active_node_keys(self, instance_id: int) -> list[str]:
+        """当前活跃令牌所在的节点 key（按激活顺序）。"""
+        self.db.flush()
+        rows = self.db.execute(
+            select(Task.node_key)
+            .where(
+                Task.instance_id == instance_id,
+                Task.status == TaskStatus.PENDING,
+                Task.blocks_flow.is_(True),
+            )
+            .order_by(Task.id)
+        ).all()
+        seen: list[str] = []
+        for (key,) in rows:
+            if key not in seen:
+                seen.append(key)
+        return seen
+
     # ==================================================================== 提交链路
 
     def _start_round(
@@ -444,14 +658,13 @@ class EngineService:
         request_id: str | None,
     ) -> EngineResult:
         """提交与重提的公共部分：校验 → 写值 → 派发首节点。"""
-        form_schema = self._form_schema(instance)
+        form_schema = self._schema_for(instance)
         compiled = self._compiled(instance)
 
-        permissions = resolve_field_permissions(
-            form_schema=form_schema,
-            node_type="start",
-            rule=compiled.definition.start.fields_permission,
-            values=values_in,
+        # 走到这里可能是「退回给发起人后重填」—— 那期间追加的动态字段此时可写，
+        # 所以发起节点的权限同样要过一遍 L5
+        permissions = self._permissions_for(
+            instance, compiled, compiled.definition.start.id
         )
         values, diffs = apply_field_patch(
             current=instance.current_data or {},
@@ -1148,8 +1361,19 @@ class EngineService:
         return compile_definition(version.definition)
 
     def _permissions_for(
-        self, instance: FlowInstance, compiled: CompiledFlow, node_key: str
+        self,
+        instance: FlowInstance,
+        compiled: CompiledFlow,
+        node_key: str,
+        *,
+        gates: Sequence[str] = (),
+        round_no: int | None = None,
     ) -> dict[str, FieldPermission]:
+        """某节点上「谁能写谁只读」。
+
+        **写入路径的唯一准入依据** —— 机制 C 的动态字段也必须在这里放行，
+        否则处理人填的值会被 `apply_field_patch` 静默丢弃。
+        """
         node = compiled.nodes.get(node_key)
         rule = None
         node_type = "approval"
@@ -1159,12 +1383,41 @@ class EngineService:
                 rule = compiled.definition.start.fields_permission
             else:
                 rule = getattr(node.raw, "fields_permission", None)
-        return resolve_field_permissions(
-            form_schema=self._form_schema(instance),
+        permissions = resolve_field_permissions(
+            form_schema=self._schema_for(instance),
             node_type=node_type,
             rule=rule,
             values=instance.current_data or {},
         )
+        if node is None:
+            return permissions
+        # L5：动态字段叠加在模板权限之上（最后求值，覆盖 L0–L4）
+        return apply_ext_fields(
+            permissions,
+            self._ext_views(instance),
+            node_id=node_key,
+            node_ancestors=compiled.ancestors(
+                Cursor(node_key, tuple(gates), round_no or instance.round)
+            ),
+        )
+
+    def _ext_views(self, instance: FlowInstance) -> list[ExtFieldView]:
+        return [
+            ExtFieldView(
+                field_key=f.field_key,
+                label=f.label,
+                type=f.type,
+                required=bool(f.required),
+                editable_node_ids=tuple(f.editable_node_ids or ()),
+                visible_from_node_id=f.visible_from_node_id,
+            )
+            for f in instance.ext_fields
+            if f.status == "ACTIVE"
+        ]
+
+    def _schema_for(self, instance: FlowInstance):
+        """模板 schema ⊕ 机制 C 的动态字段（写入与渲染共用同一份视图）。"""
+        return merge_ext_fields(self._form_schema(instance), list(instance.ext_fields))
 
     def _approver_context(self, instance: FlowInstance, compiled: CompiledFlow) -> ApproverContext:
         completed = list(
@@ -1496,3 +1749,15 @@ class EngineService:
             payload={"instance_id": instance.id, "node_key": node_key, **payload},
             at=utcnow(),
         )
+
+
+def _status_label(status: str) -> str:
+    """实例状态的中文名，用于给用户看的错误信息。"""
+    return {
+        InstanceStatus.DRAFT: "草稿",
+        InstanceStatus.RUNNING: "审批中",
+        InstanceStatus.REJECTED: "已驳回",
+        InstanceStatus.APPROVED: "已通过（归档）",
+        InstanceStatus.WITHDRAWN: "已撤回",
+        InstanceStatus.TERMINATED: "已终止",
+    }.get(status, status)

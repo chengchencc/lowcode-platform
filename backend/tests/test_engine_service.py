@@ -10,7 +10,7 @@ from __future__ import annotations
 import itertools
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.constants import (
     AssignmentStatus,
@@ -21,6 +21,7 @@ from app.core.constants import (
 from app.core.errors import AppError
 from app.core.security import hash_password
 from app.engine.errors import IllegalTransition
+from app.engine.ext_fields import ExtFieldError, ExtFieldSpec
 from app.engine.service import EngineService
 from app.models import (
     DataSnapshot,
@@ -30,6 +31,7 @@ from app.models import (
     FlowVersion,
     FormTemplate,
     FormVersion,
+    InstanceAction,
     Notification,
     Task,
     TaskAssignment,
@@ -1219,3 +1221,280 @@ class TestCc:
             )
         )
         assert cc is not None
+
+
+# --------------------------------------------------------------------------- 机制 C：运行中追加字段
+
+
+def _render_perms(db, instance, viewer: User) -> tuple[dict, dict]:
+    """详情页的字段权限表 + 完整渲染数据（与前端拿到的是同一份）。"""
+    from app.services.render_service import render_instance
+
+    data = render_instance(db, instance, viewer=viewer)
+    return data["permissions"], data
+
+
+class TestExtFields:
+    """PRD §3.4 机制 C / F5.1：报销跑到一半追加「合同编号」。
+
+    约束（PRD 明列）：只作用于该实例、追加后不可物理删除、归档后不可追加、
+    仅基础控件、默认只读仅目标节点可编辑、追加点之前不可见。
+    """
+
+    def _build(self, db):
+        initiator = _user(db)
+        manager = _user(db)
+        finance = _user(db)
+        form = _published_form(db, initiator)
+        flow = _published_flow(db, initiator, form, {
+            "steps": [
+                {"id": "s1", "type": "approval", "name": "经理审批",
+                 "assignee": {"sources": [{"type": "user", "user_ids": [manager.id]}]}},
+                {"id": "s2", "type": "fill", "name": "财务补充",
+                 "assignee": {"sources": [{"type": "user", "user_ids": [finance.id]}]}},
+            ],
+        })
+        instance = _draft_instance(db, flow, form, initiator)
+        db.commit()
+
+        engine = _engine(db)
+        engine.submit(instance=instance, actor=initiator, data={"reason": "出差"})
+        return initiator, manager, finance, instance, engine
+
+    def _append(self, engine, instance, actor, **kw):
+        """追加一个字段并返回它的 ORM 行。"""
+        spec = ExtFieldSpec(label=kw.pop("label", "合同编号"), type=kw.pop("type", "text"), **kw)
+        engine.add_ext_field(instance=instance, actor=actor, spec=spec)
+        return max(instance.ext_fields, key=lambda f: f.seq)
+
+    # ---- 追加本身 ----
+
+    def test_append_defaults_to_current_node(self, db):
+        _, manager, _, instance, engine = self._build(db)
+
+        row = self._append(engine, instance, manager)
+
+        # key 带 ext_ 前缀与序号，不与模板字段冲突（PRD §3.4）
+        assert row.field_key.startswith("ext_1_")
+        assert instance.ext_field_seq == 1
+        # 没指定目标节点 → 默认当前待办节点，且从这里开始可见
+        assert row.editable_node_ids == ["s1"]
+        assert row.visible_from_node_id == "s1"
+        assert row.status == "ACTIVE"
+
+    def test_append_writes_action_and_snapshot(self, db):
+        _, manager, _, instance, engine = self._build(db)
+
+        row = self._append(engine, instance, manager)
+
+        action = db.scalar(
+            select(InstanceAction).where(
+                InstanceAction.instance_id == instance.id,
+                InstanceAction.action == "ADD_EXT_FIELD",
+            )
+        )
+        assert action is not None
+        snap = db.get(DataSnapshot, action.snapshot_id)
+        assert snap is not None and snap.kind == "EXT_FIELD"
+        # 快照存了字段**定义** —— 停用后仍能还原当时的表单
+        assert snap.data["ext_fields"][0]["field_key"] == row.field_key
+
+    def test_ext_field_goes_to_instance_schema_only(self, db):
+        """动态字段进实例的 data_schema，模板版本本身不动（只作用于该实例）。"""
+        _, manager, _, instance, engine = self._build(db)
+        template_schema = db.get(FormVersion, instance.form_version_id).schema
+
+        row = self._append(engine, instance, manager)
+
+        merged_keys = [
+            f["key"] for s in instance.data_schema["sections"] for f in s["fields"]
+        ]
+        assert row.field_key in merged_keys
+        assert db.get(FormVersion, instance.form_version_id).schema == template_schema
+
+    # ---- 权限：谁看得见、谁能写 ----
+
+    def test_editable_at_append_node_readonly_after(self, db):
+        _, manager, finance, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+
+        perms, data = _render_perms(db, instance, manager)
+        assert perms[row.field_key]["visible"] and perms[row.field_key]["editable"]
+        # 前端拿到的是合并后的 schema，不必自己区分模板字段与动态字段
+        assert any(
+            f["key"] == row.field_key and f["label"] == "合同编号"
+            for s in data["schema_data"]["sections"] for f in s["fields"]
+        )
+
+        # 处理人写入 → 落库
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, manager).id,
+            actor=manager, action="AGREE", field_patch={row.field_key: "HT-2026-001"},
+        )
+        assert instance.current_data[row.field_key] == "HT-2026-001"
+
+        # 后续节点（财务）看得见、但只读 —— 默认只读，仅目标节点可编辑
+        perms, _ = _render_perms(db, instance, finance)
+        assert perms[row.field_key]["visible"] and not perms[row.field_key]["editable"]
+
+        # 财务往 patch 里塞也改不动
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, finance).id,
+            actor=finance, action="SUBMIT", field_patch={row.field_key: "改一下"},
+        )
+        assert instance.current_data[row.field_key] == "HT-2026-001"
+
+    def test_invisible_to_earlier_viewers(self, db):
+        """追加点之前的节点不可见 —— 发起人此刻看不到。"""
+        initiator, manager, _, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+
+        perms, data = _render_perms(db, instance, initiator)
+        assert perms[row.field_key]["visible"] is False
+        # 结构里仍带着定义，管理员才能管理它
+        assert data["ext_fields"][0]["field_key"] == row.field_key
+
+    def test_visible_to_initiator_after_archive(self, db):
+        initiator, manager, finance, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, manager).id,
+            actor=manager, action="AGREE", field_patch={row.field_key: "HT-2026-001"},
+        )
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, finance).id, actor=finance, action="SUBMIT"
+        )
+        assert instance.status == InstanceStatus.APPROVED
+
+        # 终态 → 归档视角：全可见、全只读（与补充字段同一条 PRD 验收点）
+        perms, _ = _render_perms(db, instance, initiator)
+        assert perms[row.field_key]["visible"] and not perms[row.field_key]["editable"]
+
+    def test_required_enforced_only_where_editable(self, db):
+        _, manager, finance, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager, required=True)
+
+        # 可编辑节点上必填：不填过不去
+        with pytest.raises(AppError, match="必填"):
+            engine.act(
+                assignment_id=_assignment_of(db, instance.id, manager).id,
+                actor=manager, action="AGREE",
+            )
+
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, manager).id,
+            actor=manager, action="AGREE", field_patch={row.field_key: "HT-1"},
+        )
+        # 只读节点上不再是必填 —— 财务不填也能过
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, finance).id, actor=finance, action="SUBMIT"
+        )
+        assert instance.status == InstanceStatus.APPROVED
+
+    def test_explicit_target_node(self, db):
+        """指定「仅财务节点可编辑」—— 经理那边只读。"""
+        _, manager, finance, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager, editable_node_ids=("s2",))
+
+        perms, _ = _render_perms(db, instance, manager)
+        assert perms[row.field_key]["visible"] and not perms[row.field_key]["editable"]
+
+        engine.act(assignment_id=_assignment_of(db, instance.id, manager).id, actor=manager, action="AGREE")
+        perms, _ = _render_perms(db, instance, finance)
+        assert perms[row.field_key]["editable"]
+
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, finance).id,
+            actor=finance, action="SUBMIT", field_patch={row.field_key: "HT-9"},
+        )
+        assert instance.current_data[row.field_key] == "HT-9"
+
+    # ---- 停用 / 归档守卫 ----
+
+    def test_disable_hides_field_but_keeps_data(self, db):
+        _, manager, finance, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, manager).id,
+            actor=manager, action="AGREE", field_patch={row.field_key: "HT-2026-001"},
+        )
+
+        engine.disable_ext_field(instance=instance, actor=manager, field_key=row.field_key)
+
+        assert instance.ext_fields[0].status == "DISABLED"
+        # 界面上消失：schema 与权限表里都没有它
+        perms, data = _render_perms(db, instance, finance)
+        assert row.field_key not in perms
+        assert not any(
+            f["key"] == row.field_key for s in data["schema_data"]["sections"] for f in s["fields"]
+        )
+        # 但**数据留着** —— 不可物理删除（PRD F5.3）
+        assert instance.current_data[row.field_key] == "HT-2026-001"
+        assert data["ext_fields"] == []   # 管理入口的列表里也不再出现
+
+    def test_disable_twice_rejected(self, db):
+        _, manager, _, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+
+        engine.disable_ext_field(instance=instance, actor=manager, field_key=row.field_key)
+        with pytest.raises(AppError, match="停用"):
+            engine.disable_ext_field(instance=instance, actor=manager, field_key=row.field_key)
+        with pytest.raises(AppError, match="不存在"):
+            engine.disable_ext_field(instance=instance, actor=manager, field_key="ext_999_x")
+
+    def test_archive_blocks_further_changes(self, db):
+        _, manager, finance, instance, engine = self._build(db)
+        engine.act(assignment_id=_assignment_of(db, instance.id, manager).id, actor=manager, action="AGREE")
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, finance).id, actor=finance, action="SUBMIT"
+        )
+        assert instance.status == InstanceStatus.APPROVED
+
+        with pytest.raises(AppError, match="归档"):
+            self._append(engine, instance, manager)
+
+    # ---- 控件白名单 ----
+
+    def test_only_basic_field_types(self, db):
+        """不支持子表与公式（PRD §3.4）。"""
+        _, manager, _, instance, engine = self._build(db)
+        for bad in ("subtable", "formula"):
+            with pytest.raises(ExtFieldError, match="基础控件"):
+                engine.add_ext_field(
+                    instance=instance, actor=manager,
+                    spec=ExtFieldSpec(label="X", type=bad),
+                )
+
+    def test_label_and_options_validated(self, db):
+        _, manager, _, instance, engine = self._build(db)
+        with pytest.raises(ExtFieldError, match="不能为空"):
+            engine.add_ext_field(
+                instance=instance, actor=manager, spec=ExtFieldSpec(label="  ", type="text")
+            )
+        with pytest.raises(ExtFieldError, match="选项"):
+            engine.add_ext_field(
+                instance=instance, actor=manager, spec=ExtFieldSpec(label="X", type="select")
+            )
+
+    # ---- 通知 ----
+
+    def test_notifies_current_handlers(self, db):
+        _, manager, _, instance, engine = self._build(db)
+        row = self._append(engine, instance, manager)
+
+        notif = db.scalar(
+            select(Notification).where(
+                Notification.user_id == manager.id, Notification.type == "EXT_FIELD_ADDED"
+            )
+        )
+        assert notif is not None
+        assert "合同编号" in notif.content
+        # 同名字段追加两次 → 两条通知（dedup 里用的是 field_key 而不是 label）
+        row2 = self._append(engine, instance, manager)
+        assert row2.field_key != row.field_key
+        count = db.scalar(
+            select(func.count())
+            .select_from(Notification)
+            .where(Notification.user_id == manager.id, Notification.type == "EXT_FIELD_ADDED")
+        )
+        assert count == 2

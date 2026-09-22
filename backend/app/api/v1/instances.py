@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.deps import ClientIp, CurrentUser, DbSession
 from app.core.pagination import Page, PageParams, build_page, paginate
+from app.engine.ext_fields import ExtFieldSpec
 from app.schemas.common import OkResp
 from app.schemas.instance import (
     DraftCreate,
     DraftUpdate,
+    ExtFieldCreate,
     InstanceOut,
     StartOptionsOut,
     SubmitRequest,
@@ -254,3 +256,40 @@ def terminate(
     instance_service.terminate(db, instance, actor=user, reason=payload.reason)
     db.refresh(instance)
     return instance_service.to_out(db, instance, viewer=user)
+
+
+# --------------------------------------------------------------------------- 机制 C：运行中追加字段
+
+
+@router.post("/{instance_id}/ext-fields", summary="运行中追加字段（F5.1，管理员/设计者）")
+def add_ext_field(
+    instance_id: int, payload: ExtFieldCreate, db: DbSession, user: CurrentUser
+) -> dict:
+    """追加成功后**直接返回详情页数据** —— 前端一次请求就能刷新表单与权限。"""
+    instance = instance_service.get_or_404(db, instance_id)
+    instance_service.add_ext_field(
+        db,
+        instance,
+        actor=user,
+        spec=ExtFieldSpec(
+            label=payload.label,
+            type=payload.type,
+            editable_node_ids=tuple(payload.editable_node_ids),
+            required=payload.required,
+            section_key=payload.section_key,
+            config=payload.config,
+            placeholder=payload.placeholder,
+        ),
+    )
+    return render_service.render_instance(db, instance, viewer=user)
+
+
+@router.post(
+    "/{instance_id}/ext-fields/{field_key}/disable", summary="停用动态字段（不可物理删除）"
+)
+def disable_ext_field(
+    instance_id: int, field_key: str, db: DbSession, user: CurrentUser
+) -> dict:
+    instance = instance_service.get_or_404(db, instance_id)
+    instance_service.disable_ext_field(db, instance, actor=user, field_key=field_key)
+    return render_service.render_instance(db, instance, viewer=user)

@@ -96,7 +96,8 @@ def _register_engine_handlers(app: FastAPI) -> None:
             status_code=422,
             content={
                 "detail": {
-                    "code": type(exc).__name__.upper(),
+                    # 异常类可以自带 code（如 ExtFieldError）；否则退化成类名
+                "code": getattr(exc, "code", None) or type(exc).__name__.upper(),
                     "message": str(exc),
                     "extra": {"node_id": node_id} if node_id else {},
                 }
