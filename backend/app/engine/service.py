@@ -77,6 +77,7 @@ from app.engine.permissions import (
     ExtFieldView,
     FieldPermission,
     apply_ext_fields,
+    editable_keys,
     resolve_field_permissions,
 )
 from app.engine.router import (
@@ -95,6 +96,7 @@ from app.engine.types import (
     TaskView,
     TokenOp,
 )
+from app.engine.value_rules import validate_values
 from app.models import (
     DataSnapshot,
     FlowInstance,
@@ -239,6 +241,7 @@ class EngineService:
             form_schema=form_schema,
         )
         self._assert_required(permissions, values, form_schema, partial=True)
+        self._assert_values_valid(form_schema, values, permissions, editable_only=True)
 
         # ---- 意见 / 附件必填（可在节点上配置） ----
         self._assert_opinion_and_attachment(node, action, opinion, attachment_ids)
@@ -674,6 +677,8 @@ class EngineService:
         )
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
+        # 谁填的值谁负责：只校验发起阶段可编辑的那些字段
+        self._assert_values_valid(form_schema, values, permissions, editable_only=True)
 
         now = self.clock()
         from_status = instance.status
@@ -1680,6 +1685,30 @@ class EngineService:
                 code="REQUIRED_FIELDS_MISSING",
                 extra={"fields": missing},
             )
+
+    def _assert_values_valid(
+        self,
+        form_schema: Any,
+        values: Mapping[str, Any],
+        permissions: Mapping[str, FieldPermission],
+        *,
+        editable_only: bool = False,
+    ) -> None:
+        """字段级规则校验（长度/范围/正则/选项/级联/子表行数）。
+
+        `editable_only=True` 时只查本节点可编辑的字段 —— 别人填过的旧值
+        不归这次操作负责（与 `_assert_required(partial=...)` 同一套道理）。
+        """
+        only_keys = editable_keys(permissions) if editable_only else None
+        issues = validate_values(form_schema, values, only_keys=only_keys)
+        if not issues:
+            return
+        raise UnprocessableError(
+            "、".join(issue.message for issue in issues[:5])
+            + ("…" if len(issues) > 5 else ""),
+            code="FIELD_VALIDATION_FAILED",
+            extra={"issues": [i.to_dict() for i in issues]},
+        )
 
     # ==================================================================== 杂项
 

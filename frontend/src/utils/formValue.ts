@@ -208,6 +208,9 @@ export function validateValues(
         })
       }
     }
+
+    checkOptionMembership(field, value, statePath, issues)
+    checkCascader(field, value, values, statePath, issues, field.label)
   }
 
   for (const section of schema.sections) {
@@ -225,6 +228,116 @@ export function cascaderOptions(field: FieldDef, values: Record<string, unknown>
   if (!parent) return []
   const key = String(values[parent] ?? '')
   return field.cascader?.options_by_parent?.[key] ?? []
+}
+
+/**
+ * 取值必须在已配选项里（单选取单值，复选取全部）。
+ *
+ * 没配选项的控件不做限制 —— 设计器允许先建字段后补选项。
+ */
+function checkOptionMembership(
+  field: FieldDef,
+  value: unknown,
+  statePath: string,
+  issues: ValueIssue[],
+): void {
+  const options = field.options ?? []
+  if (!options.length) return
+  if (field.type !== 'select' && field.type !== 'radio' && field.type !== 'checkbox') return
+
+  const picked = Array.isArray(value) ? value : [value]
+  const allowed = new Set(options.map((o) => String(o.value)))
+  if (picked.every((item) => allowed.has(String(item)))) return
+
+  issues.push({
+    key: statePath,
+    label: field.label,
+    message: field.label + '的取值不在选项里',
+  })
+}
+
+/**
+ * 级联下拉的值要跟父字段的当前值对得上（PRD §3.2.2）。
+ *
+ * 与服务端 `app/engine/value_rules.py` 的 `_check_cascader` 同一套判定 ——
+ * 前端先提示，服务端才是边界。
+ */
+function checkCascader(
+  field: FieldDef,
+  value: unknown,
+  values: Record<string, unknown>,
+  statePath: string,
+  issues: ValueIssue[],
+  label: string,
+): void {
+  if (field.type !== 'cascader' || !field.cascader) return
+  const parent = field.cascader.parent_field
+  const parentValue = values[parent]
+  if (parentValue === null || parentValue === undefined || parentValue === '') {
+    issues.push({ key: statePath, label, message: `请先选择${label}的上级选项` })
+    return
+  }
+  const options = cascaderOptions(field, values)
+  if (!options.length) {
+    issues.push({ key: statePath, label, message: `${label}在上级选项下没有可选值` })
+    return
+  }
+  if (!options.some((o) => String(o.value) === String(value))) {
+    issues.push({ key: statePath, label, message: `${label}与上级选项不匹配` })
+  }
+}
+
+/**
+ * 父字段改了 → 子级联字段里对不上的旧值清掉。
+ *
+ * 不清的后果是脏数据：「费用类别」从差旅改成办公，「费用明细」还停在「机票」，
+ * 提交时被服务端拦下，用户还得自己想起去改那一个下拉。
+ * 返回**新对象**（没变化时返回原对象，避免无谓的重渲染）。
+ */
+export function clearStaleCascades(
+  schema: FormSchema,
+  values: Record<string, unknown>,
+  changedKey: string,
+): Record<string, unknown> {
+  /** `owner` 是取值的作用域：顶层字段是表单值，子表列是**同一行**。 */
+  const isStale = (field: FieldDef, owner: Record<string, unknown>): boolean => {
+    const config = field.cascader
+    if (field.type !== 'cascader' || config?.parent_field !== changedKey) return false
+    const current = owner[field.key]
+    if (current === null || current === undefined || current === '') return false
+
+    const parentValue = owner[config.parent_field]
+    const options =
+      parentValue === null || parentValue === undefined || parentValue === ''
+        ? []
+        : config.options_by_parent?.[String(parentValue)] ?? []
+    return !options.some((o) => String(o.value) === String(current))
+  }
+
+  let next = values
+  for (const section of schema.sections) {
+    for (const field of section.fields) {
+      if (field.type === 'subtable') {
+        const rows = Array.isArray(values[field.key]) ? (values[field.key] as unknown[]) : []
+        let touched = false
+        const newRows = rows.map((row) => {
+          let newRow = row as Record<string, unknown>
+          for (const column of field.columns ?? []) {
+            if (isStale(column, newRow)) {
+              newRow = { ...newRow, [column.key]: null }
+              touched = true
+            }
+          }
+          return newRow
+        })
+        if (touched) next = { ...next, [field.key]: newRows }
+        continue
+      }
+      if (isStale(field, next)) next = { ...next, [field.key]: null }
+    }
+  }
+
+  return next
 }
 
 export { OPTION_FIELD_TYPES }

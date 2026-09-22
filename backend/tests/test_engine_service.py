@@ -1498,3 +1498,97 @@ class TestExtFields:
             .where(Notification.user_id == manager.id, Notification.type == "EXT_FIELD_ADDED")
         )
         assert count == 2
+
+
+# --------------------------------------------------------------------------- 字段值规则（服务端强制）
+
+
+class TestValueRules:
+    """前端 `validateValues` 只是即时提示 —— 接口能被直接调用，规则必须落在服务端。
+
+    纯规则语义见 `test_value_rules.py`，这里验证「提交/处理时真的会拦」。
+    """
+
+    RISKY_SCHEMA = {
+        "sections": [{
+            "key": "sec_apply", "title": "申请信息", "stage": "apply", "fields": [
+                {"key": "reason", "label": "事由", "type": "text", "required": True,
+                 "validators": {"min_length": 2, "max_length": 10}},
+                {"key": "level", "label": "级别", "type": "select",
+                 "options": [{"label": "A", "value": "a"}, {"label": "B", "value": "b"}]},
+                {"key": "amount", "label": "金额", "type": "number",
+                 "validators": {"min": 1, "max": 1000}},
+            ],
+        }],
+    }
+
+    def _build(self, db):
+        admin = _user(db)
+        approver = _user(db)
+        form = _published_form(db, admin)
+        form.schema = self.RISKY_SCHEMA
+        db.flush()
+        flow = _published_flow(db, admin, form, {
+            "steps": [{
+                "id": "s1", "type": "approval", "name": "经理审批",
+                "assignee": {"sources": [{"type": "user", "user_ids": [approver.id]}]},
+            }],
+        })
+        instance = _draft_instance(db, flow, form, admin)
+        db.commit()
+        return admin, approver, instance
+
+    def test_submit_rejects_out_of_range_number(self, db):
+        admin, _approver, instance = self._build(db)
+
+        with pytest.raises(AppError, match="不能大于 1000"):
+            _engine(db).submit(
+                instance=instance, actor=admin, data={"reason": "出差", "amount": 99999}
+            )
+
+    def test_submit_rejects_value_outside_options(self, db):
+        admin, _approver, instance = self._build(db)
+
+        with pytest.raises(AppError, match="选项"):
+            _engine(db).submit(
+                instance=instance, actor=admin, data={"reason": "出差", "level": "z"}
+            )
+
+    def test_submit_rejects_short_text(self, db):
+        admin, _approver, instance = self._build(db)
+
+        with pytest.raises(AppError, match="至少 2 个字符"):
+            _engine(db).submit(instance=instance, actor=admin, data={"reason": "x"})
+
+    def test_error_carries_per_field_issues(self, db):
+        """错误体里带上每个字段的引用，前端才能高亮到具体控件。"""
+        admin, _approver, instance = self._build(db)
+
+        with pytest.raises(AppError) as excinfo:
+            _engine(db).submit(instance=instance, actor=admin, data={"reason": "x", "amount": 0})
+
+        extra = getattr(excinfo.value, "extra", {}) or {}
+        keys = {issue["key"] for issue in extra.get("issues", [])}
+        assert keys == {"reason", "amount"}
+
+    def test_act_validates_the_patched_field(self, db):
+        """处理人在节点上改字段时同样要过规则 —— 前端绕过去也拦得住。"""
+        admin, approver, instance = self._build(db)
+        engine = _engine(db)
+        engine.submit(instance=instance, actor=admin, data={"reason": "出差"})
+
+        # 申请区在审批节点默认只读，先给经理开「金额可编辑」——
+        # 引擎每次调用都重新编译定义，改完重新赋值即可生效
+        from app.models import FlowVersion
+
+        version = db.get(FlowVersion, instance.flow_version_id)
+        steps = [dict(step) for step in version.definition["steps"]]
+        steps[0]["fields_permission"] = {"base": "hidden", "overrides": {"amount": "editable"}}
+        version.definition = {**version.definition, "steps": steps}
+        db.flush()
+
+        with pytest.raises(AppError, match="不能小于 1"):
+            engine.act(
+                assignment_id=_assignment_of(db, instance.id, approver).id,
+                actor=approver, action="AGREE", field_patch={"amount": 0},
+            )

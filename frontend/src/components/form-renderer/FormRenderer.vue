@@ -17,6 +17,7 @@ import SectionBlock from '@/components/form-renderer/SectionBlock.vue'
 import { resolveFieldStates } from '@/components/form-renderer/useFieldState'
 import type { FieldState, FormSchema } from '@/types/form'
 import { evaluateSchemaFormulas } from '@/utils/formula'
+import { clearStaleCascades } from '@/utils/formValue'
 
 const props = withDefaults(
   defineProps<{
@@ -67,7 +68,10 @@ const hasVisibleField = computed(() =>
 )
 
 function onValueChange(key: string, value: unknown): void {
-  emit('update:modelValue', { ...props.modelValue, [key]: value })
+  // 父字段变了，子级联字段里对不上的旧值一并清掉（PRD §3.2.2）——
+  // 否则用户会提交出一个「类别=办公、明细=机票」的组合，被服务端打回来
+  const next = { ...props.modelValue, [key]: value }
+  emit('update:modelValue', clearStaleCascades(props.schema, next, key))
 }
 </script>
 
