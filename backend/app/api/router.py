@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import audit, auth, departments, health, roles, users
+from app.api.v1 import (
+    audit,
+    auth,
+    departments,
+    files,
+    form_templates,
+    form_versions,
+    health,
+    roles,
+    users,
+)
 
 api_router = APIRouter()
 
@@ -15,5 +25,9 @@ api_router.include_router(departments.router)
 api_router.include_router(roles.router)
 api_router.include_router(audit.router)
 
-# M2: form_templates / form_versions
-# M3: flow_templates / flow_versions / instances / tasks / notifications / files
+# M2 表单
+api_router.include_router(form_templates.router)
+api_router.include_router(form_versions.router)
+api_router.include_router(files.router)
+
+# M3: flow_templates / flow_versions / instances / tasks / notifications

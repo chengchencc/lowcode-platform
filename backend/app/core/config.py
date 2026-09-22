@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 480
     refresh_token_expire_minutes: int = 10080
 
+    # ---- 附件存储（PRD §10 #4：V1 落本地磁盘 + DB 记元数据）----
+    #: 相对路径会锚定到 backend/，和 SQLite 文件同样的处理
+    storage_root: str = "storage"
+    max_upload_mb: int = 20
+    #: 扩展名白名单，逗号分隔
+    allowed_extensions: str = (
+        "jpg,jpeg,png,gif,bmp,webp,svg,"
+        "pdf,doc,docx,xls,xlsx,ppt,pptx,"
+        "txt,csv,md,json,xml,zip,rar,7z"
+    )
+
     # ---- 初始化种子（F6.5）----
     admin_username: str = "admin"
     admin_password: str = "admin123456"
@@ -49,6 +60,16 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def storage_path(self) -> Path:
+        """附件存储根目录（绝对路径）。"""
+        root = Path(self.storage_root)
+        return root if root.is_absolute() else (BACKEND_DIR / root)
+
+    @property
+    def allowed_extension_set(self) -> set[str]:
+        return {e.strip().lower().lstrip(".") for e in self.allowed_extensions.split(",") if e.strip()}
 
     def resolve_database_url(self) -> str:
         """把 SQLite 的相对路径锚定到 backend/，让启动目录不再影响结果。"""

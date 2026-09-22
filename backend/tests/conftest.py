@@ -24,6 +24,7 @@ from app.seeds.init_admin import run_seed
 
 ADMIN_PASSWORD = "admin123456"
 USER_PASSWORD = "user123456"
+DESIGNER_PASSWORD = "designer123456"
 
 
 @pytest.fixture(scope="session")
@@ -38,6 +39,20 @@ def test_settings(tmp_path_factory: pytest.TempPathFactory) -> Settings:
         admin_email="admin@example.com",
         seed_demo_org=True,
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_storage(tmp_path_factory: pytest.TempPathFactory):
+    """把附件存储重定向到临时目录，别往仓库的 backend/storage/ 里写测试文件。"""
+    from app.core.config import settings
+    from app.storage import local as local_storage
+
+    original = settings.storage_root
+    settings.storage_root = str(tmp_path_factory.mktemp("flowform-storage"))
+    local_storage.get_storage.cache_clear()
+    yield
+    settings.storage_root = original
+    local_storage.get_storage.cache_clear()
 
 
 @pytest.fixture(scope="session")
@@ -135,6 +150,13 @@ def normal_headers(client: TestClient, normal_user: User) -> dict[str, str]:
 @pytest.fixture
 def designer_role(db: Session) -> Role:
     return db.scalar(select(Role).where(Role.code == RoleCode.DESIGNER))
+
+
+@pytest.fixture
+def designer_headers(client: TestClient, db: Session, designer_role: Role) -> dict[str, str]:
+    """设计者视角：能进「审批管理」，但不是管理员。"""
+    make_user(db, username="designer", password=DESIGNER_PASSWORD, role=designer_role)
+    return login_as(client, "designer", DESIGNER_PASSWORD)
 
 
 @pytest.fixture

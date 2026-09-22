@@ -5,13 +5,18 @@
 """
 
 from app.db.base import Base
+from app.models.attachment import Attachment
 from app.models.audit import AuditLog
+from app.models.form import FormTemplate, FormVersion
 from app.models.org import Department, Role, User, UserRole
 
 __all__ = [
+    "Attachment",
     "AuditLog",
     "Base",
     "Department",
+    "FormTemplate",
+    "FormVersion",
     "Role",
     "User",
     "UserRole",

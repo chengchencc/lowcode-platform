@@ -1,0 +1,265 @@
+{
+  "note": "公式求值的共享测试向量（决策 D4）。后端 app/engine/expressions.py 是权威实现，前端 src/utils/formula.ts 只做即时显示；两边都必须通过同一份向量，防止语义漂移。新增用例时先改这里，再让两侧都跑通。",
+  "version": 1,
+  "vectors": [
+    {
+      "name": "四则 - 乘法",
+      "formula": { "type": "arithmetic", "expression": "qty * price" },
+      "values": { "qty": 3, "price": 12.5 },
+      "expected": 37.5
+    },
+    {
+      "name": "四则 - 加减（整数结果应为 int 而非 float）",
+      "formula": { "type": "arithmetic", "expression": "a + b" },
+      "values": { "a": 1, "b": 2 },
+      "expected": 3
+    },
+    {
+      "name": "四则 - 运算优先级：乘除先于加减",
+      "formula": { "type": "arithmetic", "expression": "a + b * c" },
+      "values": { "a": 1, "b": 2, "c": 3 },
+      "expected": 7
+    },
+    {
+      "name": "四则 - 括号改变优先级",
+      "formula": { "type": "arithmetic", "expression": "(a + b) * c" },
+      "values": { "a": 1, "b": 2, "c": 3 },
+      "expected": 9
+    },
+    {
+      "name": "四则 - 一元负号",
+      "formula": { "type": "arithmetic", "expression": "-a + b" },
+      "values": { "a": 5, "b": 8 },
+      "expected": 3
+    },
+    {
+      "name": "四则 - 减法得到负数",
+      "formula": { "type": "arithmetic", "expression": "a - b" },
+      "values": { "a": 3, "b": 10 },
+      "expected": -7
+    },
+    {
+      "name": "四则 - 整除得到整数",
+      "formula": { "type": "arithmetic", "expression": "a / b" },
+      "values": { "a": 10, "b": 4 },
+      "expected": 2.5
+    },
+    {
+      "name": "四则 - 除零返回 null（不能让整张表单报错）",
+      "formula": { "type": "arithmetic", "expression": "a / b" },
+      "values": { "a": 10, "b": 0 },
+      "expected": null
+    },
+    {
+      "name": "四则 - 字段缺失按 0 处理",
+      "formula": { "type": "arithmetic", "expression": "a + b" },
+      "values": { "a": 5 },
+      "expected": 5
+    },
+    {
+      "name": "四则 - 字段值为空串按 0 处理",
+      "formula": { "type": "arithmetic", "expression": "a * b" },
+      "values": { "a": "", "b": 7 },
+      "expected": 0
+    },
+    {
+      "name": "四则 - 字符串数字可参与运算",
+      "formula": { "type": "arithmetic", "expression": "a * 2" },
+      "values": { "a": "3.5" },
+      "expected": 7
+    },
+    {
+      "name": "四则 - 小数精度不被浮点噪声污染",
+      "formula": { "type": "arithmetic", "expression": "a + b" },
+      "values": { "a": 0.1, "b": 0.2 },
+      "expected": 0.3
+    },
+    {
+      "name": "函数 - ROUND 四舍五入（不是银行家舍入，2.5 应进为 3）",
+      "formula": { "type": "arithmetic", "expression": "ROUND(a, 0)" },
+      "values": { "a": 2.5 },
+      "expected": 3
+    },
+    {
+      "name": "函数 - ROUND 保留两位",
+      "formula": { "type": "arithmetic", "expression": "ROUND(a, 2)" },
+      "values": { "a": 10.5678 },
+      "expected": 10.57
+    },
+    {
+      "name": "函数 - ROUND 套在表达式外层（金额典型用法）",
+      "formula": { "type": "arithmetic", "expression": "ROUND(qty * price, 2)" },
+      "values": { "qty": 3, "price": 3.333 },
+      "expected": 10
+    },
+    {
+      "name": "函数 - ABS",
+      "formula": { "type": "arithmetic", "expression": "ABS(a - b)" },
+      "values": { "a": 3, "b": 10 },
+      "expected": 7
+    },
+    {
+      "name": "函数 - MIN / MAX",
+      "formula": { "type": "arithmetic", "expression": "MIN(a, b, c)" },
+      "values": { "a": 5, "b": 2, "c": 9 },
+      "expected": 2
+    },
+    {
+      "name": "函数 - MAX",
+      "formula": { "type": "arithmetic", "expression": "MAX(a, b, c)" },
+      "values": { "a": 5, "b": 2, "c": 9 },
+      "expected": 9
+    },
+    {
+      "name": "函数 - 嵌套调用",
+      "formula": { "type": "arithmetic", "expression": "MAX(ROUND(a, 0), b)" },
+      "values": { "a": 2.4, "b": 3 },
+      "expected": 3
+    },
+    {
+      "name": "拼接 - 文本相加",
+      "formula": { "type": "concat", "expression": "a + \"-\" + b" },
+      "values": { "a": "研发", "b": "001" },
+      "expected": "研发-001"
+    },
+    {
+      "name": "拼接 - 数字与文本混合拼接",
+      "formula": { "type": "concat", "expression": "name + code" },
+      "values": { "name": "编号", "code": 42 },
+      "expected": "编号42"
+    },
+    {
+      "name": "拼接 - 缺失字段视作空串",
+      "formula": { "type": "concat", "expression": "a + b" },
+      "values": { "a": "仅此" },
+      "expected": "仅此"
+    },
+    {
+      "name": "子表合计 - 汇总某一列",
+      "formula": {
+        "type": "subtable_sum",
+        "subtable_key": "items",
+        "column_key": "subtotal"
+      },
+      "values": {},
+      "subtable_rows": {
+        "items": [
+          { "subtotal": 100 },
+          { "subtotal": 250.5 },
+          { "subtotal": 30 }
+        ]
+      },
+      "expected": 380.5
+    },
+    {
+      "name": "子表合计 - 空子表得 0",
+      "formula": {
+        "type": "subtable_sum",
+        "subtable_key": "items",
+        "column_key": "subtotal"
+      },
+      "values": {},
+      "subtable_rows": { "items": [] },
+      "expected": 0
+    },
+    {
+      "name": "子表合计 - 单元格缺值跳过",
+      "formula": {
+        "type": "subtable_sum",
+        "subtable_key": "items",
+        "column_key": "subtotal"
+      },
+      "values": {},
+      "subtable_rows": { "items": [{ "subtotal": 10 }, {}, { "subtotal": 5 }] },
+      "expected": 15
+    },
+    {
+      "name": "日期差 - 相差天数",
+      "formula": {
+        "type": "date_diff",
+        "start_field": "startDate",
+        "end_field": "endDate",
+        "unit": "days"
+      },
+      "values": { "startDate": "2026-09-01", "endDate": "2026-09-04" },
+      "expected": 3
+    },
+    {
+      "name": "日期差 - 同年同日为 0",
+      "formula": {
+        "type": "date_diff",
+        "start_field": "startDate",
+        "end_field": "endDate",
+        "unit": "days"
+      },
+      "values": { "startDate": "2026-09-01", "endDate": "2026-09-01" },
+      "expected": 0
+    },
+    {
+      "name": "日期差 - 跨月跨年",
+      "formula": {
+        "type": "date_diff",
+        "start_field": "startDate",
+        "end_field": "endDate",
+        "unit": "days"
+      },
+      "values": { "startDate": "2025-12-30", "endDate": "2026-01-02" },
+      "expected": 3
+    },
+    {
+      "name": "日期差 - 带时间的日期时间也能解析",
+      "formula": {
+        "type": "date_diff",
+        "start_field": "startDate",
+        "end_field": "endDate",
+        "unit": "days"
+      },
+      "values": { "startDate": "2026-09-01 08:30:00", "endDate": "2026-09-03T18:00:00" },
+      "expected": 2
+    },
+    {
+      "name": "日期差 - 缺失任一端返回 null",
+      "formula": {
+        "type": "date_diff",
+        "start_field": "startDate",
+        "end_field": "endDate",
+        "unit": "days"
+      },
+      "values": { "startDate": "2026-09-01" },
+      "expected": null
+    }
+  ],
+  "error_vectors": [
+    {
+      "name": "语法错误 - 多余符号",
+      "formula": { "type": "arithmetic", "expression": "a * * b" },
+      "values": { "a": 1, "b": 2 },
+      "expect_error": true
+    },
+    {
+      "name": "语法错误 - 括号不匹配",
+      "formula": { "type": "arithmetic", "expression": "(a + b" },
+      "values": { "a": 1, "b": 2 },
+      "expect_error": true
+    },
+    {
+      "name": "安全 - 禁止调用任意函数",
+      "formula": { "type": "arithmetic", "expression": "EVAL(a)" },
+      "values": { "a": 1 },
+      "expect_error": true
+    },
+    {
+      "name": "安全 - 禁止属性访问与下标（不能借 eval 逃逸）",
+      "formula": { "type": "arithmetic", "expression": "a.__class__" },
+      "values": { "a": 1 },
+      "expect_error": true
+    },
+    {
+      "name": "引用完整性 - 引用了 schema 里不存在的字段",
+      "formula": { "type": "arithmetic", "expression": "ghost * 2" },
+      "values": {},
+      "known_keys": ["a", "b"],
+      "expect_error": true
+    }
+  ]
+}

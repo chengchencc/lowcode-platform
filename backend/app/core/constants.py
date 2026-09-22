@@ -61,8 +61,128 @@ class AuditAction(StrEnum):
     REVOKE_ROLE = "REVOKE_ROLE"
     TERMINATE = "TERMINATE"
     ADD_EXT_FIELD = "ADD_EXT_FIELD"
+    COPY = "COPY"
+    UPLOAD = "UPLOAD"
 
 
 class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
+
+
+# --------------------------------------------------------------------------- 表单（M2）
+
+
+class FormStatus(StrEnum):
+    """表单模板主档状态。"""
+
+    DRAFT = "DRAFT"          # 还没有已发布版本
+    PUBLISHED = "PUBLISHED"  # 至少有一个已发布版本
+    DISABLED = "DISABLED"    # 停用：不可被新流程引用，已有实例不受影响
+
+
+class FormVersionStatus(StrEnum):
+    DRAFT = "DRAFT"          # 编辑中；同一模板同时只允许一个
+    PUBLISHED = "PUBLISHED"  # 已发布；被流程版本引用后不可删除
+    ARCHIVED = "ARCHIVED"    # 被更新的发布版本取代
+
+
+class SectionStage(StrEnum):
+    """分区阶段标签（PRD §3.2.1）。决定该分区在审批节点上的默认可见性。
+
+    这是「字段累积」机制 B 的基础：申请区在发起时可编辑、后续节点只读；
+    补充区默认对所有非目标节点隐藏，由字段权限矩阵显式打开。
+    """
+
+    APPLY = "apply"            # 申请区
+    APPROVE = "approve"        # 审批区
+    SUPPLEMENT = "supplement"  # 补充区（默认隐藏，逐节点揭晓）
+    ARCHIVE = "archive"        # 归档区
+
+
+class FieldType(StrEnum):
+    """控件类型（PRD §3.2.2 全量清单）。"""
+
+    # 基础
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    NUMBER = "number"
+    RADIO = "radio"
+    CHECKBOX = "checkbox"
+    SELECT = "select"
+    DATE = "date"
+    TIME = "time"
+    DATETIME = "datetime"
+    SWITCH = "switch"
+    # 组织
+    USER = "user"
+    USER_MULTI = "user_multi"
+    DEPT = "dept"
+    DEPT_MULTI = "dept_multi"
+    # 文件
+    ATTACHMENT = "attachment"
+    IMAGE = "image"
+    # 子表
+    SUBTABLE = "subtable"
+    # 增强
+    FORMULA = "formula"
+    CASCADER = "cascader"
+
+
+#: 需要配置 options 的控件
+OPTION_FIELD_TYPES: frozenset[str] = frozenset(
+    {FieldType.RADIO, FieldType.CHECKBOX, FieldType.SELECT}
+)
+
+#: 值为多选的控件（用 list 存储）
+MULTI_VALUE_FIELD_TYPES: frozenset[str] = frozenset(
+    {FieldType.CHECKBOX, FieldType.USER_MULTI, FieldType.DEPT_MULTI, FieldType.IMAGE}
+)
+
+#: 子表行内允许嵌套的控件（PRD：子表行内嵌基础控件；禁止嵌套子表）
+SUBTABLE_COLUMN_TYPES: frozenset[str] = frozenset(
+    {
+        FieldType.TEXT, FieldType.TEXTAREA, FieldType.NUMBER,
+        FieldType.RADIO, FieldType.CHECKBOX, FieldType.SELECT,
+        FieldType.DATE, FieldType.TIME, FieldType.DATETIME, FieldType.SWITCH,
+        FieldType.USER, FieldType.USER_MULTI, FieldType.DEPT, FieldType.DEPT_MULTI,
+        FieldType.ATTACHMENT, FieldType.IMAGE, FieldType.FORMULA,
+    }
+)
+
+#: 只读控件（由公式计算，用户不可编辑）—— 这些控件类型在权限矩阵里不可配为 editable
+COMPUTED_FIELD_TYPES: frozenset[str] = frozenset({FieldType.FORMULA})
+
+
+class FormulaType(StrEnum):
+    """公式基础子集（PRD §10 #9）。"""
+
+    ARITHMETIC = "arithmetic"      # 数字四则：amount * 0.1 + 100
+    SUBTABLE_SUM = "subtable_sum"  # 子表某列合计
+    DATE_DIFF = "date_diff"        # 日期差（天）
+    CONCAT = "concat"              # 文本拼接
+
+
+#: 公式里允许调用的函数白名单。
+#: 必须与 engine/expressions.py 的实现、前端 src/utils/formula.ts、
+#: docs/formula-test-vectors.json 三处保持一致。
+#: 放在 constants 而非 expressions 里，是为了让 schemas/form_schema.py 的
+#: 校验器也能用，同时避免 schemas ↔ engine 的循环导入。
+#:
+#: ROUND 是对 PRD「纯四则」的一处小扩展 —— 金额计算必须要能控制小数位。
+FORMULA_FUNCTIONS: frozenset[str] = frozenset({"ROUND", "ABS", "MIN", "MAX"})
+
+#: 公式表达式里会被当作关键字跳过的标识符（不是字段引用）
+FORMULA_KEYWORDS: frozenset[str] = frozenset({"and", "or", "not", "true", "false"})
+
+
+class AttachmentBizType(StrEnum):
+    TEMP = "TEMP"                # 已上传但还没被业务绑定
+    FORM_DRAFT = "FORM_DRAFT"    # 表单草稿
+    INSTANCE = "INSTANCE"        # 流程实例（M4）
+
+
+class AttachmentStatus(StrEnum):
+    TEMP = "TEMP"
+    BOUND = "BOUND"
+    DELETED = "DELETED"
