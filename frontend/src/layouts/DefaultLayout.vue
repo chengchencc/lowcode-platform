@@ -159,10 +159,20 @@ const NAVIGABLE = new Set([
   'messages',
 ])
 
+/**
+ * 带**必填路径参数**的菜单项 → 默认参数。
+ *
+ * 少了它 `router.push({name})` 会因缺参而**中止导航**（Vue Router 不报错、
+ * 页面也不跳，表现就是「点了没反应」）。工作台曾经就是这样打不开的。
+ */
+const MENU_DEFAULT_PARAMS: Record<string, Record<string, string>> = {
+  workbench: { type: 'todo' },
+}
+
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)
   if (NAVIGABLE.has(key) || key.startsWith('org-')) {
-    void router.push({ name: key })
+    void router.push({ name: key, params: MENU_DEFAULT_PARAMS[key] })
   }
 }
 

@@ -52,6 +52,11 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '发起流程', hidden: true },
       },
       {
+        // 直接输入 /workbench（或菜单未带参数时）落到「待办」
+        path: 'workbench',
+        redirect: { name: 'workbench', params: { type: 'todo' } },
+      },
+      {
         path: 'workbench/:type(todo|done|mine|cc)',
         name: 'workbench',
         component: () => import('@/views/WorkbenchView.vue'),

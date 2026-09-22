@@ -20,6 +20,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouter, createWebHistory, type Router } from 'vue-router'
 
 import { FormRenderer } from '@/components/form-renderer'
+// 真实路由表：菜单跳转的 bug 只有用它才测得出来（测试里的 STUB 路由是自己写的）
+import { routes as realRoutes } from '@/router'
+import { Menu } from 'ant-design-vue'
+
+/** 用**真实路由表**建路由：菜单跳转类的问题只有用它才测得出来 */
+function makeRealRouter(): Router {
+  return createRouter({ history: createWebHistory(), routes: realRoutes })
+}
 
 // ---- 接口全部 mock：这些测试只关心「组件渲染出来了没」，不关心数据 ----
 
@@ -556,4 +564,77 @@ describe('设计器的发布按钮可用性', () => {
       wrapper.unmount()
     })
   }
+})
+
+
+describe('工作台路由可达性', () => {
+  // 曾经的 bug：路由是 `workbench/:type(todo|done|mine|cc)`（type 必填），
+  // 而菜单跳转只写了 router.push({name:'workbench'}) —— 缺必填参数时
+  // Vue Router **静默中止导航**，用户看到的是「点了没反应」。
+  // 用真实路由表验证，而不是测试里另建的 STUB 路由。
+  it('直接访问 /workbench 会重定向到「待办」', async () => {
+    const router = makeRealRouter()
+    await router.push('/workbench')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('workbench')
+    expect(router.currentRoute.value.params.type).toBe('todo')
+  })
+
+  it('四个 tab 都能抵达', async () => {
+    const router = makeRealRouter()
+    await router.push('/')
+    await router.isReady()
+
+    for (const type of ['todo', 'done', 'mine', 'cc']) {
+      await router.push({ name: 'workbench', params: { type } })
+      expect(router.currentRoute.value.name, `${type} 应能抵达`).toBe('workbench')
+      expect(router.currentRoute.value.params.type).toBe(type)
+    }
+  })
+
+  it('菜单可直接跳转的项都解析得到路由', () => {
+    // 与 DefaultLayout 的 NAVIGABLE 保持一致；新增菜单项时这里也要补
+    const MENU_KEYS = [
+      'dashboard', 'start-center', 'workbench', 'messages',
+      'form-templates', 'flow-templates', 'audit',
+      'org-users', 'org-depts', 'org-roles',
+    ]
+    const router = makeRealRouter()
+
+    for (const name of MENU_KEYS) {
+      const resolved = router.resolve({ name, params: { type: 'todo' } })
+      expect(resolved.matched.length, `${name} 应能解析到路由`).toBeGreaterThan(0)
+      // 路径里不应残留未填充的参数（如 /workbench/:type）
+      expect(resolved.path, `${name} 的路径不应含未填充参数`).not.toMatch(/:[a-zA-Z]/)
+    }
+  })
+})
+
+
+describe('菜单点击能真正跳转', () => {
+  // 这才是那个 bug 的直接复现：工作台路由的 type 是必填参数，
+  // 菜单若 push({name}) 不带参数，Vue Router 会静默中止导航（点了没反应）。
+  // 路由表里的 redirect 只对「按 path 访问」生效，救不了按 name 跳转。
+  it('点击菜单「工作台」落到待办页', async () => {
+    const router = makeRealRouter()
+    await router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(DefaultLayout, {
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+    await flushPromises()
+
+    const menu = wrapper.findComponent(Menu)
+    expect(menu.exists(), '应能找到侧边菜单').toBe(true)
+
+    menu.vm.$emit('click', { key: 'workbench' })
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('workbench')
+    expect(router.currentRoute.value.params.type).toBe('todo')
+
+    wrapper.unmount()
+  })
 })
