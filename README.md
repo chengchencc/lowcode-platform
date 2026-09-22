@@ -26,26 +26,28 @@
 
 ## 快速开始
 
-前置：Python 3.12、Node 20+（本项目在 Node 22.4 上验证）。
+前置：Python 3.12、Node 20+（本项目在 Node 22.4 上验证）、Git Bash（Windows）。
 
-### 后端
+### 一键搭建
 
 ```bash
-cd backend
-python -m venv .venv
-
-# Windows (Git Bash)
-./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
-# macOS / Linux
-# ./.venv/bin/python -m pip install -r requirements-dev.txt
-
-cp .env.example .env
-./.venv/Scripts/python.exe -m alembic upgrade head
-./.venv/Scripts/python.exe -m uvicorn app.main:app --reload
+bash scripts/setup.sh
 ```
 
-- API 文档：http://127.0.0.1:8000/docs
-- 探活：http://127.0.0.1:8000/api/v1/healthz
+幂等，可重复执行。它会创建虚拟环境、装前后端依赖、生成 `.env`、跑数据库迁移。
+
+### 启动
+
+开两个终端：
+
+```bash
+bash scripts/dev-backend.sh     # 终端 1 → http://127.0.0.1:8000
+bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
+```
+
+打开 http://localhost:5173 登录。
+
+> 前端请用 `localhost` 而非 `127.0.0.1` —— Vite 在 Windows 上绑的是 IPv6 `::1`。
 
 首次启动会自动创建（幂等，已存在则跳过）：
 
@@ -53,37 +55,33 @@ cp .env.example .env
 - 示例部门树：总公司 → 技术部 / 产品部 / 财务部 / 人力资源部
 - 管理员账号：**`admin` / `admin123456`**（来自 `.env`，请登录后立即修改）
 
-### 前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-打开 http://localhost:5173 ，用上面的管理员账号登录。
-开发服务器把 `/api` 代理到 `http://127.0.0.1:8000`，无需额外配置跨域。
-
 ---
 
-## 常用命令
+## 脚本一览
+
+| 脚本 | 用途 |
+|---|---|
+| `scripts/setup.sh` | 首次搭建（幂等） |
+| `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
+| `scripts/dev-frontend.sh` | 启动前端 Vite |
+| `scripts/check.sh` | 全套校验：pytest + ruff + vue-tsc + vite build，逐项汇总 |
+| `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
+| `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 
 ```bash
-# 测试与静态检查（后端）
-cd backend
-./.venv/Scripts/python.exe -m pytest -q
-./.venv/Scripts/python.exe -m ruff check app tests
+# 若不想用脚本，等价的手工命令：
+cd backend && source .venv/Scripts/activate
+python -m uvicorn app.main:app --reload     # 后端
+cd frontend && npm run dev                   # 前端
 
-# 类型检查与构建（前端）
-cd frontend
-npm run typecheck
-npm run build
-
-# 新增数据库迁移
-cd backend
-./.venv/Scripts/python.exe -m alembic revision --autogenerate -m "描述"
-./.venv/Scripts/python.exe -m alembic upgrade head
+# 迁移
+bash scripts/migrate.sh                                  # 升到最新
+bash scripts/migrate.sh current                          # 当前版本
+bash scripts/migrate.sh revision --autogenerate -m "描述" # 依模型生成
 ```
+
+> 用 `migrate.sh revision` 生成迁移后，**请打开 `alembic/versions/` 下的新文件核对**：
+> autogenerate 不识别重命名，会误判成「删旧列 + 加新列」。
 
 ---
 
@@ -111,6 +109,7 @@ SQLAlchemy 的可移植写法（`BigInteger().with_variant(Integer, 'sqlite')`�
 
 ```
 lowcode-platform/
+├─ scripts/               启动 / 校验 / 迁移脚本
 ├─ docs/                  PRD 与技术设计
 ├─ backend/
 │  ├─ alembic/            迁移（0001 = M1 组织表）
