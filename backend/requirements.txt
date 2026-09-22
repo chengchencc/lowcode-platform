@@ -1,0 +1,14 @@
+# 运行时依赖
+fastapi>=0.115,<0.121
+uvicorn[standard]>=0.32,<0.40
+sqlalchemy>=2.0.36,<2.1
+alembic>=1.14,<1.19
+pydantic>=2.10,<3
+pydantic-settings>=2.6,<3
+email-validator>=2.2,<3
+PyJWT>=2.10,<3
+bcrypt>=4.2,<5
+python-multipart>=0.0.20
+
+# MySQL 驱动（切库时用；SQLite 走标准库 sqlite3）
+PyMySQL>=1.1,<2

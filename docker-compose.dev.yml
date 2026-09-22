@@ -1,0 +1,49 @@
+# 开发用的数据库服务。
+#
+# 默认开发流程走 SQLite（零依赖，见 backend/.env.example），本文件不参与日常启动。
+# 当需要验证 MySQL 兼容性、或准备切到 PRD §6 的生产形态（MySQL 8）时使用：
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   # 把 backend/.env 的 DATABASE_URL 换成 mysql+pymysql://... （见 .env.example）
+#   cd backend && alembic upgrade head
+#
+# 切换时不需要改任何模型或迁移代码 —— 这是 D1（方言无关）的验收点。
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: flowform-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-flowform}
+      MYSQL_USER: ${MYSQL_USER:-flowform}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-flowform123}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - flowform-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 轻量库管理界面：http://localhost:8080  服务器填 mysql，用户 flowform
+  adminer:
+    image: adminer:4
+    container_name: flowform-adminer
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  flowform-mysql-data:

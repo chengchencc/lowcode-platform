@@ -1,0 +1,43 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# ---- Node ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+coverage/
+
+# ---- 环境与密钥 ----
+.env
+.env.local
+*.env.production.local
+
+# ---- 数据库（SQLite 开发库） ----
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---- 运行时数据 ----
+storage/
+uploads/
+logs/
+*.log
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
