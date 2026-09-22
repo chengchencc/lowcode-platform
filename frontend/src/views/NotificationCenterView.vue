@@ -12,7 +12,7 @@ import { useRouter } from 'vue-router'
 
 import { notificationApi } from '@/api/modules/instance'
 import type { NotificationItem } from '@/types/instance'
-import { NOTIF_TYPE_LABELS } from '@/types/instance'
+import { NOTIF_TYPE_LABELS, notifColor } from '@/types/instance'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
 
@@ -67,9 +67,30 @@ async function markRead(row: NotificationItem): Promise<void> {
   await load()
 }
 
+/** 勾选只能勾未读的（已读的没有「再读一次」这回事），所以直接按 id 批量提交 */
+const selectedKeys = ref<number[]>([])
+
+function onSelectChange(keys: (number | string)[]): void {
+  selectedKeys.value = keys.map(Number)
+}
+
+async function markSelectedRead(): Promise<void> {
+  if (!selectedKeys.value.length) return
+  await notificationApi.markManyRead(selectedKeys.value)
+  feedback.success(`已标记 ${selectedKeys.value.length} 条为已读`)
+  selectedKeys.value = []
+  await load()
+}
+
+/** 未读行整行淡色底 —— 一屏几十条时比看小红点快得多 */
+function rowClassName(row: NotificationItem): string {
+  return row.is_read ? '' : 'row-unread'
+}
+
 async function markAllRead(): Promise<void> {
   const result = await notificationApi.markAllRead()
   feedback.success(result.message ?? '已全部标记为已读')
+  selectedKeys.value = []
   await load()
 }
 
@@ -101,10 +122,16 @@ function open(row: NotificationItem): void {
             刷新
           </Button>
         </Space>
-        <Button @click="markAllRead">
-          <template #icon><CheckOutlined /></template>
-          全部已读
-        </Button>
+        <Space>
+          <Button v-if="selectedKeys.length" @click="markSelectedRead">
+            <template #icon><CheckOutlined /></template>
+            已读所选（{{ selectedKeys.length }}）
+          </Button>
+          <Button @click="markAllRead">
+            <template #icon><CheckOutlined /></template>
+            全部已读
+          </Button>
+        </Space>
       </div>
 
       <Table
@@ -113,6 +140,12 @@ function open(row: NotificationItem): void {
         :loading="loading"
         row-key="id"
         size="middle"
+        :row-class-name="rowClassName"
+        :row-selection="{
+          selectedRowKeys: selectedKeys,
+          onChange: onSelectChange,
+          getCheckboxProps: (row: NotificationItem) => ({ disabled: row.is_read }),
+        }"
         :scroll="{ x: 900 }"
         :pagination="{
           current: paging.page, pageSize: paging.size, total: paging.total,
@@ -122,9 +155,7 @@ function open(row: NotificationItem): void {
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'type'">
-            <Tag :color="record.type === 'TASK_CREATED' ? 'blue'
-              : record.type.includes('REJECT') || record.type.includes('TERMINAT') ? 'red'
-              : record.type.includes('APPROVED') ? 'green' : 'default'">
+            <Tag :color="notifColor(record.type)">
               {{ NOTIF_TYPE_LABELS[record.type] ?? record.type }}
             </Tag>
           </template>
@@ -167,5 +198,9 @@ function open(row: NotificationItem): void {
 .unread {
   margin-left: 6px;
   font-size: 10px;
+}
+
+.row-unread :deep(td) {
+  background: #fffbe6;
 }
 </style>

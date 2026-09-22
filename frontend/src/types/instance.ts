@@ -288,4 +288,26 @@ export const NOTIF_TYPE_LABELS: Record<string, string> = {
   INSTANCE_TERMINATED: '已终止',
   CC_RECEIVED: '抄送',
   ABNORMAL_ASSIGN: '分配异常',
+  EXT_FIELD_ADDED: '新增字段',
+}
+
+/**
+ * 消息标签的颜色。按类型映射成固定表 ——
+ * 用 `type.includes('REJECT')` 这类子串匹配，新增类型时会悄悄落到 default。
+ */
+const NOTIF_TYPE_COLORS: Record<string, string> = {
+  TASK_CREATED: 'blue',
+  TASK_CANCELLED: 'default',
+  INSTANCE_APPROVED: 'green',
+  INSTANCE_REJECTED: 'red',
+  INSTANCE_RETURNED: 'orange',
+  INSTANCE_WITHDRAWN: 'default',
+  INSTANCE_TERMINATED: 'red',
+  CC_RECEIVED: 'cyan',
+  ABNORMAL_ASSIGN: 'red',
+  EXT_FIELD_ADDED: 'purple',
+}
+
+export function notifColor(type: string): string {
+  return NOTIF_TYPE_COLORS[type] ?? 'default'
 }
