@@ -165,13 +165,29 @@ export interface InstanceRender {
     kind: string
     created_at: string
   } | null
-  ext_fields: Array<{
-    field_key: string
-    label: string
-    type: string
-    required: boolean
-    status: string
-  }>
+  ext_fields: ExtFieldItem[]
+}
+
+/** 机制 C：运行中追加的动态字段（F5.1）。 */
+export interface ExtFieldItem {
+  field_key: string
+  label: string
+  type: string
+  required: boolean
+  status: string
+  editable_node_ids?: string[]
+  visible_from_node_id?: string | null
+}
+
+export interface ExtFieldPayload {
+  label: string
+  type: string
+  required?: boolean
+  /** 可编辑的节点；不给则由服务端取当前待办节点 */
+  editable_node_ids?: string[]
+  section_key?: string | null
+  config?: Record<string, unknown>
+  placeholder?: string | null
 }
 
 export interface StartOptions {

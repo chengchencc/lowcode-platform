@@ -20,8 +20,10 @@ import { ApiError } from '@/api/http'
 import { instanceApi } from '@/api/modules/instance'
 import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
+import ExtFieldManager from '@/components/instance/ExtFieldManager.vue'
 import ProgressBar from '@/components/instance/ProgressBar.vue'
 import TimelineList from '@/components/instance/TimelineList.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { FieldState } from '@/types/form'
 import type { InstanceRender } from '@/types/instance'
 import { INSTANCE_STATUS_META, MY_ROLE_LABELS } from '@/types/instance'
@@ -30,6 +32,7 @@ import { feedback } from '@/utils/feedback'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const instanceId = computed(() => Number(route.params.id))
 const assignmentId = computed(() => {
@@ -118,6 +121,26 @@ const canTerminate = computed(
     data.value?.my_role === 'ADMIN' &&
     !['APPROVED', 'WITHDRAWN', 'TERMINATED'].includes(data.value?.instance.status ?? ''),
 )
+
+/**
+ * 追加字段入口（F5.1）：管理员/设计者，且实例还在跑。
+ *
+ * 用 auth store 的 isDesigner 而不是 my_role —— 设计者看自己经手的单子时
+ * my_role 是 INITIATOR/PARTICIPANT，只有拿角色才能判断出来（管理员包含在内）。
+ * 服务端同样两道校验：看得见 + 管理员/设计者。
+ */
+const showExtFieldEntry = computed(
+  () =>
+    auth.isDesigner &&
+    !activeSnapshotId.value &&
+    !['APPROVED', 'WITHDRAWN', 'TERMINATED'].includes(data.value?.instance.status ?? ''),
+)
+
+/** 追加/停用字段后，服务端回的就是刷新过的详情页数据 —— 直接换掉即可 */
+function onExtFieldUpdated(fresh: InstanceRender): void {
+  data.value = fresh
+  clearPatch()
+}
 
 /** 处理按钮（同意/驳回/退回）出现在标题栏的条件 */
 const showHeaderActions = computed(() => canEditForm.value && !activeSnapshotId.value)
@@ -238,6 +261,13 @@ const statusMeta = computed(() =>
                 v-if="showHeaderActions && showInstanceOps"
                 type="vertical"
                 class="ops-divider"
+              />
+
+              <ExtFieldManager
+                v-if="showExtFieldEntry"
+                :data="data"
+                :can-manage="true"
+                @updated="onExtFieldUpdated"
               />
 
               <Tag v-if="activeSnapshotId" color="orange" class="snapshot-tag">

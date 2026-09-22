@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouter, createWebHistory, type Router } from 'vue-router'
 
 import { FormRenderer } from '@/components/form-renderer'
+import { useAuthStore } from '@/stores/auth'
 // 真实路由表：菜单跳转的 bug 只有用它才测得出来（测试里的 STUB 路由是自己写的）
 import { routes as realRoutes } from '@/router'
 import { Menu } from 'ant-design-vue'
@@ -210,6 +211,8 @@ vi.mock('@/api/modules/instance', () => {
       snapshotDiff: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue(emptyPage),
       withdraw: vi.fn(), abandon: vi.fn(), terminate: vi.fn(),
+      addExtField: vi.fn().mockResolvedValue(render),
+      disableExtField: vi.fn().mockResolvedValue(render),
     },
     taskApi: {
       todo: vi.fn().mockResolvedValue(emptyPage),
@@ -660,6 +663,57 @@ describe('实例详情页版面', () => {
     expect(at('同意'), '处理按钮应在表单之前（标题栏）').toBeLessThan(at('申请信息'))
     expect(at('审批进度'), '审批进度应在表单之后').toBeGreaterThan(at('申请信息'))
 
+    wrapper.unmount()
+  })
+})
+
+
+describe('机制 C：运行中追加字段', () => {
+  // 「追加字段」入口只给管理员/设计者（F5.1）。用 auth store 的角色判断 ——
+  // 设计者看自己经手的单子时 my_role 是发起人/处理人，光看 my_role 判断不出来。
+  async function mountAs(component: unknown, path: string, isDesigner: boolean) {
+    const router = makeRouter(path)
+    await router.push(path)
+    await router.isReady()
+    const pinia = createPinia()
+    useAuthStore(pinia).isDesigner = isDesigner
+    const wrapper = mount(component as never, { global: { plugins: [pinia, router, Antd] } })
+    await flushPromises()
+    return wrapper
+  }
+
+  function findEntry(wrapper: ReturnType<typeof mount>) {
+    // antd 会在两个中文字之间插空格，「追加字段」在 DOM 里是「追加字 段」
+    return wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '') === '追加字段')
+  }
+
+  it('设计者看得到入口，弹窗里有完整的追加表单', async () => {
+    const { messages, restore } = watchUnresolved()
+    try {
+      const wrapper = await mountAs(InstanceDetailView, '/instance/1', true)
+
+      const entry = findEntry(wrapper)
+      expect(entry, '设计者应看到「追加字段」按钮').toBeTruthy()
+
+      await entry!.trigger('click')
+      await flushPromises()
+
+      // 弹窗走 teleport 到 body，不在 wrapper.html() 里
+      const modal = document.body.textContent?.replace(/\s+/g, '') ?? ''
+      expect(modal).toContain('字段名称')
+      expect(modal).toContain('可编辑节点')
+      expect(modal).toContain('只能停用')   // 约束要写在界面上，不能只写在文档里
+      expect(messages, `未注册的组件/指令：\n${messages.join('\n')}`).toEqual([])
+
+      wrapper.unmount()
+    } finally {
+      restore()
+    }
+  })
+
+  it('普通用户看不到入口', async () => {
+    const wrapper = await mountAs(InstanceDetailView, '/instance/1', false)
+    expect(findEntry(wrapper), '普通用户不该看到「追加字段」').toBeFalsy()
     wrapper.unmount()
   })
 })

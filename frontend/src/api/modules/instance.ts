@@ -3,6 +3,7 @@ import type { OkResp, Page } from '@/types/api'
 import type { FlowTemplate } from '@/types/flow'
 import type {
   ActPayload,
+  ExtFieldPayload,
   InstanceItem,
   InstanceRender,
   NotificationItem,
@@ -98,6 +99,17 @@ export const instanceApi = {
 
   terminate(id: number, reason: string) {
     return request.post<InstanceItem>(`/instances/${id}/terminate`, { reason })
+  },
+
+  // ---- 机制 C：运行中追加字段（管理员/设计者）----
+  /** 追加字段；返回**刷新后的详情页数据**，前端一次请求即可重绘 */
+  addExtField(id: number, payload: ExtFieldPayload) {
+    return request.post<InstanceRender>(`/instances/${id}/ext-fields`, payload)
+  },
+
+  /** 停用（不可物理删除 —— 历史快照里还有它的值） */
+  disableExtField(id: number, fieldKey: string) {
+    return request.post<InstanceRender>(`/instances/${id}/ext-fields/${fieldKey}/disable`)
   },
 }
 
