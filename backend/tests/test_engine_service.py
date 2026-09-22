@@ -40,6 +40,9 @@ from app.services.approver_provider import DbApproverProvider
 
 _counter = itertools.count(1)
 
+#: 测试用户的统一密码。由 test_instances_api 复用登录。
+FACTORY_PASSWORD = "pass123456"
+
 FORM_SCHEMA = {
     "sections": [
         {
@@ -73,7 +76,7 @@ def _user(db, name: str | None = None, *, dept_id: int | None = None) -> User:
     user = User(
         username=f"{name or 'u'}{n}",
         real_name=f"用户{n}",
-        password_hash=hash_password("pass123456"),
+        password_hash=hash_password(FACTORY_PASSWORD),
         status=UserStatus.ACTIVE,
         dept_id=dept_id,
     )

@@ -30,7 +30,12 @@ from app.core.constants import (
     TaskStatus,
     TaskType,
 )
-from app.core.errors import ConflictError, NotFoundError, UnprocessableError
+from app.core.errors import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    UnprocessableError,
+)
 from app.engine import notify
 from app.engine import snapshot as snapshot_mod
 from app.engine.aggregate import (
@@ -1316,7 +1321,8 @@ class EngineService:
                 extra={"expected": expected_version, "actual": instance.version},
             )
         if assignment.user_id != actor.id:
-            raise UnprocessableError("这不是分配给你的任务", code="NOT_ASSIGNEE")
+            # 授权失败而不是业务规则失败 —— 前端据此走「无权限」而非「重试」分支
+            raise ForbiddenError("这不是分配给你的任务", code="NOT_ASSIGNEE")
         if assignment.status != AssignmentStatus.PENDING:
             raise ConflictError(
                 "该任务已处理或已取消，请刷新后重试", code="ASSIGNMENT_NOT_PENDING"
