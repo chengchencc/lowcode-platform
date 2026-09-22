@@ -69,16 +69,52 @@ bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 
 ```bash
-# 若不想用脚本，等价的手工命令：
-cd backend && source .venv/Scripts/activate
-python -m uvicorn app.main:app --reload     # 后端
-cd frontend && npm run dev                   # 前端
-
 # 迁移
 bash scripts/migrate.sh                                  # 升到最新
 bash scripts/migrate.sh current                          # 当前版本
 bash scripts/migrate.sh revision --autogenerate -m "描述" # 依模型生成
 ```
+
+### 手工命令（不用脚本时）
+
+脚本内部也是这么做的，只是替你处理了路径与虚拟环境。
+
+**Windows —— 推荐直接调 venv 里的解释器，不要激活：**
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload      # 后端
+
+cd frontend
+npm run dev                                                       # 前端
+```
+
+> ⚠️ Windows 默认执行策略是 `Restricted`，`.\.venv\Scripts\Activate.ps1`
+> 会被拦下并报「在此系统上禁止运行脚本」。想用激活方式的话，先执行一次
+> （仅对当前用户生效，不需要管理员）：
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+> ```
+
+**macOS / Linux：**
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m uvicorn app.main:app --reload
+```
+
+### 各终端里的虚拟环境
+
+| 终端 | 激活命令 | 建议 |
+|---|---|---|
+| Git Bash | `source .venv/Scripts/activate` | 也可不激活，直接用 `./.venv/Scripts/python.exe` |
+| PowerShell | `.venv\Scripts\Activate.ps1` | **默认被执行策略拦下**，建议改用 `.\.venv\Scripts\python.exe` |
+| cmd | `.venv\Scripts\activate.bat` | 可用 |
+
+> 用 `bash scripts/*.sh` 时**不需要关心这些** —— 脚本自己找解释器，
+> 且 `bash` 已被 Git for Windows 装进 PATH，PowerShell / cmd 里同样能跑。
 
 > 用 `migrate.sh revision` 生成迁移后，**请打开 `alembic/versions/` 下的新文件核对**：
 > autogenerate 不识别重命名，会误判成「删旧列 + 加新列」。

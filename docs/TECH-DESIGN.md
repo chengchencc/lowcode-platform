@@ -385,25 +385,22 @@ savepoint 的 `RELEASE` 在 SQLite 中等于 `COMMIT`，数据会真的落盘（
 
 ## 10. 本地运行
 
+用 `scripts/` 下的脚本（详见 README「脚本一览」）：
+
 ```bash
-# 后端（首次）
-cd backend
-python -m venv .venv
-./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt   # Windows
-cp .env.example .env
-./.venv/Scripts/python.exe -m alembic upgrade head
-./.venv/Scripts/python.exe -m uvicorn app.main:app --reload          # :8000
-
-# 前端（另开终端）
-cd frontend
-npm install
-npm run dev                                                          # :5173
-
-# 测试与检查
-cd backend && ./.venv/Scripts/python.exe -m pytest -q
-cd backend && ./.venv/Scripts/python.exe -m ruff check app tests
-cd frontend && npm run typecheck
+bash scripts/setup.sh          # 首次搭建，幂等
+bash scripts/dev-backend.sh    # :8000
+bash scripts/dev-frontend.sh   # :5173
+bash scripts/check.sh          # pytest + ruff + vue-tsc + vite build
+bash scripts/migrate.sh        # alembic upgrade head
 ```
+
+脚本不依赖 shell 里预激活的虚拟环境，且 `bash` 已随 Git for Windows 进入 PATH，
+**Git Bash / PowerShell / cmd 里都能直接跑**。
+
+> **Windows 注意**：`.\.venv\Scripts\Activate.ps1` 会被默认执行策略
+> （`Restricted`）拦下并报「在此系统上禁止运行脚本」。手工执行时请直接调
+> `.\.venv\Scripts\python.exe`，不要激活。
 
 **切 MySQL**：`docker compose -f docker-compose.dev.yml up -d`，
 把 `backend/.env` 的 `DATABASE_URL` 换成 `mysql+pymysql://...`，
