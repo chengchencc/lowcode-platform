@@ -235,12 +235,19 @@ StepNode = Annotated[
 
 
 class StartNode(NodeBase):
-    """发起节点。字段权限即「发起阶段可编辑的字段集合」（PRD §3.4）。"""
+    """发起节点。字段权限即「发起阶段可编辑的字段集合」（PRD §3.4）。
+
+    `fields_permission` **默认为 None**，让 L0 的默认语义生效：
+
+        field.visible_at_start ? editable : hidden
+
+    不能给它一个 `base="hidden"` 的默认规则 —— 那会被当成显式配置去覆盖 L0，
+    结果是发起阶段所有字段都不可编辑、提交的数据全被丢弃。
+    只有设计者显式配置时才用规则覆盖。
+    """
 
     type: Literal["start"] = "start"
-    fields_permission: FieldPermissionRule = Field(
-        default_factory=lambda: FieldPermissionRule(base="hidden")
-    )
+    fields_permission: FieldPermissionRule | None = None
 
 
 class EndNode(NodeBase):

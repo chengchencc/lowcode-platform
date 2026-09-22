@@ -26,6 +26,16 @@ PASSING_RESULTS = frozenset({"AGREE", "SUBMIT"})
 FAILING_RESULTS = frozenset({"REJECT", "RETURN"})
 
 
+def normalize_mode(mode: str) -> str:
+    """统一聚合模式的写法。
+
+    **两套词汇表**：流程定义里并行容器的 mode 是 `"all"` / `"any"`（小写，
+    面向 JSON 可读性），而 `AggregateMode` 枚举是 `ALL` / `ANY`（大写）。
+    直接比较字符串会静默失败并落进错误的分支 —— 这个函数是唯一的归一化点。
+    """
+    return (mode or "").upper()
+
+
 def node_state(mode: str, assignments: Sequence[AssignmentView]) -> NodeState:
     """判定一个节点是否走完。
 
@@ -38,6 +48,8 @@ def node_state(mode: str, assignments: Sequence[AssignmentView]) -> NodeState:
     """
     if not assignments:
         return "OPEN"
+
+    mode = normalize_mode(mode)
 
     # 失败优先于通过：只要有人驳回/退回，节点就失败。
     # 对 ANY 而言这条不会误伤 —— 一旦有人同意，其余人会被立即取消，
@@ -68,6 +80,7 @@ def group_state(mode: str, members: Sequence[TaskView]) -> GroupState:
     if not members:
         return "JOINED"
 
+    mode = normalize_mode(mode)
     completed = [m for m in members if m.status == "COMPLETED"]
     cancelled = [m for m in members if m.status == "CANCELLED"]
     pending = [m for m in members if m.status == "PENDING"]
@@ -91,7 +104,7 @@ def should_cancel_siblings_on_pass(mode: str) -> bool:
 
     只有或签（ANY）需要 —— 会签要等所有人。
     """
-    return mode == AggregateMode.ANY
+    return normalize_mode(mode) == AggregateMode.ANY
 
 
 def next_sequential_seq(assignments: Sequence[AssignmentView]) -> int | None:
