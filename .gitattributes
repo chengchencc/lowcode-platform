@@ -1,0 +1,22 @@
+# Shell 脚本必须保持 LF。
+#
+# Windows 上 Git 默认（core.autocrlf=true）会在签出时把文本文件转成 CRLF，
+# 于是 shebang 变成 "#!/usr/bin/env bash\r"，Git Bash 报：
+#     bad interpreter: /usr/bin/env bash
+# 脚本会完全无法执行。这里显式锁死 LF。
+*.sh text eol=lf
+
+# 其余文本交给 Git 自动判定
+* text=auto
+
+# 明确标记二进制，避免 Git 尝试做行尾转换、也便于 diff 识别
+*.docx binary
+*.xlsx binary
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
