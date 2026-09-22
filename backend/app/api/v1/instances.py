@@ -173,6 +173,22 @@ def timeline(instance_id: int, db: DbSession, user: CurrentUser) -> list[dict]:
     return timeline_service.list_actions(db, instance)
 
 
+# ⚠️ 顺序要紧：`/snapshots/diff` 必须排在 `/snapshots/{snapshot_id}` **之前**。
+# FastAPI 按声明顺序匹配，否则 "diff" 会被当成 snapshot_id 解析 →
+# 422「Input should be a valid integer, unable to parse string as an integer」。
+@router.get("/{instance_id}/snapshots/diff", summary="两个快照的字段对照")
+def snapshot_diff(
+    instance_id: int,
+    db: DbSession,
+    user: CurrentUser,
+    from_id: Annotated[int, Query(alias="from")],
+    to_id: Annotated[int, Query(alias="to")],
+) -> list[dict]:
+    instance = instance_service.get_or_404(db, instance_id)
+    instance_service.assert_can_view(db, instance, user)
+    return snapshot_service.compare(db, from_id, to_id)
+
+
 @router.get("/{instance_id}/snapshots/{snapshot_id}", summary="历史时点快照")
 def get_snapshot(
     instance_id: int, snapshot_id: int, db: DbSession, user: CurrentUser
@@ -185,19 +201,6 @@ def get_snapshot(
     if snapshot is None or snapshot.instance_id != instance.id:
         raise NotFoundError("快照不存在", code="SNAPSHOT_NOT_FOUND")
     return {**snapshot_service.to_out(db, snapshot), "data": snapshot.data}
-
-
-@router.get("/{instance_id}/snapshots/diff", summary="两个快照的字段对照")
-def snapshot_diff(
-    instance_id: int,
-    db: DbSession,
-    user: CurrentUser,
-    from_id: Annotated[int, Query(alias="from")],
-    to_id: Annotated[int, Query(alias="to")],
-) -> list[dict]:
-    instance = instance_service.get_or_404(db, instance_id)
-    instance_service.assert_can_view(db, instance, user)
-    return snapshot_service.compare(db, from_id, to_id)
 
 
 # --------------------------------------------------------------------------- 检索
