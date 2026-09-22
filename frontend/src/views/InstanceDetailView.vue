@@ -22,6 +22,8 @@ import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
 import ExtFieldManager from '@/components/instance/ExtFieldManager.vue'
 import ProgressBar from '@/components/instance/ProgressBar.vue'
+import ResubmitPanel from '@/components/instance/ResubmitPanel.vue'
+import SnapshotDiff from '@/components/instance/SnapshotDiff.vue'
 import TimelineList from '@/components/instance/TimelineList.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { FieldState } from '@/types/form'
@@ -207,6 +209,14 @@ function viewSnapshot(snapshotId: number): void {
 const statusMeta = computed(() =>
   data.value ? INSTANCE_STATUS_META[data.value.instance.status] : null,
 )
+
+/** 被驳回且我是发起人 → 可以改单重提（PRD §3.5.1） */
+const canResubmit = computed(
+  () =>
+    !activeSnapshotId.value &&
+    data.value?.my_role === 'INITIATOR' &&
+    data.value?.instance.status === 'REJECTED',
+)
 </script>
 
 <template>
@@ -289,6 +299,9 @@ const statusMeta = computed(() =>
           </div>
         </Card>
 
+        <!-- ------------------------------------------------ 驳回重提 -->
+        <ResubmitPanel v-if="canResubmit" :data="data" @submitted="load" />
+
         <!-- ------------------------------------------------ 表单 -->
         <Card :bordered="false" class="block">
           <template #title>
@@ -315,6 +328,15 @@ const statusMeta = computed(() =>
             @update:model-value="onFormChange"
           />
         </Card>
+
+        <!-- ------------------------------------------------ 变更对照（看快照时） -->
+        <SnapshotDiff
+          v-if="activeSnapshotId"
+          :instance-id="instanceId"
+          :snapshot-id="activeSnapshotId"
+          :actions="data.actions"
+          :schema="data.schema_data"
+        />
 
         <!-- ------------------------------------------------ 进度 -->
         <Card title="审批进度" :bordered="false" class="block">

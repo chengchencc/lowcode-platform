@@ -23,6 +23,8 @@ import { FormRenderer } from '@/components/form-renderer'
 import { useAuthStore } from '@/stores/auth'
 // 真实路由表：菜单跳转的 bug 只有用它才测得出来（测试里的 STUB 路由是自己写的）
 import { routes as realRoutes } from '@/router'
+import { instanceApi } from '@/api/modules/instance'
+import type { ActionEntry, InstanceRender } from '@/types/instance'
 import { Menu } from 'ant-design-vue'
 
 /** 用**真实路由表**建路由：菜单跳转类的问题只有用它才测得出来 */
@@ -714,6 +716,154 @@ describe('机制 C：运行中追加字段', () => {
   it('普通用户看不到入口', async () => {
     const wrapper = await mountAs(InstanceDetailView, '/instance/1', false)
     expect(findEntry(wrapper), '普通用户不该看到「追加字段」').toBeFalsy()
+    wrapper.unmount()
+  })
+})
+
+
+describe('驳回重提与快照对照', () => {
+  /** 一张被驳回过的报销单：提交(轮1) → 驳回 → 重提(轮2) */
+  function rejectedRender(): InstanceRender {
+    const action = (
+      id: number,
+      kind: string,
+      label: string,
+      round: number,
+      opinion: string | null,
+      snapshotId: number | null,
+    ): ActionEntry => ({
+      action_id: id,
+      action: kind,
+      action_label: label,
+      node_key: null,
+      node_name: null,
+      actor_id: id,
+      actor_name: id === 2 ? '王经理' : '张三',
+      opinion,
+      round,
+      from_status: null,
+      to_status: null,
+      changed_fields: [],
+      attachments: [],
+      snapshot_id: snapshotId,
+      snapshot_seq: snapshotId,
+      created_at: '2026-09-22T10:00:00',
+    })
+
+    return {
+      instance: {
+        id: 1,
+        code: 'BX20260922-0001',
+        title: '出差报销',
+        status: 'REJECTED',
+        round: 2,
+        flow_template_id: 1,
+        flow_template_name: '报销流程',
+        flow_version_id: 1,
+        form_version_id: 1,
+        initiator_id: 1,
+        initiator_name: '张三',
+        initiator_dept_name: '技术部',
+        current_node_keys: [],
+        abnormal: false,
+        pending_count: 0,
+        done_count: 2,
+        my_pending_count: 0,
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+        last_action_at: null,
+        terminated_reason: null,
+      },
+      my_role: 'INITIATOR',
+      assignment: null,
+      current_node: null,
+      schema_data: {
+        sections: [
+          {
+            key: 's',
+            title: '申请信息',
+            stage: 'apply',
+            fields: [{ key: 'reason', label: '事由', type: 'text', required: true }],
+          },
+        ],
+      },
+      values: { reason: '初版事由' },
+      permissions: { reason: { visible: true, editable: true, required: true } },
+      progress: [],
+      actions: [
+        action(1, 'SUBMIT', '提交', 1, null, 1),
+        action(2, 'REJECT', '驳回', 1, '发票不全，请补齐', null),
+        action(1, 'RESUBMIT', '重新提交', 2, null, 2),
+      ],
+      allowed_actions: [],
+      return_targets: [],
+      attachments: [],
+      snapshot: null,
+      ext_fields: [],
+    }
+  }
+
+  it('被驳回的单子把驳回意见顶到发起人眼前，并能打开重提表单', async () => {
+    const { messages, restore } = watchUnresolved()
+    try {
+      const api = vi.mocked(instanceApi)
+      api.render.mockResolvedValueOnce(rejectedRender())
+
+      const wrapper = await mountView(InstanceDetailView, '/instance/1')
+      await flushPromises()
+
+      const text = wrapper.text().replace(/\s/g, '')
+      expect(text, '驳回意见应直接显示出来').toContain('发票不全，请补齐')
+      expect(text).toContain('第2轮')
+
+      const resubmit = wrapper
+        .findAll('button')
+        .find((b) => b.text().replace(/\s/g, '') === '修改并重新提交')
+      expect(resubmit, '发起人应能重新提交').toBeTruthy()
+
+      await resubmit!.trigger('click')
+      await flushPromises()
+
+      const modal = document.body.textContent?.replace(/\s+/g, '') ?? ''
+      expect(modal).toContain('确认重新提交')
+      expect(modal).toContain('从第一个节点重新开始')
+      expect(messages, `未注册的组件/指令：\n${messages.join('\n')}`).toEqual([])
+
+      wrapper.unmount()
+    } finally {
+      restore()
+    }
+  })
+
+  it('查看历史快照时给出变更对照', async () => {
+    const api = vi.mocked(instanceApi)
+    api.render.mockResolvedValue(rejectedRender())
+    api.snapshotDiff.mockResolvedValueOnce([
+      { key: 'reason', old: '初版事由', new: '补充发票后的事由' },
+    ])
+
+    const wrapper = await mountView(InstanceDetailView, '/instance/1')
+    await flushPromises()
+
+    // 时间线条目要展开才看得到快照入口
+    const toggle = wrapper.findAll('a.toggle')[0]
+    expect(toggle, '时间线应有「详情」展开入口').toBeTruthy()
+    await toggle.trigger('click')
+    await flushPromises()
+
+    const link = wrapper
+      .findAll('a')
+      .find((a) => a.text().includes('查看当时的表单快照'))
+    expect(link, '时间线应有快照入口').toBeTruthy()
+    await link!.trigger('click')
+    await flushPromises()
+
+    const html = wrapper.text()
+    expect(html).toContain('变更对照')
+    // 字段引用要翻成中文标签，不能直接露出 reason
+    expect(html).toContain('事由')
+
     wrapper.unmount()
   })
 })
