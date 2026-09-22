@@ -9,6 +9,8 @@ from app.api.v1 import (
     auth,
     departments,
     files,
+    flow_templates,
+    flow_versions,
     form_templates,
     form_versions,
     health,
@@ -30,4 +32,8 @@ api_router.include_router(form_templates.router)
 api_router.include_router(form_versions.router)
 api_router.include_router(files.router)
 
-# M3: flow_templates / flow_versions / instances / tasks / notifications
+# M3 流程
+api_router.include_router(flow_templates.router)
+api_router.include_router(flow_versions.router)
+
+# M4: instances / tasks / notifications

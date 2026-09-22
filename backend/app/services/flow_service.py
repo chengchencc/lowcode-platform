@@ -87,6 +87,10 @@ def _to_out(db: Session, template: FlowTemplate) -> dict[str, Any]:
     if current is not None:
         form_version = db.get(FormVersion, current.locked_form_version_id)
 
+    # 节点数按「当前生效版本」算；还没发布过就退回到草稿 ——
+    # 否则设计器里配了半天的流程在列表页显示 0 个节点，很容易误以为没保存上
+    node_source = current or (drafts[0] if drafts else None)
+
     return {
         "id": template.id,
         "name": template.name,
@@ -103,7 +107,7 @@ def _to_out(db: Session, template: FlowTemplate) -> dict[str, Any]:
         "locked_form_version_no": form_version.version_no if form_version else None,
         "draft_version_id": drafts[0].id if drafts else None,
         "version_count": len(versions),
-        "node_count": _count_nodes(current.definition) if current else 0,
+        "node_count": _count_nodes(node_source.definition) if node_source else 0,
         "created_by": template.created_by,
         "created_at": template.created_at,
         "updated_at": template.updated_at,
