@@ -9,10 +9,10 @@ const auth = useAuthStore()
 /** M1 已交付的能力；后续里程碑完成后逐条替换为真实入口。 */
 const milestones = [
   { key: 'M1', title: '骨架与组织', desc: '登录鉴权、用户 / 部门 / 角色、操作审计', done: true },
-  { key: 'M2', title: '表单', desc: '表单模板配置器、通用表单渲染器', done: false },
-  { key: 'M3', title: '流程定义 + 引擎', desc: '流程配置器、审批引擎（顺序/会签/或签/条件）', done: false },
-  { key: 'M4', title: '发起与工作台', desc: '发起中心、待办工作台、实例详情页', done: false },
-  { key: 'M5', title: '字段累积增强', desc: '驳回重提、运行中追加字段、公式字段', done: false },
+  { key: 'M2', title: '表单', desc: '表单模板配置器、通用表单渲染器', done: true },
+  { key: 'M3', title: '流程定义 + 引擎', desc: '流程配置器、审批引擎（顺序/会签/或签/条件）', done: true },
+  { key: 'M4', title: '发起与工作台', desc: '发起中心、待办工作台、实例详情页', done: true },
+  { key: 'M5', title: '字段累积增强', desc: '驳回重提、运行中追加字段、公式字段', done: true },
   { key: 'M6', title: '打磨与上线', desc: '示例流程、归档导出、Docker 部署', done: false },
 ]
 </script>

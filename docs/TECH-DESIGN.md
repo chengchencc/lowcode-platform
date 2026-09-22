@@ -1,7 +1,7 @@
 # FlowForm 技术设计文档
 
 > 配套：`PRD-lowcode-form-approval.md`。本文是编码依据，随实现推进增量修订。
-> **当前状态：M1 已实现**，M2–M6 为已定稿设计。
+> **当前状态：M1–M5 已实现**（含 PRD §9 两个场景的端到端验证），M6 进行中。
 
 ---
 
@@ -89,12 +89,12 @@ aggregate / machine / router）不得 import db
 | 表 | 里程碑 | 状态 |
 |---|---|---|
 | `departments` / `users` / `roles` / `user_roles` / `audit_logs` | M1 | ✅ 已建（`0001_m1_org_tables.py`） |
-| `form_templates` / `form_versions` | M2 | 待建 |
-| `flow_templates` / `flow_versions` | M3 | 待建 |
-| `flow_instances` / `instance_ext_fields` | M3 / M5 | 待建 |
-| `tasks` / `task_assignments` | M3 | 待建 |
-| `instance_actions` / `data_snapshots` | M3 | 待建 |
-| `notifications` / `attachments` | M4 | 待建 |
+| `form_templates` / `form_versions` | M2 | ✅ 已建（`0002`） |
+| `flow_templates` / `flow_versions` | M3 | ✅ 已建（`0003`） |
+| `flow_instances` / `instance_ext_fields` | M3 / M5 | ✅ 已建（`0003`；机制 C 在 M5 落地） |
+| `tasks` / `task_assignments` | M3 | ✅ 已建（`0003`） |
+| `instance_actions` / `data_snapshots` | M3 | ✅ 已建（`0003`） |
+| `notifications` / `attachments` | M4 | ✅ 已建（`0003`） |
 
 ### 3.2 M1 已落地的设计要点
 
@@ -391,16 +391,46 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 | **M1** ✅ | 仓库骨架 → 迁移 → 模型/安全/认证 → 组织 CRUD → 前端框架与组织三页 | 可登录、可维护组织（62 项测试 + 30 项端到端冒烟通过） |
 | **M2** ✅ | ①`form_schema` 校验 + `form_service` ②表单配置器 ③`expressions.py`（公式，纯后端先行）④通用表单渲染器 ⑤预览 | **能配出报销单表单**（已端到端验证） |
 | **M3** ✅ | ①`types/compile/conditions/machine/router` ②`permissions.py` ③`aggregate/approvers` ④`validate.py` 校验器 ⑤`service.py` 事务编排 ⑥流程配置器 | **单测覆盖 §4.3 语义矩阵**（120 纯核心 + 37 集成）；**可发布报销流程**（已端到端验证） |
-| **M4** | ①草稿/提交/重提 ②`render/timeline/task_service` ③发起中心与发起页 ④工作台四列表 + 实例详情页 ⑤撤回/撤销/终止 ⑥站内通知与角标轮询 | **PRD §9 场景一（请假）端到端跑通** |
-| **M5** | ①驳回重提轮次与快照对照 ②机制 C 追加字段 ③公式与级联下拉补齐 ④消息中心打磨 | **PRD §9 场景二（报销）端到端跑通** |
+| **M4** ✅ | ①草稿/提交/重提 ②`render/timeline/task_service` ③发起中心与发起页 ④工作台四列表 + 实例详情页 ⑤撤回/撤销/终止 ⑥站内通知与角标轮询 | **PRD §9 场景一（请假）端到端跑通**（已端到端验证） |
+| **M5** ✅ | ①驳回重提轮次与快照对照 ②机制 C 追加字段 ③公式与级联下拉补齐 ④消息中心打磨 | **PRD §9 场景二（报销）端到端跑通**（已端到端验证） |
 | **M6** | ①示例流程库 ②归档列表与导出 ③审计查询打磨 ④Docker 一键起 ⑤文档与演示 | 可交付内部试用 |
 
 ---
 
 ## 8. 测试策略
 
-**现状**：319 项 pytest + 60 项前端测试（渲染 + 公式向量），
+**现状**：390 项 pytest + 86 项前端测试（渲染 + 公式向量 + 字段值规则），
 `ruff` 全绿、`vue-tsc` 无错、`vite build` 成功。`bash scripts/check.sh` 一次跑完五项。
+
+**M5 新增的测试**：
+- **字段值规则** `test_value_rules.py`（21 项，纯函数）：文本长度/正则、数字范围、
+  选项归属、级联父子一致性、子表行数（含行号提示）、附件数量
+- **引擎集成**：值规则真的会拦（提交与节点处理两条路径）、错误体带字段引用；
+  机制 C 14 项（权限/必填/停用/快照/通知/控件白名单/归档守卫）
+- **接口层**：机制 C 5 项（设计者可加、普通用户 403、非相关人设计者 403、
+  类型非法、停用）；快照对照路由
+- **场景二端到端** `test_reimburse_scenario.py`（2 项，只走 HTTP）：
+  并行会签 + 驳回重提 + 字段累积 + 机制 C + 归档可见性
+- **前端**：字段值规则与级联清空 10 项、机制 C 入口 2 项、驳回重提与快照对照 2 项
+
+**M5 实现中修掉的真 bug**（都是测试或走查抓出来的）：
+
+1. **`GET /instances/{id}/snapshots/diff` 被路由遮蔽** —— FastAPI 按声明顺序匹配，
+   `/snapshots/{snapshot_id}` 声明在前，"diff" 被当成 snapshot_id 解析，
+   接口恒定 422。前端 `snapshotDiff` 自 M4 起从未通过。**教训**：同前缀的动态段
+   与静态段共存时，静态段必须排在前面。
+2. **动态字段进不了界面** —— `render` 下发的 `schema_data` 是模板 schema，
+   机制 C 的字段只并进了权限表。前端照 schema 渲染，字段永远不出现。
+   改为下发合并后的 schema（前端仍不必区分两者）。
+3. **追加字段会「写成功但响应 403」** —— 接口先落库再渲染，而渲染里有可见性校验；
+   设计者若不是相关人，字段已写入却拿到 403。两步校验（看得见 + 管理员/设计者）
+   都挪到落库之前，与 PRD §2「设计者无审批数据管理权」对齐。
+4. **值校验只活在前端** —— `formValue.ts` 的注释写着「提交时服务端会重新校验一遍」，
+   实际从未校验。补 `engine/value_rules.py`，并在提交与处理两条路径上执行。
+5. **机制 C 的通知去重键用了字段名** —— 同一实例追加两个同名字段时，
+   第二条通知被静默吞掉。改用 `field_key`（唯一）。
+6. **级联下拉的脏值** —— 父字段从「差旅」改成「办公」后子值仍停在「机票」。
+   前端在父值变化时清空对不上的子值（渲染器唯一变更点），服务端按同一规则兜底。
 
 **M3 新增的测试**：
 - **引擎纯核心** `test_engine_core.py`（120 项，不依赖数据库）：
