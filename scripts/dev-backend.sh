@@ -14,6 +14,9 @@ ensure_env_file
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 
+# 先自己检查端口，避免直接抛 WinError 10013 / EADDRINUSE
+require_free_port "$PORT"
+
 printf '\n'
 info "后端开发服务器"
 printf '    地址     %shttp://%s:%s%s\n' "$C_DIM" "$HOST" "$PORT" "$C_RESET"

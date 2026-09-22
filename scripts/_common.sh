@@ -81,3 +81,46 @@ ensure_env_file() {
     ok "已生成 backend/.env（生产环境请修改 JWT_SECRET）"
   fi
 }
+
+# ---- 端口 ----
+
+#: 端口被占用时 Windows 报的是 WinError 10013（"以一种访问权限不允许的方式做了
+#: 一个访问套接字的尝试"），Linux 报 "Address already in use"。前者完全看不出
+#: 是端口问题，所以启动前先自己检查一次，给出可操作的提示。
+port_holder() {
+  # 尽力找出占用端口的进程，找不到就返回空
+  local port="$1" pid
+  if command -v netstat >/dev/null 2>&1; then
+    pid="$(netstat -ano 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -i listening | head -1 | awk '{print $NF}')"
+    [ -n "$pid" ] && [ "$pid" != "0" ] && printf '%s' "$pid"
+  fi
+}
+
+require_free_port() {
+  local port="$1"
+  if ! "$VENV_PY" - "$port" <<'PY' 2>/dev/null
+import socket, sys
+sock = socket.socket()
+sock.settimeout(0.6)
+try:
+    # 连得上就说明有人在监听 —— 比 bind 探测更可靠（不受 SO_REUSEADDR 影响）
+    listening = sock.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0
+finally:
+    sock.close()
+sys.exit(1 if listening else 0)
+PY
+  then
+    local pid; pid="$(port_holder "$port")"
+    fail "端口 $port 已被占用，无法启动后端。"
+    if [ -n "$pid" ]; then
+      printf '    占用进程 PID: %s\n' "$pid" >&2
+      printf '    Windows:  taskkill /F /PID %s\n' "$pid" >&2
+      printf '    Git Bash: powershell -Command "Stop-Process -Id %s -Force"\n' "$pid" >&2
+    fi
+    printf '    也可以换端口启动：PORT=8001 bash scripts/dev-backend.sh\n' >&2
+    printf '\n' >&2
+    printf '    %s提示：之前用 Ctrl+C 之外的方式关掉后端（或直接关终端）时，' "$C_DIM" >&2
+    printf '进程可能残留。%s\n' "$C_RESET" >&2
+    exit 1
+  fi
+}
