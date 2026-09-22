@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# 跑全套校验：后端测试 + lint + 前端类型检查 + 构建。
+# 校验。**默认全量**，也可以只跑受影响的一部分。
 #
-#   bash scripts/check.sh
+#   bash scripts/check.sh                 # 全量五项（提交前 / 里程碑收尾）
+#   bash scripts/check.sh quick           # ruff + vue-tsc + vitest，约 1 分钟
+#   bash scripts/check.sh backend         # pytest + ruff
+#   bash scripts/check.sh backend tests/test_engine_service.py   # 只跑指定文件
+#   bash scripts/check.sh frontend        # vue-tsc + vitest + build
 #
-# 四项全部执行完再汇总（不提前退出），一次就能看到所有问题。
+# 迭代时用 quick 或指定文件；改动跨前后端、或准备提交时再跑全量。
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 require_venv
 require_node
+
+SCOPE="${1:-all}"
+shift 2>/dev/null || true
 
 declare -a NAMES=()
 declare -a STATUSES=()
@@ -24,18 +31,54 @@ run_step() {
   fi
 }
 
-run_backend_tests() { (cd "$BACKEND" && "$VENV_PY" -m pytest -q); }
+# 后端：可选地只跑指定测试文件（省下全量里的大头）
+run_backend_tests() {
+  if [ "$#" -gt 0 ]; then
+    # 指定文件时**关掉并行**：pyproject 里的 `--dist loadfile` 会把同一个文件的
+    # 测试压到一个 worker，单文件跑不但没并行收益，还白付 worker 启动开销。
+    (cd "$BACKEND" && "$VENV_PY" -m pytest -q -n0 "$@")
+  else
+    (cd "$BACKEND" && "$VENV_PY" -m pytest -q)
+  fi
+}
 run_backend_lint()  { (cd "$BACKEND" && "$VENV_PY" -m ruff check app tests); }
 run_frontend_types() { (cd "$FRONTEND" && npm run --silent typecheck); }
-# 渲染冒烟：真正挂载每个页面，抓「组件没注册」这类 typecheck/build 都放行的问题
 run_frontend_render() { (cd "$FRONTEND" && npm run --silent test); }
 run_frontend_build() { (cd "$FRONTEND" && npx --no-install vite build >/dev/null && echo "构建成功"); }
 
-run_step "后端测试 (pytest)"        run_backend_tests
-run_step "后端静态检查 (ruff)"      run_backend_lint
-run_step "前端类型检查 (vue-tsc)"   run_frontend_types
-run_step "前端渲染测试 (vitest)"    run_frontend_render
-run_step "前端构建 (vite build)"    run_frontend_build
+case "$SCOPE" in
+  all)
+    run_step "后端测试 (pytest)"        run_backend_tests
+    run_step "后端静态检查 (ruff)"      run_backend_lint
+    run_step "前端类型检查 (vue-tsc)"   run_frontend_types
+    run_step "前端渲染测试 (vitest)"    run_frontend_render
+    run_step "前端构建 (vite build)"    run_frontend_build
+    ;;
+  quick)
+    # 迭代中最常用：三道快关卡，约 1 分钟
+    run_step "后端静态检查 (ruff)"      run_backend_lint
+    run_step "前端类型检查 (vue-tsc)"   run_frontend_types
+    run_step "前端渲染测试 (vitest)"    run_frontend_render
+    ;;
+  backend)
+    if [ "$#" -gt 0 ]; then
+      run_step "后端测试 (pytest $*)"   run_backend_tests "$@"
+    else
+      run_step "后端测试 (pytest)"      run_backend_tests
+    fi
+    run_step "后端静态检查 (ruff)"      run_backend_lint
+    ;;
+  frontend)
+    run_step "前端类型检查 (vue-tsc)"   run_frontend_types
+    run_step "前端渲染测试 (vitest)"    run_frontend_render
+    run_step "前端构建 (vite build)"    run_frontend_build
+    ;;
+  *)
+    fail "未知范围：$SCOPE"
+    printf '    可用：all（默认）| quick | backend [测试文件...] | frontend\n' >&2
+    exit 2
+    ;;
+esac
 
 printf '\n%s──────── 汇总 ────────%s\n' "$C_DIM" "$C_RESET"
 failed=0

@@ -67,7 +67,7 @@ bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
 | `scripts/setup.sh` | 首次搭建（幂等） |
 | `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
-| `scripts/check.sh` | 全套校验：pytest + ruff + vue-tsc + vitest + vite build，逐项汇总 |
+| `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 
@@ -77,6 +77,24 @@ bash scripts/migrate.sh                                  # 升到最新
 bash scripts/migrate.sh current                          # 当前版本
 bash scripts/migrate.sh revision --autogenerate -m "描述" # 依模型生成
 ```
+
+### 校验的范围与耗时
+
+全量约 2.5 分钟，迭代时没必要每次都跑：
+
+| 命令 | 覆盖 | 耗时 |
+|---|---|---|
+| `check.sh backend tests/test_engine_core.py` | 引擎纯核心（不碰数据库） | ~4s |
+| `check.sh backend tests/test_xxx.py` | 指定测试文件 + ruff | ~10s–1min |
+| `check.sh quick` | ruff + vue-tsc + vitest | ~50s |
+| `check.sh backend` | 全部 pytest + ruff | ~1min |
+| `check.sh frontend` | vue-tsc + vitest + build | ~1.5min |
+| `check.sh` | **全量五项** | ~2.5min |
+
+改哪里就跑哪里；**跨前后端的改动、或准备提交时跑全量**。
+
+> pytest 默认并行（`-n auto --dist loadfile`，见 `backend/pyproject.toml`）——
+> 全套 343 项从 4 分钟降到 1 分钟。单进程调试用 `pytest -n0`。
 
 ### 手工命令（不用脚本时）
 
