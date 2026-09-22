@@ -14,7 +14,7 @@
  */
 
 import Antd from 'ant-design-vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouter, createWebHistory, type Router } from 'vue-router'
@@ -526,4 +526,34 @@ describe('布局与 antd 上下文', () => {
     expect(wrapper.find('.ant-layout').exists(), '外层应是 antd Layout').toBe(true)
     wrapper.unmount()
   })
+})
+
+
+describe('设计器的发布按钮可用性', () => {
+  // 曾经的 bug：发布按钮的禁用条件写成 `readonly || !dirty`，
+  // 而设计器有 1.5s 自动保存，保存后 dirty=false → 按钮立刻变灰，
+  // 用户配好流程却点不了发布。typecheck 与 build 都不会发现这类问题。
+  const CASES: Array<[string, unknown, string]> = [
+    ['表单配置器', FormDesignerView, '/admin/forms/1/design'],
+    ['流程配置器', FlowDesignerView, '/admin/flows/1/design'],
+  ]
+
+  for (const [name, component, path] of CASES) {
+    it(`${name}：草稿版本下发布按钮可用`, async () => {
+      const wrapper = await mountView(component, path)
+      await flushPromises()
+
+      const publish = wrapper
+        .findAll('button')
+        .find((b) => b.text().replace(/\s/g, '') === '发布')
+
+      expect(publish, `应能找到「发布」按钮`).toBeTruthy()
+      expect(
+        publish!.attributes('disabled'),
+        '草稿状态下发布按钮不应被禁用',
+      ).toBeUndefined()
+
+      wrapper.unmount()
+    })
+  }
 })

@@ -472,9 +472,11 @@ const treeItems = computed<TreeItem[]>(() => {
             <template #icon><CheckCircleOutlined /></template>
             校验
           </Button>
+          <!-- 只用 readonly 做禁用：设计器有自动保存，dirty 会很快变回 false，
+               用它做条件会让按钮在保存后立刻变灰。publish() 内部会先 save()。 -->
           <Button
             type="primary"
-            :disabled="readonly || !dirty"
+            :disabled="readonly"
             :loading="publishing"
             @click="publish"
           >
