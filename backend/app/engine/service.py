@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.clock import utcnow
 from app.core.constants import (
+    INSTANCE_STATUS_LABELS,
     TERMINAL_STATUSES,
     AggregateMode,
     AssignmentResult,
@@ -1782,11 +1783,4 @@ class EngineService:
 
 def _status_label(status: str) -> str:
     """实例状态的中文名，用于给用户看的错误信息。"""
-    return {
-        InstanceStatus.DRAFT: "草稿",
-        InstanceStatus.RUNNING: "审批中",
-        InstanceStatus.REJECTED: "已驳回",
-        InstanceStatus.APPROVED: "已通过（归档）",
-        InstanceStatus.WITHDRAWN: "已撤回",
-        InstanceStatus.TERMINATED: "已终止",
-    }.get(status, status)
+    return INSTANCE_STATUS_LABELS.get(status, status)

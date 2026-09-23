@@ -219,6 +219,17 @@ TERMINAL_STATUSES: frozenset[str] = frozenset(
     {InstanceStatus.APPROVED, InstanceStatus.WITHDRAWN, InstanceStatus.TERMINATED}
 )
 
+#: 实例状态的中文名。面向人的输出（错误提示、导出、通知）都从这里取，
+#: 免得同一种状态在三个模块里各写一份中文。
+INSTANCE_STATUS_LABELS: dict[str, str] = {
+    InstanceStatus.DRAFT: "草稿",
+    InstanceStatus.RUNNING: "审批中",
+    InstanceStatus.REJECTED: "已驳回",
+    InstanceStatus.APPROVED: "已通过（归档）",
+    InstanceStatus.WITHDRAWN: "已撤回",
+    InstanceStatus.TERMINATED: "已终止",
+}
+
 
 class TaskStatus(StrEnum):
     PENDING = "PENDING"        # 活跃令牌

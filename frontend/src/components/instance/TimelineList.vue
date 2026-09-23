@@ -11,6 +11,8 @@ import { ref } from 'vue'
 
 import type { ActionEntry } from '@/types/instance'
 import { formatDateTime } from '@/utils/datetime'
+import { downloadFile } from '@/utils/download'
+import { feedback } from '@/utils/feedback'
 
 defineProps<{
   actions: ActionEntry[]
@@ -23,6 +25,14 @@ const emit = defineEmits<{ 'view-snapshot': [snapshotId: number] }>()
 const ATimeline = Timeline
 const ATimelineItem = Timeline.Item
 const ATag = Tag
+
+async function downloadAttachment(att: { id: number; file_name: string }): Promise<void> {
+  try {
+    await downloadFile(`/files/${att.id}/download`, att.file_name)
+  } catch {
+    feedback.error('附件下载失败（可能没有权限）')
+  }
+}
 
 const expanded = ref<Set<number>>(new Set())
 
@@ -105,12 +115,12 @@ function hasDetail(action: ActionEntry): boolean {
 
           <div v-if="action.attachments?.length" class="attachments">
             <span class="field-label">附件：</span>
+            <!-- 不能用 <a href>：下载接口只认 Authorization 头，点链接会 401 -->
             <a
               v-for="att in action.attachments"
               :key="att.id"
-              :href="`/api/v1/files/${att.id}/download`"
-              target="_blank"
               class="attachment"
+              @click="downloadAttachment(att)"
             >
               {{ att.file_name }}
             </a>

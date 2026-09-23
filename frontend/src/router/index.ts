@@ -101,6 +101,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '流程配置器', roles: ['designer'], hidden: true },
       },
       {
+        path: 'admin/instances',
+        name: 'instances',
+        component: () => import('@/views/admin/InstanceArchiveView.vue'),
+        meta: { title: '实例管理', adminOnly: true, icon: 'folder' },
+      },
+      {
         path: 'admin/org/users',
         name: 'org-users',
         component: () => import('@/views/admin/org/UserView.vue'),

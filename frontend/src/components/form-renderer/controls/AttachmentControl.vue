@@ -7,10 +7,11 @@
  */
 import { DeleteOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { Image, Upload } from 'ant-design-vue'
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 import { fileApi } from '@/api/modules/form'
 import type { AttachmentInfo, FieldDef } from '@/types/form'
+import { downloadFile, fetchObjectUrl } from '@/utils/download'
 import { feedback } from '@/utils/feedback'
 
 const props = defineProps<{
@@ -42,9 +43,47 @@ const items = computed(() =>
     id,
     info: meta.value.get(id),
     name: meta.value.get(id)?.file_name ?? `附件 #${id}`,
-    url: fileApi.downloadUrl(id),
   })),
 )
+
+/**
+ * 图片缩略图要的是能塞进 `<img src>` 的地址，而下载接口只认 Authorization 头 ——
+ * 直接写接口地址会 401，必须先取回 blob 再转本地 URL。
+ * 卸载时统一 revoke，避免 blob 常驻内存。
+ */
+const objectUrls = ref(new Map<number, string>())
+
+async function ensureObjectUrl(id: number): Promise<void> {
+  if (objectUrls.value.has(id)) return
+  try {
+    const url = await fetchObjectUrl(fileApi.downloadUrl(id))
+    const next = new Map(objectUrls.value)
+    next.set(id, url)
+    objectUrls.value = next
+  } catch {
+    // 没有权限 / 文件已删：留空占位即可，不打扰用户
+  }
+}
+
+watch(
+  () => (isImage.value ? ids.value : []),
+  (current) => {
+    for (const id of current) void ensureObjectUrl(id)
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  for (const url of objectUrls.value.values()) URL.revokeObjectURL(url)
+})
+
+async function open(item: { id: number; name: string }): Promise<void> {
+  try {
+    await downloadFile(fileApi.downloadUrl(item.id), item.name)
+  } catch {
+    feedback.error('附件打不开（可能没有权限）')
+  }
+}
 
 const maxCount = computed(() => props.field.validators?.max_file_count ?? undefined)
 const reachLimit = computed(() => maxCount.value != null && ids.value.length >= maxCount.value)
@@ -84,14 +123,21 @@ function remove(id: number): void {
     <div v-if="items.length" class="attachment-list">
       <div v-for="item in items" :key="item.id" class="attachment-item">
         <template v-if="isImage">
-          <AImage :src="item.url" :width="72" :height="72" class="thumb" />
+          <AImage
+            v-if="objectUrls.get(item.id)"
+            :src="objectUrls.get(item.id)"
+            :width="72"
+            :height="72"
+            class="thumb"
+          />
+          <div v-else class="thumb placeholder text-muted">加载中…</div>
         </template>
         <template v-else>
-          <a :href="item.url" target="_blank" class="file-name">{{ item.name }}</a>
+          <a class="file-name" @click="open(item)">{{ item.name }}</a>
         </template>
 
         <div class="attachment-actions">
-          <a :href="item.url" target="_blank" title="查看">
+          <a title="查看" @click="open(item)">
             <EyeOutlined />
           </a>
           <a v-if="editable" class="danger" title="移除" @click="remove(item.id)">
@@ -138,6 +184,17 @@ function remove(id: number): void {
   border: 1px solid #f0f0f0;
   border-radius: 6px;
   background: #fafafa;
+}
+
+.thumb.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .thumb :deep(img) {

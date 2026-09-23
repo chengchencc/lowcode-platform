@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, func, or_, select
@@ -456,6 +457,38 @@ def build_query(
         like = f"%{keyword}%"
         stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))
     return stmt.order_by(FlowInstance.id.desc())
+
+
+def build_archive_query(
+    db: Session,
+    *,
+    statuses: Sequence[str] | None = None,
+    flow_template_id: int | None = None,
+    keyword: str | None = None,
+    initiator_id: int | None = None,
+    finished_from: datetime | None = None,
+    finished_to: datetime | None = None,
+) -> Select:
+    """归档检索（F8.1）。默认只看**已通过**；管理员查历史时可放开到其他终态。
+
+    与 `build_query` 分开：那个是「我的/相关的单据」，语义是权限视角；
+    这个不参权限 —— 调用方必须先确认调用者是管理员。
+    """
+    stmt = select(FlowInstance).where(
+        FlowInstance.status.in_(list(statuses) if statuses else [InstanceStatus.APPROVED])
+    )
+    if flow_template_id is not None:
+        stmt = stmt.where(FlowInstance.flow_template_id == flow_template_id)
+    if initiator_id is not None:
+        stmt = stmt.where(FlowInstance.initiator_id == initiator_id)
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))
+    if finished_from is not None:
+        stmt = stmt.where(FlowInstance.finished_at >= finished_from)
+    if finished_to is not None:
+        stmt = stmt.where(FlowInstance.finished_at <= finished_to)
+    return stmt.order_by(FlowInstance.finished_at.desc(), FlowInstance.id.desc())
 
 
 def to_out(db: Session, instance: FlowInstance, *, viewer: User | None = None) -> dict[str, Any]:

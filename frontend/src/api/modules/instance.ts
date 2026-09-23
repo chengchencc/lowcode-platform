@@ -22,6 +22,18 @@ export interface InstanceListQuery {
   keyword?: string
 }
 
+export interface ArchiveQuery {
+  page?: number
+  size?: number
+  /** 逗号分隔，默认 APPROVED */
+  status?: string
+  flow_template_id?: number
+  initiator_id?: number
+  keyword?: string
+  finished_from?: string
+  finished_to?: string
+}
+
 export interface TaskListQuery {
   page?: number
   size?: number
@@ -86,6 +98,27 @@ export const instanceApi = {
 
   list(params: InstanceListQuery) {
     return request.get<Page<InstanceItem>>('/instances', { params })
+  },
+
+  // ---- 归档检索与导出（F8）----
+  /** 归档列表（默认只看已通过；管理员专属） */
+  archive(params: ArchiveQuery) {
+    return request.get<Page<InstanceItem>>('/instances/archive', { params })
+  },
+
+  /** 导出归档 CSV。返回下载地址，交给 `utils/download.ts` 带 token 取回 */
+  archiveExportUrl(params: ArchiveQuery) {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    }
+    const suffix = query.toString()
+    return `/instances/archive/export${suffix ? `?${suffix}` : ''}`
+  },
+
+  /** 导出单个实例 */
+  instanceExportUrl(id: number) {
+    return `/instances/${id}/export`
   },
 
   // ---- 实例级操作 ----

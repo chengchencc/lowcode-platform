@@ -11,7 +11,13 @@
  *
  * 数据一次取全（`GET /instances/{id}/render`），避免分多次请求拼装导致的撕裂状态。
  */
-import { ArrowLeftOutlined, HistoryOutlined, RollbackOutlined } from '@ant-design/icons-vue'
+import {
+  ArrowLeftOutlined,
+  DownloadOutlined,
+  HistoryOutlined,
+  PrinterOutlined,
+  RollbackOutlined,
+} from '@ant-design/icons-vue'
 import { Button, Card, Modal, Space, Tag } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -30,6 +36,7 @@ import type { FieldState } from '@/types/form'
 import type { InstanceRender } from '@/types/instance'
 import { INSTANCE_STATUS_META, MY_ROLE_LABELS } from '@/types/instance'
 import { formatDateTime } from '@/utils/datetime'
+import { downloadFile, printPage } from '@/utils/download'
 import { feedback } from '@/utils/feedback'
 
 const route = useRoute()
@@ -217,6 +224,24 @@ const canResubmit = computed(
     data.value?.my_role === 'INITIATOR' &&
     data.value?.instance.status === 'REJECTED',
 )
+
+/** 导出（F8.2）：看得见就能导出，权限由服务端按同一条可见性规则判 */
+const exporting = ref(false)
+
+async function doExport(): Promise<void> {
+  exporting.value = true
+  try {
+    await downloadFile(
+      instanceApi.instanceExportUrl(instanceId.value),
+      `${data.value?.instance.code ?? 'instance'}.csv`,
+    )
+    feedback.success('已开始下载')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -291,6 +316,16 @@ const canResubmit = computed(
               </Button>
               <Button v-if="canAbandon" :loading="operating" @click="doAbandon">撤销申请</Button>
               <Button v-if="canTerminate" danger @click="terminateOpen = true">终止</Button>
+
+              <a-divider type="vertical" class="ops-divider" />
+              <Button :loading="exporting" @click="doExport">
+                <template #icon><DownloadOutlined /></template>
+                导出
+              </Button>
+              <Button @click="printPage">
+                <template #icon><PrinterOutlined /></template>
+                打印
+              </Button>
             </Space>
           </div>
 

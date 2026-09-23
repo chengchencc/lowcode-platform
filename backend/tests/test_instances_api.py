@@ -894,3 +894,156 @@ class TestExtFieldApi:
         assert key not in [
             f["key"] for s in payload["schema_data"]["sections"] for f in s["fields"]
         ]
+
+
+# --------------------------------------------------------------------------- 归档与导出（F8）
+
+
+class TestArchive:
+    """F8.1 归档列表 + F8.2 导出 CSV。"""
+
+    def _finished_instance(self, db, client):
+        """跑完一张单子（提交 → 同意），返回 (instance, headers)。"""
+        initiator = _user(db)
+        approver = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+
+        init_h = login_as(client, initiator.username, PASSWORD)
+        approver_h = login_as(client, approver.username, PASSWORD)
+        instance = _submit_simple(client, init_h, template.id)
+        aid = client.get(f"{BASE}/tasks/todo", headers=approver_h).json()["items"][0][
+            "assignment_id"
+        ]
+        resp = client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=approver_h,
+            json={"action": "AGREE", "field_patch": {"reason": "已归档的事由"}},
+        )
+        assert resp.status_code == 200, resp.text
+        return instance, init_h, approver_h
+
+    def test_archive_lists_approved_only(self, db, client, admin_headers):
+        instance, _init_h, _approver_h = self._finished_instance(db, client)
+
+        # 另有一张还在跑的，不该出现在归档里
+        other, _h, approver_h = self._finished_instance(db, client)
+        # other 已通过；再造一张运行中的
+        initiator2 = _user(db)
+        approver2 = _user(db)
+        template2, _f = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver2.id
+        )
+        db.commit()
+        running = _submit_simple(client, login_as(client, initiator2.username, PASSWORD), template2.id)
+
+        resp = client.get(f"{BASE}/instances/archive", headers=admin_headers)
+        assert resp.status_code == 200, resp.text
+        ids = {row["id"] for row in resp.json()["items"]}
+        assert instance["id"] in ids
+        assert other["id"] in ids
+        assert running["id"] not in ids
+
+        # 关键字/发起人筛选
+        by_code = client.get(
+            f"{BASE}/instances/archive", headers=admin_headers,
+            params={"keyword": instance["code"]},
+        ).json()
+        assert [row["id"] for row in by_code["items"]] == [instance["id"]]
+
+    def test_archive_requires_admin(self, db, client):
+        instance, init_h, _approver_h = self._finished_instance(db, client)
+
+        resp = client.get(f"{BASE}/instances/archive", headers=init_h)
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"]["code"] == "ADMIN_REQUIRED"
+        assert instance  # 用一下，避免未使用告警
+
+    def test_archive_can_widen_status(self, db, client, admin_headers):
+        """查历史时可以放开到其他终态（撤回/终止），默认只看已通过。"""
+        instance, _init_h, _approver_h = self._finished_instance(db, client)
+        resp = client.get(
+            f"{BASE}/instances/archive", headers=admin_headers,
+            params={"status": "APPROVED,TERMINATED"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert instance["id"] in {row["id"] for row in resp.json()["items"]}
+
+    def test_export_csv_has_bom_and_labels(self, db, client, admin_headers):
+        instance, _init_h, _approver_h = self._finished_instance(db, client)
+
+        resp = client.get(
+            f"{BASE}/instances/archive/export", headers=admin_headers,
+            params={"keyword": instance["code"]},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["content-type"].startswith("text/csv")
+
+        text = resp.content.decode("utf-8")
+        assert text.startswith("﻿"), "Excel 靠 BOM 认出 UTF-8"
+        lines = text.lstrip("﻿").splitlines()
+        header = lines[0]
+        # 列名用的是字段标签而不是 key —— 导出的东西是给人看的
+        assert "单号" in header and "事由" in header and "reason" not in header
+        # 数据行：单号 + 提交时填的值（审批节点对申请区只读，值不会变）
+        assert instance["code"] in lines[1]
+        assert "x" in lines[1]
+
+    def test_export_includes_live_ext_field(self, db, client, admin_headers):
+        """导出的列要含运行中追加的动态字段（F8.1 的「完整数据」）。"""
+        initiator = _user(db)
+        approver = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=approver.id
+        )
+        db.commit()
+        init_h = login_as(client, initiator.username, PASSWORD)
+        approver_h = login_as(client, approver.username, PASSWORD)
+        instance = _submit_simple(client, init_h, template.id)
+
+        # 运行中追加字段 → 处理人填上 → 通过归档
+        created = client.post(
+            f"{BASE}/instances/{instance['id']}/ext-fields", headers=admin_headers,
+            json={"label": "合同编号", "type": "text"},
+        )
+        assert created.status_code == 200, created.text
+        key = created.json()["ext_fields"][0]["field_key"]
+
+        aid = client.get(f"{BASE}/tasks/todo", headers=approver_h).json()["items"][0][
+            "assignment_id"
+        ]
+        acted = client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=approver_h,
+            json={"action": "AGREE", "field_patch": {key: "HT-2026-042"}},
+        )
+        assert acted.status_code == 200, acted.text
+
+        resp = client.get(
+            f"{BASE}/instances/archive/export", headers=admin_headers,
+            params={"keyword": instance["code"]},
+        )
+        assert resp.status_code == 200, resp.text
+        lines = resp.content.decode("utf-8").lstrip("﻿").splitlines()
+        assert "合同编号" in lines[0]      # 动态字段也有一列
+        assert "HT-2026-042" in lines[1]   # 值跟着出来
+
+    def test_export_instance_by_initiator(self, db, client):
+        instance, init_h, _approver_h = self._finished_instance(db, client)
+
+        resp = client.get(f"{BASE}/instances/{instance['id']}/export", headers=init_h)
+
+        assert resp.status_code == 200, resp.text
+        text = resp.content.decode("utf-8")
+        assert instance["code"] in text
+        assert "事由" in text
+
+    def test_export_instance_denied_for_outsider(self, db, client):
+        instance, _init_h, _approver_h = self._finished_instance(db, client)
+        outsider = _user(db)
+        db.commit()
+        outsider_h = login_as(client, outsider.username, PASSWORD)
+
+        resp = client.get(f"{BASE}/instances/{instance['id']}/export", headers=outsider_h)
+
+        assert resp.status_code == 403, resp.text

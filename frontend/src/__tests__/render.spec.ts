@@ -213,6 +213,9 @@ vi.mock('@/api/modules/instance', () => {
       snapshotDiff: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue(emptyPage),
       withdraw: vi.fn(), abandon: vi.fn(), terminate: vi.fn(),
+      archive: vi.fn().mockResolvedValue(emptyPage),
+      archiveExportUrl: vi.fn().mockReturnValue('/api/v1/instances/archive/export'),
+      instanceExportUrl: vi.fn().mockReturnValue('/api/v1/instances/1/export'),
       addExtField: vi.fn().mockResolvedValue(render),
       disableExtField: vi.fn().mockResolvedValue(render),
     },
@@ -328,6 +331,7 @@ vi.mock('@/api/modules/form', () => {
 })
 
 import AuditLogView from '@/views/admin/AuditLogView.vue'
+import InstanceArchiveView from '@/views/admin/InstanceArchiveView.vue'
 import FlowDesignerView from '@/views/admin/flow/FlowDesignerView.vue'
 import FlowTemplateListView from '@/views/admin/flow/FlowTemplateListView.vue'
 import FormDesignerView from '@/views/admin/form/FormDesignerView.vue'
@@ -358,6 +362,7 @@ function makeRouter(initialPath = '/'): Router {
       { path: '/admin/org/depts', name: 'org-depts', component: STUB },
       { path: '/admin/org/roles', name: 'org-roles', component: STUB },
       { path: '/admin/audit', name: 'audit', component: STUB },
+      { path: '/admin/instances', name: 'instances', component: STUB },
       { path: '/admin/forms', name: 'form-templates', component: STUB },
       { path: '/admin/forms/:id/design', name: 'form-designer', component: STUB },
       { path: '/admin/flows', name: 'flow-templates', component: STUB },
@@ -421,6 +426,7 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['WorkbenchView', WorkbenchView, '/workbench/todo'],
   ['InstanceDetailView', InstanceDetailView, '/instance/1'],
   ['NotificationCenterView', NotificationCenterView],
+  ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {

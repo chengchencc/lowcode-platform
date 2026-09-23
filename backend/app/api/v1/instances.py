@@ -1,13 +1,17 @@
-"""实例接口：发起、草稿、详情、历史、撤回/终止（F3.x / F4.2 / F4.6）。"""
+"""实例接口：发起、草稿、详情、历史、归档导出、撤回/终止（F3.x / F4.x / F8）。"""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.deps import ClientIp, CurrentUser, DbSession
+from app.core.errors import ForbiddenError
 from app.core.pagination import Page, PageParams, build_page, paginate
+from app.core.policy import is_admin
 from app.engine.ext_fields import ExtFieldSpec
 from app.schemas.common import OkResp
 from app.schemas.instance import (
@@ -20,7 +24,7 @@ from app.schemas.instance import (
     TerminateRequest,
     WithdrawRequest,
 )
-from app.services import instance_service, render_service, snapshot_service
+from app.services import export_service, instance_service, render_service, snapshot_service
 
 router = APIRouter(prefix="/instances", tags=["流程实例"])
 
@@ -227,6 +231,114 @@ def list_instances(
     rows, total = paginate(db, stmt, paging)
     return build_page(
         [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
+    )
+
+
+# --------------------------------------------------------------------------- 归档检索与导出（F8）
+
+
+@router.get("/archive", response_model=Page[InstanceOut], summary="归档列表（F8.1）")
+def list_archive(
+    db: DbSession,
+    user: CurrentUser,
+    paging: Annotated[PageParams, Depends()],
+    instance_status: Annotated[
+        str | None, Query(alias="status", description="默认 APPROVED；可传多个逗号分隔")
+    ] = None,
+    flow_template_id: Annotated[int | None, Query()] = None,
+    initiator_id: Annotated[int | None, Query()] = None,
+    keyword: Annotated[str | None, Query(description="标题/编号模糊匹配")] = None,
+    finished_from: Annotated[datetime | None, Query(description="完成时间起（含）")] = None,
+    finished_to: Annotated[datetime | None, Query(description="完成时间止（含）")] = None,
+) -> dict:
+    """已归档实例的检索（PRD F8.1）。
+
+    管理员专属：这张表是**全组织的单据**，不是「与我相关的」。
+    普通用户的入口是工作台里的「我发起的 / 抄送给我」。
+    """
+    if not is_admin(user):
+        raise ForbiddenError("只有平台管理员可以检索全部归档", code="ADMIN_REQUIRED")
+
+    rows, total = paginate(
+        db,
+        instance_service.build_archive_query(
+            db,
+            statuses=_status_list(instance_status),
+            flow_template_id=flow_template_id,
+            initiator_id=initiator_id,
+            keyword=keyword,
+            finished_from=finished_from,
+            finished_to=finished_to,
+        ),
+        paging,
+    )
+    return build_page(
+        [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
+    )
+
+
+@router.get("/archive/export", summary="导出归档 CSV（F8.2）")
+def export_archive(
+    db: DbSession,
+    user: CurrentUser,
+    instance_status: Annotated[str | None, Query(alias="status")] = None,
+    flow_template_id: Annotated[int | None, Query()] = None,
+    initiator_id: Annotated[int | None, Query()] = None,
+    keyword: Annotated[str | None, Query()] = None,
+    finished_from: Annotated[datetime | None, Query()] = None,
+    finished_to: Annotated[datetime | None, Query()] = None,
+) -> Response:
+    """按同一组筛选条件导出 CSV（列 = 字段标签，含运行中追加的动态字段）。"""
+    if not is_admin(user):
+        raise ForbiddenError("只有平台管理员可以导出归档", code="ADMIN_REQUIRED")
+
+    rows = list(
+        db.scalars(
+            instance_service.build_archive_query(
+                db,
+                statuses=_status_list(instance_status),
+                flow_template_id=flow_template_id,
+                initiator_id=initiator_id,
+                keyword=keyword,
+                finished_from=finished_from,
+                finished_to=finished_to,
+            ).limit(export_service.MAX_EXPORT_ROWS)
+        ).all()
+    )
+    return _csv_response(export_service.build_csv(db, rows), export_service.csv_filename())
+
+
+@router.get("/{instance_id}/export", summary="导出单个实例 CSV")
+def export_instance(instance_id: int, db: DbSession, user: CurrentUser) -> Response:
+    """发起人/处理人/管理员都能导出**自己看得见**的单据。
+
+    导出等于把整张单据的数据一次性拿走，可见性校验不能省 ——
+    它和详情页用的是同一条规则（PRD §2）。
+    """
+    instance = instance_service.get_or_404(db, instance_id)
+    instance_service.assert_can_view(db, instance, user)
+    return _csv_response(
+        export_service.build_csv(db, [instance]),
+        export_service.csv_filename(f"flowform-{instance.code or instance.id}"),
+    )
+
+
+def _status_list(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    values = [v.strip().upper() for v in raw.split(",") if v.strip()]
+    return values or None
+
+
+def _csv_response(text: str, filename: str) -> Response:
+    # 文件名可能含中文，用 RFC 5987 的 filename* 交给浏览器解码
+    quoted = quote(filename)
+    return Response(
+        content=text.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"archive.csv\"; filename*=UTF-8''{quoted}",
+        },
     )
 
 

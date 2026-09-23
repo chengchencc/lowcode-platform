@@ -4,6 +4,7 @@ import {
   ApartmentOutlined,
   AuditOutlined,
   DashboardOutlined,
+  FolderOpenOutlined,
   FormOutlined,
   KeyOutlined,
   LogoutOutlined,
@@ -103,11 +104,10 @@ const menuItems = computed<MenuProps['items']>(() => {
       children: [
         { key: 'form-templates', label: '表单模板', icon: () => h(FormOutlined) },
         { key: 'flow-templates', label: '流程模板', icon: () => h(PartitionOutlined) },
-        {
-          key: 'instances',
-          label: h('span', { class: 'menu-soon' }, ['实例管理', h('em', 'M4')]),
-          disabled: true,
-        },
+        // 实例管理只给管理员：它是全组织单据的检索入口，不是「与我相关的」
+        ...(auth.isAdmin
+          ? [{ key: 'instances', label: '实例管理', icon: () => h(FolderOpenOutlined) }]
+          : []),
       ],
     },
   ]
