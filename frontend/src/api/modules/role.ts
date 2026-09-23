@@ -45,8 +45,31 @@ export const roleApi = {
   },
 }
 
+export interface AuditQuery {
+  page?: number
+  size?: number
+  biz_type?: string
+  biz_id?: number
+  actor_id?: number
+  action?: string
+  /** 同时匹配摘要与操作人姓名 */
+  keyword?: string
+  created_from?: string
+  created_to?: string
+}
+
 export const auditApi = {
-  list(params: { page?: number; size?: number; biz_type?: string; actor_id?: number }) {
+  list(params: AuditQuery) {
     return request.get<Page<AuditLogItem>>('/admin/audit-logs', { params })
+  },
+
+  /** 导出地址（下载走 utils/download.ts —— 接口只认 Authorization 头） */
+  exportUrl(params: AuditQuery) {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    }
+    const suffix = query.toString()
+    return `/admin/audit-logs/export${suffix ? `?${suffix}` : ''}`
   },
 }

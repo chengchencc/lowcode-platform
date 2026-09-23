@@ -99,3 +99,42 @@ def test_audit_is_append_only(client, db, admin_headers):
     from app.models import AuditLog
 
     assert not hasattr(AuditLog, "updated_at")
+
+
+def test_audit_filters_and_export(client, admin_headers):
+    """筛选（关键词/动作/类型）与导出 CSV。"""
+    client.post(
+        f"{BASE}/departments", headers=admin_headers, json={"name": "合规部", "code": "COMPLY"}
+    )
+
+    # 关键词同时命中摘要与操作人姓名
+    by_summary = client.get(
+        f"{BASE}/admin/audit-logs", headers=admin_headers, params={"keyword": "合规部"}
+    ).json()
+    assert by_summary["total"] >= 1
+    for item in by_summary["items"]:
+        assert "合规部" in (item["summary"] or "")
+
+    by_actor = client.get(
+        f"{BASE}/admin/audit-logs", headers=admin_headers, params={"keyword": "管理员"}
+    ).json()
+    assert by_actor["total"] >= 1
+
+    # 不存在的动作 → 空结果（而不是全量）
+    empty = client.get(
+        f"{BASE}/admin/audit-logs", headers=admin_headers, params={"action": "NO_SUCH_ACTION"}
+    ).json()
+    assert empty["total"] == 0
+
+    export = client.get(
+        f"{BASE}/admin/audit-logs/export", headers=admin_headers,
+        params={"biz_type": "DEPT"},
+    )
+    assert export.status_code == 200, export.text
+    assert export.headers["content-type"].startswith("text/csv")
+    text = export.content.decode("utf-8")
+    assert text.startswith("﻿")          # Excel 靠 BOM 认 UTF-8
+    lines = text.lstrip("﻿").splitlines()
+    assert lines[0].startswith("时间,操作人,对象类型")
+    assert "部门" in lines[1]              # 对象类型是中文标签，不是 DEPT
+    assert "新建" in lines[1]              # 动作同理

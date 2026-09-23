@@ -64,6 +64,35 @@ class AuditAction(StrEnum):
     COPY = "COPY"
     UPLOAD = "UPLOAD"
 
+#: 审计动作 / 对象的中文名。**前端 `src/stores/app.ts` 是这份映射的镜像**
+#: （列表展示用）—— 新增动作时两边都要加，否则界面上会露出英文枚举值。
+AUDIT_ACTION_LABELS: dict[str, str] = {
+    AuditAction.CREATE: "新建",
+    AuditAction.UPDATE: "修改",
+    AuditAction.DELETE: "删除",
+    AuditAction.ENABLE: "启用",
+    AuditAction.DISABLE: "停用",
+    AuditAction.RESET_PASSWORD: "重置密码",
+    AuditAction.IMPORT: "导入",
+    AuditAction.GRANT_ROLE: "授予角色",
+    AuditAction.REVOKE_ROLE: "移除角色",
+    AuditAction.PUBLISH: "发布",
+    AuditAction.TERMINATE: "终止",
+    AuditAction.ADD_EXT_FIELD: "追加字段",
+    AuditAction.COPY: "复制",
+    AuditAction.UPLOAD: "上传",
+}
+
+AUDIT_BIZ_LABELS: dict[str, str] = {
+    AuditBizType.USER: "用户",
+    AuditBizType.DEPT: "部门",
+    AuditBizType.ROLE: "角色",
+    AuditBizType.FORM_TEMPLATE: "表单模板",
+    AuditBizType.FLOW_TEMPLATE: "流程模板",
+    AuditBizType.INSTANCE: "流程实例",
+}
+
+
 
 class TokenType(StrEnum):
     ACCESS = "access"

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import json
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, select
@@ -47,7 +51,16 @@ def build_query(
     biz_type: str | None = None,
     biz_id: int | None = None,
     actor_id: int | None = None,
+    action: str | None = None,
+    keyword: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> Select:
+    """审计检索（F6.6）。
+
+    `keyword` 同时匹配摘要与操作人姓名：查审计的人往往只记得「谁改的」
+    或者「改的是什么」，逼他先选类型反而不好用。
+    """
     stmt = select(AuditLog)
     if biz_type:
         stmt = stmt.where(AuditLog.biz_type == biz_type)
@@ -55,8 +68,45 @@ def build_query(
         stmt = stmt.where(AuditLog.biz_id == biz_id)
     if actor_id is not None:
         stmt = stmt.where(AuditLog.actor_id == actor_id)
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(AuditLog.summary.like(like) | AuditLog.actor_name.like(like))
+    if created_from is not None:
+        stmt = stmt.where(AuditLog.created_at >= created_from)
+    if created_to is not None:
+        stmt = stmt.where(AuditLog.created_at <= created_to)
     return stmt.order_by(AuditLog.id.desc())
 
 
 def list_logs(db: Session, stmt: Select, params: PageParams) -> tuple[list[AuditLog], int]:
     return paginate(db, stmt, params)
+
+
+# --------------------------------------------------------------------------- 导出
+
+
+def build_csv(rows: list[AuditLog]) -> str:
+    """审计导出（CSV，带 BOM）。
+
+    审计是合规材料，导出的列名用中文、时间按本地习惯写即可 ——
+    它与 `audit_logs` 表的结构不必一一对应，可读比可机读更重要。
+    """
+    from app.core.constants import AUDIT_ACTION_LABELS, AUDIT_BIZ_LABELS
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["时间", "操作人", "对象类型", "对象ID", "动作", "摘要", "IP", "详情"])
+    for row in rows:
+        writer.writerow([
+            row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "",
+            row.actor_name or (f"#{row.actor_id}" if row.actor_id else "系统"),
+            AUDIT_BIZ_LABELS.get(row.biz_type, row.biz_type),
+            row.biz_id,
+            AUDIT_ACTION_LABELS.get(row.action, row.action),
+            row.summary or "",
+            row.ip or "",
+            json.dumps(row.detail, ensure_ascii=False) if row.detail else "",
+        ])
+    return "﻿" + buffer.getvalue()
