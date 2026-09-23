@@ -1,6 +1,13 @@
-"""首启初始化（F6.5）：内置角色 + 示例部门 + 管理员账号。
+"""首启初始化（F6.5）：内置角色 + 示例部门 + 管理员账号 + 示例流程库。
 
 幂等：已存在的一律跳过，所以可以放心地在每次启动时调用。
+
+各段的开关（`backend/.env` / 环境变量）：
+| 开关 | 默认 | 内容 |
+|---|---|---|
+| `SEED_DEMO_ORG` | 开 | 示例部门树与管理员账号 |
+| `SEED_DEMO_ACCOUNTS` | **关** | 张三/李四/王五/赵六 四个试用账号（密码公开，线上必须关） |
+| `SEED_SAMPLE_FLOWS` | 开 | 请假 / 报销 两套可直接发起的示例流程 |
 """
 
 from __future__ import annotations
@@ -14,6 +21,7 @@ from app.core.config import Settings
 from app.core.constants import BUILTIN_ROLES, RoleCode, UserStatus
 from app.core.security import hash_password
 from app.models import Department, Role, User, UserRole
+from app.seeds import demo_accounts, sample_flows
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +70,10 @@ def _ensure_depts(db: Session) -> dict[str, Department]:
 
 def _ensure_admin(
     db: Session, cfg: Settings, roles: dict[str, Role], depts: dict[str, Department]
-) -> None:
-    if db.scalar(select(User.id).where(User.username == cfg.admin_username)):
-        return
+) -> User | None:
+    existing = db.scalar(select(User).where(User.username == cfg.admin_username))
+    if existing is not None:
+        return existing
 
     admin = User(
         username=cfg.admin_username,
@@ -88,6 +97,7 @@ def _ensure_admin(
         cfg.admin_username,
         cfg.admin_password,
     )
+    return admin
 
 
 def run_seed(db: Session, cfg: Settings) -> None:
@@ -95,5 +105,13 @@ def run_seed(db: Session, cfg: Settings) -> None:
     depts: dict[str, Department] = {}
     if cfg.seed_demo_org:
         depts = _ensure_depts(db)
-    _ensure_admin(db, cfg, roles, depts)
+    admin = _ensure_admin(db, cfg, roles, depts)
     db.commit()
+
+    if cfg.seed_demo_accounts:
+        demo_accounts.run_seed(db)
+        db.commit()
+
+    # 示例流程库要挂在某个 created_by 上，用管理员最自然
+    if cfg.seed_sample_flows and admin is not None:
+        sample_flows.run_seed(db, admin, role_ids={code: r.id for code, r in roles.items()})

@@ -46,12 +46,18 @@ class Settings(BaseSettings):
         "txt,csv,md,json,xml,zip,rar,7z"
     )
 
-    # ---- 初始化种子（F6.5）----
+    # ---- 初始化种子（F6.5 / M6）----
     admin_username: str = "admin"
     admin_password: str = "admin123456"
     admin_real_name: str = "平台管理员"
     admin_email: str | None = "admin@example.com"
+    #: 示例部门树 + 初始管理员
     seed_demo_org: bool = True
+    #: 示例账号（张三/李四/王五/赵六）。**密码是公开的**，
+    #: 只在试用环境打开；上线前务必设为 false（容器形态见 .env.example）
+    seed_demo_accounts: bool = False
+    #: 示例流程库（请假 / 报销）。预置数据本身也要发布得出来，走的是同一套校验
+    seed_sample_flows: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
