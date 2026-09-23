@@ -114,6 +114,12 @@ def test_duplicate_code_conflicts(client, designer_headers):
 
 
 def test_list_filters(client, designer_headers):
+    """筛选按条件收窄。
+
+    断言用「包含」而不是「恰好等于」：首启会写入**示例流程库**（M6），
+    关键词「请假」会同时命中示例里的「请假申请单」，
+    分组里也会多出「示例流程库」—— 全等断言依赖「库里只有本用例的数据」。
+    """
     _make_template(client, designer_headers, name="报销单", code="A1", group_name="财务")
     _make_template(client, designer_headers, name="请假单", code="A2", group_name="人事")
 
@@ -125,11 +131,12 @@ def test_list_filters(client, designer_headers):
     by_keyword = client.get(
         f"{BASE}/form-templates", headers=designer_headers, params={"keyword": "请假"}
     ).json()
-    assert [t["name"] for t in by_keyword] == ["请假单"]
+    names = [t["name"] for t in by_keyword]
+    assert "请假单" in names
+    assert all("请假" in n for n in names)
 
-    assert sorted(
-        client.get(f"{BASE}/form-templates/groups", headers=designer_headers).json()
-    ) == ["人事", "财务"]
+    groups = client.get(f"{BASE}/form-templates/groups", headers=designer_headers).json()
+    assert {"人事", "财务"} <= set(groups)
 
 
 def test_update_template_metadata(client, designer_headers):

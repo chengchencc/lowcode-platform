@@ -135,7 +135,7 @@ bash scripts/migrate.sh revision --autogenerate -m "描述" # 依模型生成
 改哪里就跑哪里；**跨前后端的改动、或准备提交时跑全量**。
 
 > pytest 默认并行（`-n auto --dist loadfile`，见 `backend/pyproject.toml`）——
-> 全套 390 项从 4 分钟降到 1 分钟。单进程调试用 `pytest -n0`。
+> 全套 407 项从 4 分钟降到 1 分钟。单进程调试用 `pytest -n0`。
 
 ### 手工命令（不用脚本时）
 
