@@ -1,0 +1,83 @@
+# 一键部署：MySQL 8 + 后端 + 前端（nginx）。
+#
+#   cp .env.example .env   # 至少改 JWT_SECRET 与 MYSQL 密码
+#   docker compose up -d --build
+#   → http://localhost:8080
+#
+# 或者用封装脚本（会自动生成 JWT_SECRET 并等健康检查通过）：
+#   bash scripts/docker-up.sh
+#
+# 与 docker-compose.dev.yml 的分工：那个只起数据库，给本机直跑前后端用；
+# 这个起完整形态，给内部试用/交付用。
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: flowform-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-flowform}
+      MYSQL_USER: ${MYSQL_USER:-flowform}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-flowform123}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - flowform-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1",
+             "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # 刻意**不对外暴露 3306**：只有后端需要连它。
+    # 需要本机连库排查时，临时加 ports: ["3306:3306"] 即可。
+
+  backend:
+    build: ./backend
+    container_name: flowform-backend
+    restart: unless-stopped
+    environment:
+      # 与开发期唯一的差别就是这一行（决策 D1：切库只改连接串）
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-flowform}:${MYSQL_PASSWORD:-flowform123}@mysql:3306/${MYSQL_DATABASE:-flowform}?charset=utf8mb4
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET}
+      DEBUG: "false"
+      # 浏览器与前端同源（nginx 反代 /api），因此这里不需要放行跨域来源
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123456}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      SEED_DEMO_ORG: "true"
+      STORAGE_ROOT: /app/storage
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    volumes:
+      # 附件落在卷里 —— 容器重建不丢文件
+      - flowform-storage:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/readyz', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build: ./frontend
+    container_name: flowform-frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  flowform-mysql-data:
+  flowform-storage:

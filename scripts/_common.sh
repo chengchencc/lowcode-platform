@@ -59,6 +59,20 @@ require_node() {
   fi
 }
 
+# ---- 密钥 ----
+
+# 生成随机密钥（JWT_SECRET 用）。openssl 在 Git Bash 里有，但精简的
+# Linux 发行版常常没装，所以逐级回退到 python3 / /dev/urandom。
+generate_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import secrets; print(secrets.token_hex(32))'
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
 # ---- 配置 ----
 # 只回显数据库类型（sqlite/mysql），不打印可能含密码的连接串
 database_kind() {
