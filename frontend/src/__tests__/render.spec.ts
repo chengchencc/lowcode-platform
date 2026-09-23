@@ -346,6 +346,7 @@ import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { MENU_DEFAULT_PARAMS, buildMenuItems, leafKeys } from '@/layouts/menu'
 import LoginView from '@/views/LoginView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 
@@ -604,17 +605,16 @@ describe('工作台路由可达性', () => {
     }
   })
 
-  it('菜单可直接跳转的项都解析得到路由', () => {
-    // 与 DefaultLayout 的 NAVIGABLE 保持一致；新增菜单项时这里也要补
-    const MENU_KEYS = [
-      'dashboard', 'start-center', 'workbench', 'messages',
-      'form-templates', 'flow-templates', 'audit',
-      'org-users', 'org-depts', 'org-roles',
-    ]
+  it('菜单里的每一项都能解析到路由（列表从菜单结构读，不手维护）', () => {
+    // 曾经这里是手写的 MENU_KEYS，结果「实例管理」加进菜单时漏了同步 ——
+    // 而 DefaultLayout 那边也有一份手维护的白名单，两边一起漏，点了没反应。
+    // 现在菜单结构在 layouts/menu.ts，白名单由路由表推导，这里直接遍历菜单。
     const router = makeRealRouter()
+    const keys = leafKeys(buildMenuItems({ isAdmin: true, todoCount: 3, ccUnread: 1 }))
 
-    for (const name of MENU_KEYS) {
-      const resolved = router.resolve({ name, params: { type: 'todo' } })
+    expect(keys, '菜单里应能找到实例管理').toContain('instances')
+    for (const name of keys) {
+      const resolved = router.resolve({ name, params: MENU_DEFAULT_PARAMS[name] })
       expect(resolved.matched.length, `${name} 应能解析到路由`).toBeGreaterThan(0)
       // 路径里不应残留未填充的参数（如 /workbench/:type）
       expect(resolved.path, `${name} 的路径不应含未填充参数`).not.toMatch(/:[a-zA-Z]/)
@@ -627,15 +627,30 @@ describe('菜单点击能真正跳转', () => {
   // 这才是那个 bug 的直接复现：工作台路由的 type 是必填参数，
   // 菜单若 push({name}) 不带参数，Vue Router 会静默中止导航（点了没反应）。
   // 路由表里的 redirect 只对「按 path 访问」生效，救不了按 name 跳转。
-  it('点击菜单「工作台」落到待办页', async () => {
+  async function mountLayout() {
     const router = makeRealRouter()
+    // 先备好登录态再导航：路由守卫在 push 时就会跑，晚一步就会被踹回登录页
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuthStore(pinia)
+    // 用管理员挂载：菜单里才会出现实例管理 / 操作审计这些项
+    auth.isAdmin = true
+    auth.isDesigner = true
+    auth.resolved = true
+    auth.user = { id: 1, username: 'admin', real_name: '管理员', roles: [] } as never
+
     await router.push('/')
     await router.isReady()
 
     const wrapper = mount(DefaultLayout, {
-      global: { plugins: [createPinia(), router, Antd] },
+      global: { plugins: [pinia, router, Antd] },
     })
     await flushPromises()
+    return { router, wrapper }
+  }
+
+  it('点击菜单「工作台」落到待办页', async () => {
+    const { router, wrapper } = await mountLayout()
 
     const menu = wrapper.findComponent(Menu)
     expect(menu.exists(), '应能找到侧边菜单').toBe(true)
@@ -648,6 +663,24 @@ describe('菜单点击能真正跳转', () => {
 
     wrapper.unmount()
   })
+
+  it('每个菜单项点下去都真的跳转（含实例管理）', async () => {
+    // 「实例管理」曾经点了没反应：菜单项加了，但可跳转白名单是手维护的、漏了它。
+    // 这里逐个点一遍 —— 任何一项跳不动都会红。
+    const { router, wrapper } = await mountLayout()
+    const menu = wrapper.findComponent(Menu)
+    const keys = leafKeys(buildMenuItems({ isAdmin: true, todoCount: 0, ccUnread: 0 }))
+
+    for (const key of keys) {
+      await router.push('/')
+      menu.vm.$emit('click', { key })
+      await flushPromises()
+      expect(router.currentRoute.value.name, `点「${key}」应跳到同名路由`).toBe(key)
+    }
+
+    wrapper.unmount()
+    // 每个页面都是懒加载的真实组件，10 来个菜单项在默认 5s 里跑不完
+  }, 30000)
 })
 
 

@@ -1,26 +1,16 @@
 <script setup lang="ts">
 import type { MenuProps } from 'ant-design-vue'
 import {
-  ApartmentOutlined,
-  AuditOutlined,
-  DashboardOutlined,
-  FolderOpenOutlined,
-  FormOutlined,
   KeyOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  MessageOutlined,
-  PartitionOutlined,
-  RocketOutlined,
-  ScheduleOutlined,
-  TeamOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue'
-import { computed, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '@/api/modules/auth'
+import { MENU_DEFAULT_PARAMS, buildMenuItems, navigableNames } from '@/layouts/menu'
 import { taskApi } from '@/api/modules/instance'
 import { ApiError } from '@/api/http'
 import { useAppStore } from '@/stores/app'
@@ -73,106 +63,34 @@ watch(
 
 provide('refreshTodoSummary', refreshSummary)
 
-/** M2–M4 的入口先以禁用态占位，让导航结构与 PRD §5 的信息架构保持一致。 */
-const menuItems = computed<MenuProps['items']>(() => {
-  const items: NonNullable<MenuProps['items']> = [
-    {
-      key: 'dashboard',
-      label: '首页',
-      icon: () => h(DashboardOutlined),
-    },
-    {
-      key: 'start-center',
-      label: '发起中心',
-      icon: () => h(RocketOutlined),
-    },
-    {
-      key: 'workbench',
-      label: h('span', { class: 'menu-label' }, [
-        '工作台',
-        // 待办角标（F7.2）
-        summary.value.todo
-          ? h('em', { class: 'menu-badge' }, String(summary.value.todo))
-          : null,
-      ]),
-      icon: () => h(ScheduleOutlined),
-    },
-    {
-      key: 'design',
-      label: '审批管理',
-      icon: () => h(PartitionOutlined),
-      children: [
-        { key: 'form-templates', label: '表单模板', icon: () => h(FormOutlined) },
-        { key: 'flow-templates', label: '流程模板', icon: () => h(PartitionOutlined) },
-        // 实例管理只给管理员：它是全组织单据的检索入口，不是「与我相关的」
-        ...(auth.isAdmin
-          ? [{ key: 'instances', label: '实例管理', icon: () => h(FolderOpenOutlined) }]
-          : []),
-      ],
-    },
-  ]
-
-  if (auth.isAdmin) {
-    items.push({
-      key: 'org',
-      label: '组织管理',
-      icon: () => h(ApartmentOutlined),
-      children: [
-        { key: 'org-users', label: '用户管理', icon: () => h(UserOutlined) },
-        { key: 'org-depts', label: '部门管理', icon: () => h(ApartmentOutlined) },
-        { key: 'org-roles', label: '角色管理', icon: () => h(TeamOutlined) },
-      ],
-    })
-    items.push({
-      key: 'audit',
-      label: '操作审计',
-      icon: () => h(AuditOutlined),
-    })
-  }
-
-  items.push({
-    key: 'messages',
-    label: h('span', { class: 'menu-label' }, [
-      '消息中心',
-      summary.value.cc_unread
-        ? h('em', { class: 'menu-badge' }, String(summary.value.cc_unread))
-        : null,
-    ]),
-    icon: () => h(MessageOutlined),
-  })
-
-  return items
-})
+const menuItems = computed<MenuProps['items']>(() =>
+  buildMenuItems({
+    isAdmin: auth.isAdmin,
+    todoCount: summary.value.todo,
+    ccUnread: summary.value.cc_unread,
+  }),
+)
 
 const selectedKeys = computed<string[]>(() => [String(route.name ?? 'dashboard')])
 
 const openKeys = ref<string[]>(['org', 'design'])
 
-/** 可直接跳转的菜单项（没有子菜单的那些）。 */
-const NAVIGABLE = new Set([
-  'dashboard',
-  'audit',
-  'form-templates',
-  'flow-templates',
-  'start-center',
-  'workbench',
-  'messages',
-])
-
 /**
- * 带**必填路径参数**的菜单项 → 默认参数。
- *
- * 少了它 `router.push({name})` 会因缺参而**中止导航**（Vue Router 不报错、
- * 页面也不跳，表现就是「点了没反应」）。工作台曾经就是这样打不开的。
+ * 可跳转的菜单 key 从**路由表推导**（见 layouts/menu.ts 的说明）——
+ * 手维护白名单已经漏过两次，表现都是「点了没反应」。
  */
-const MENU_DEFAULT_PARAMS: Record<string, Record<string, string>> = {
-  workbench: { type: 'todo' },
-}
+const navigable = computed(() => navigableNames(router))
 
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)
-  if (NAVIGABLE.has(key) || key.startsWith('org-')) {
+  if (navigable.value.has(key)) {
     void router.push({ name: key, params: MENU_DEFAULT_PARAMS[key] })
+    return
+  }
+  // 菜单项与路由对不上：开发期直接喊出来，别让它退化成「点了没反应」
+  if (key.startsWith('org-') || key === 'design' || key === 'org') return
+  if (import.meta.env.DEV) {
+    console.warn(`[menu] 菜单项「${key}」没有对应的路由，点击不会有反应`)
   }
 }
 
