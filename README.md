@@ -13,6 +13,7 @@
 >
 > - 需求：`docs/PRD-lowcode-form-approval.md`
 > - 设计：`docs/TECH-DESIGN.md`（含引擎设计、API 契约、里程碑排期、**已知陷阱**）
+> - **引擎代码说明**：`docs/ENGINE.md`（模块地图、一次事件的调用链、改一处跑哪个测试）
 > - **演示脚本**：`docs/DEMO.md`（10 分钟走完请假与报销两条链路）
 > - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
 >   —— 面向熟悉 Spring Boot / .NET Core 的工程师，用 IoC / JPA / Flyway 等已有概念
@@ -210,7 +211,7 @@ lowcode-platform/
 ├─ docker-compose.yml     一键部署（MySQL + 后端 + nginx 前端）
 ├─ docker-compose.dev.yml 只起开发用数据库（默认走 SQLite，切库时才用）
 ├─ scripts/               启动 / 校验 / 迁移 / 部署脚本
-├─ docs/                  PRD、技术设计、演示脚本、Python 技术栈入门
+├─ docs/                  PRD、技术设计、引擎说明、演示脚本、Python 技术栈入门
 ├─ backend/
 │  ├─ Dockerfile          后端镜像（入口：等库 → 迁移 → uvicorn）
 │  ├─ alembic/            迁移（0001 = M1 组织表，0003 = 流程表）
@@ -219,6 +220,7 @@ lowcode-platform/
 │     ├─ db/              会话与可移植列类型
 │     ├─ models/          ORM 模型
 │     ├─ schemas/         Pydantic DTO
+│     ├─ engine/          流程引擎（纯核心 + 事务编排，见 docs/ENGINE.md）
 │     ├─ services/        业务编排
 │     ├─ api/v1/          路由
 │     └─ seeds/           首启初始化：组织 / 示例账号 / 示例流程库
