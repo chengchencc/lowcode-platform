@@ -150,6 +150,12 @@ def test_initiator_scope_roundtrip(client, designer_headers):
 
 
 def test_list_filter_and_keyword(client, designer_headers):
+    """筛选按条件收窄。
+
+    断言用「包含」而不是「恰好等于」：首启会写入**示例流程库**（M6），
+    关键词「请假」同时命中示例里的「请假申请」—— 早先的
+    `== ["请假流程"]` 依赖「库里只有本用例建的两条」，示例库一来就碎了。
+    """
     form_id = _published_form(client, designer_headers)
     _flow(client, designer_headers, form_id, name="报销流程", code="F1", category="财务")
     _flow(client, designer_headers, form_id, name="请假流程", code="F2", category="人事")
@@ -162,7 +168,9 @@ def test_list_filter_and_keyword(client, designer_headers):
     by_keyword = client.get(
         f"{BASE}/flow-templates", headers=designer_headers, params={"keyword": "请假"}
     ).json()
-    assert [t["name"] for t in by_keyword] == ["请假流程"]
+    names = [t["name"] for t in by_keyword]
+    assert "请假流程" in names
+    assert all("请假" in n for n in names)   # 命中的都该含关键字
 
     by_form = client.get(
         f"{BASE}/flow-templates", headers=designer_headers,

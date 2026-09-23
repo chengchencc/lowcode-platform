@@ -5,13 +5,15 @@
 动态审批人、驳回重提、抄送，并按节点控制字段的可见/可编辑权限，
 让表单数据随审批逐节点丰富，全程留痕可审计。
 
-> **当前进度：M5 已完成（M1–M5）。** 组织管理、表单配置器、流程配置器与审批引擎、
-> 发起中心与工作台、实例详情（含驳回重提 / 快照对照 / 运行中追加字段）全部可用；
+> **当前进度：M1–M6 已完成。** 组织管理、表单配置器、流程配置器与审批引擎、
+> 发起中心与工作台、实例详情（含驳回重提 / 快照对照 / 运行中追加字段）、
+> 示例流程库、归档检索与导出、操作审计全部可用；
 > **PRD §9 场景一（请假）与场景二（报销）都已端到端跑通**。
-> M6（示例流程库、归档导出、Docker 部署、文档）进行中。
+> 可交付内部试用 —— 部署看下面的「一键部署」，演示照着 `docs/DEMO.md` 走。
 >
 > - 需求：`docs/PRD-lowcode-form-approval.md`
 > - 设计：`docs/TECH-DESIGN.md`（含引擎设计、API 契约、里程碑排期、**已知陷阱**）
+> - **演示脚本**：`docs/DEMO.md`（10 分钟走完请假与报销两条链路）
 > - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
 >   —— 面向熟悉 Spring Boot / .NET Core 的工程师，用 IoC / JPA / Flyway 等已有概念
 >   对照 FastAPI + SQLAlchemy + Alembic，并标出 review 和调试时容易误判的地方
@@ -41,6 +43,9 @@ bash scripts/setup.sh
 
 幂等，可重复执行。它会创建虚拟环境、装前后端依赖、生成 `.env`、跑数据库迁移。
 
+> **只想先看看效果？** 用 Docker 一条命令起完整形态（MySQL + 后端 + 前端），
+> 见下面的「一键部署」。它还会预置两套可直接发起的示例流程。
+
 ### 启动
 
 开两个终端：
@@ -58,7 +63,40 @@ bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
 
 - 内置角色：平台管理员 / 设计者 / 部门主管 / 财务
 - 示例部门树：总公司 → 技术部 / 产品部 / 财务部 / 人力资源部
+- **示例流程库**：请假申请、费用报销（表单 + 流程都已发布，登录即可发起）
 - 管理员账号：**`admin` / `admin123456`**（来自 `.env`，请登录后立即修改）
+- 示例账号（**默认关闭**，见 `SEED_DEMO_ACCOUNTS`）：张三 / 李四 / 王五 / 赵六，
+  统一密码 `demo123456`。打开后示例流程立刻能走完一遍 —— 但密码是公开的，
+  只适合试用环境。
+
+---
+
+## 一键部署（Docker）
+
+```bash
+bash scripts/docker-up.sh          # 首次会自动生成 .env（含随机 JWT_SECRET）
+```
+
+起 MySQL 8 + 后端 + 前端（nginx），完成后输出访问地址与初始账号。
+重复执行 = 重建镜像并滚动更新，数据在卷里不会丢。
+
+手工等价操作：
+
+```bash
+cp .env.example .env               # 至少改 JWT_SECRET 与 MYSQL 密码
+docker compose up -d --build       # → http://localhost:8080
+docker compose logs -f backend     # 看日志
+docker compose down                # 停止（加 -v 会连数据一起删）
+```
+
+要点：
+
+- 浏览器只与 nginx 打交道：静态资源由它托管，`/api` 反代到后端容器 ——
+  **同源部署，因此不需要 CORS**，也不用给前端打包时塞后端域名
+- 数据库迁移在后端容器**启动时**执行（`docker-entrypoint.sh`），首次启动即建好全部表
+- 附件落在独立卷 `flowform-storage`，容器重建不丢文件
+- MySQL 不想对外暴露时就不暴露（compose 里没写 `ports`）；要本机连库排查再临时加
+- 上线前请：改 `ADMIN_PASSWORD`、关掉 `SEED_DEMO_ACCOUNTS`、给 `JWT_SECRET` 一个好密钥
 
 ---
 
@@ -69,6 +107,7 @@ bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
 | `scripts/setup.sh` | 首次搭建（幂等） |
 | `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
+| `scripts/docker-up.sh` | 一键起完整形态（MySQL + 后端 + nginx 前端） |
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
@@ -168,10 +207,13 @@ SQLAlchemy 的可移植写法（`BigInteger().with_variant(Integer, 'sqlite')`�
 
 ```
 lowcode-platform/
-├─ scripts/               启动 / 校验 / 迁移脚本
-├─ docs/                  PRD、技术设计、Python 技术栈入门
+├─ docker-compose.yml     一键部署（MySQL + 后端 + nginx 前端）
+├─ docker-compose.dev.yml 只起开发用数据库（默认走 SQLite，切库时才用）
+├─ scripts/               启动 / 校验 / 迁移 / 部署脚本
+├─ docs/                  PRD、技术设计、演示脚本、Python 技术栈入门
 ├─ backend/
-│  ├─ alembic/            迁移（0001 = M1 组织表）
+│  ├─ Dockerfile          后端镜像（入口：等库 → 迁移 → uvicorn）
+│  ├─ alembic/            迁移（0001 = M1 组织表，0003 = 流程表）
 │  └─ app/
 │     ├─ core/            配置、时间源、常量、错误、安全、授权判定
 │     ├─ db/              会话与可移植列类型
@@ -179,8 +221,10 @@ lowcode-platform/
 │     ├─ schemas/         Pydantic DTO
 │     ├─ services/        业务编排
 │     ├─ api/v1/          路由
-│     └─ seeds/           首启初始化种子
+│     └─ seeds/           首启初始化：组织 / 示例账号 / 示例流程库
 └─ frontend/
+   ├─ Dockerfile          Node 构建 → nginx 托管（多阶段）
+   ├─ nginx.conf          SPA 回退 + /api 反代
    └─ src/
       ├─ api/             axios 封装（token 刷新、幂等键、错误归一）
       ├─ stores/          auth / app / org
@@ -210,4 +254,7 @@ lowcode-platform/
 | M3 ✅ | 流程配置器、审批引擎（顺序/会签/或签/条件/抄送）+ 单测覆盖语义矩阵 | 可发布报销流程 |
 | M4 ✅ | 发起中心、待办工作台、实例详情页、站内通知 | 请假流程端到端跑通 |
 | M5 ✅ | 驳回重提与快照对照、运行中追加字段、值校验与级联下拉、消息中心 | 报销流程端到端跑通 |
-| M6 | 示例流程库、归档导出、Docker 部署、文档 | 可交付内部试用 |
+| M6 ✅ | 示例流程库、归档检索与导出、审计打磨、Docker 部署、文档与演示 | 可交付内部试用 |
+
+> Docker 形态（`docker-compose.yml` + 两个 Dockerfile）**只写完、未在本机实测过**
+> —— 本机 Docker 守护进程当时没起来。首次部署请预留排查时间，欢迎反馈问题。
