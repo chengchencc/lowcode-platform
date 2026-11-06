@@ -48,8 +48,13 @@ ok "依赖已安装"
 # ---- 完成 ----
 printf '\n'
 ok "搭建完成。启动方式："
-printf '    %s终端 1%s  bash scripts/dev-backend.sh\n' "$C_DIM" "$C_RESET"
-printf '    %s终端 2%s  bash scripts/dev-frontend.sh\n' "$C_DIM" "$C_RESET"
+if [ "$IS_WINDOWS" = 1 ]; then
+  printf '    %s终端 1%s  scripts\\dev-backend.cmd\n' "$C_DIM" "$C_RESET"
+  printf '    %s终端 2%s  scripts\\dev-frontend.cmd\n' "$C_DIM" "$C_RESET"
+else
+  printf '    %s终端 1%s  bash scripts/dev-backend.sh\n' "$C_DIM" "$C_RESET"
+  printf '    %s终端 2%s  bash scripts/dev-frontend.sh\n' "$C_DIM" "$C_RESET"
+fi
 printf '\n'
 printf '  前端    http://localhost:5173\n'
 printf '  API 文档 http://127.0.0.1:8000/docs\n'

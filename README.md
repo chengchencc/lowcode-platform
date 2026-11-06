@@ -38,6 +38,14 @@
 
 ### 一键搭建
 
+Windows（cmd / PowerShell，不经过 WSL）：
+
+```bat
+scripts\setup.cmd
+```
+
+Git Bash / Linux / macOS：
+
 ```bash
 bash scripts/setup.sh
 ```
@@ -49,14 +57,29 @@ bash scripts/setup.sh
 
 ### 启动
 
-开两个终端：
+Windows 开两个 cmd / PowerShell 终端（不经过 WSL）：
+
+```bat
+rem 终端 1 → http://127.0.0.1:8000
+scripts\dev-backend.cmd
+
+rem 终端 2 → http://localhost:5173
+scripts\dev-frontend.cmd
+```
+
+Git Bash / Linux / macOS：
 
 ```bash
-bash scripts/dev-backend.sh     # 终端 1 → http://127.0.0.1:8000
-bash scripts/dev-frontend.sh    # 终端 2 → http://localhost:5173
+bash scripts/dev-backend.sh
+bash scripts/dev-frontend.sh
 ```
 
 打开 http://localhost:5173 登录。
+
+> Windows 的 `scripts\*.cmd` 会显式找到 Git Bash 再执行对应 `.sh`。
+> 在 cmd / PowerShell 里直接敲 `bash scripts\dev-backend.sh` 时，`bash` 可能
+> 解析到 `C:\Windows\System32\bash.exe`（WSL），而 WSL 看不到 Windows 的
+> `.venv`，会报「未找到 Python 虚拟环境」。
 
 > 前端请用 `localhost` 而非 `127.0.0.1` —— Vite 在 Windows 上绑的是 IPv6 `::1`。
 
@@ -112,6 +135,10 @@ docker compose down                # 停止（加 -v 会连数据一起删）
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
+
+> Windows 上 `setup` / `dev-backend` / `dev-frontend` 另有 `scripts\*.cmd`
+> 入口，cmd 与 PowerShell 都能直接运行，且不会落到 WSL。换端口：cmd 里先
+> `set PORT=8001`，PowerShell 里先 `$env:PORT=8001`，再运行 `scripts\dev-backend.cmd`。
 
 ```bash
 # 迁移

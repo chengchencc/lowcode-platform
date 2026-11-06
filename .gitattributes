@@ -6,6 +6,9 @@
 # 脚本会完全无法执行。这里显式锁死 LF。
 *.sh text eol=lf
 
+# Windows 批处理必须是 CRLF。
+*.cmd text eol=crlf
+
 # 其余文本交给 Git 自动判定
 * text=auto
 

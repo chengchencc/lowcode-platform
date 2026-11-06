@@ -10,6 +10,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 
+# ---- 平台 ----
+# MSYS / MinGW = Git Bash（Windows）。提示里据此给出 Windows 原生入口，
+# 免得用户回到 cmd / PowerShell 里又敲 `bash ...` 被 WSL 接管。
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+  *)                    IS_WINDOWS=0 ;;
+esac
+
 # ---- 输出 ----
 if [ -t 1 ]; then
   C_DIM=$'\033[2m'; C_RED=$'\033[31m'; C_GREEN=$'\033[32m'
@@ -131,7 +139,11 @@ PY
       printf '    Windows:  taskkill /F /PID %s\n' "$pid" >&2
       printf '    Git Bash: powershell -Command "Stop-Process -Id %s -Force"\n' "$pid" >&2
     fi
-    printf '    也可以换端口启动：PORT=8001 bash scripts/dev-backend.sh\n' >&2
+    if [ "$IS_WINDOWS" = 1 ]; then
+      printf '    也可以换端口启动：set PORT=8001 ^&^& scripts\\dev-backend.cmd\n' >&2
+    else
+      printf '    也可以换端口启动：PORT=8001 bash scripts/dev-backend.sh\n' >&2
+    fi
     printf '\n' >&2
     printf '    %s提示：之前用 Ctrl+C 之外的方式关掉后端（或直接关终端）时，' "$C_DIM" >&2
     printf '进程可能残留。%s\n' "$C_RESET" >&2

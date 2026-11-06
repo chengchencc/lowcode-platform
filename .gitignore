@@ -30,7 +30,8 @@ coverage/
 *.sqlite3
 
 # ---- 运行时数据 ----
-storage/
+/backend/storage/
+# storage/
 uploads/
 logs/
 *.log

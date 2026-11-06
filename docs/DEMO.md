@@ -6,6 +6,19 @@
 
 ## 0. 准备
 
+Windows（cmd / PowerShell，不经过 WSL）：
+
+```bat
+rem 首次
+scripts\setup.cmd
+
+rem 终端 1 / 终端 2
+scripts\dev-backend.cmd
+scripts\dev-frontend.cmd
+```
+
+Git Bash / Linux / macOS：
+
 ```bash
 bash scripts/setup.sh          # 首次
 bash scripts/dev-backend.sh    # 终端 1
