@@ -28,7 +28,7 @@ from typing import Any
 
 from app.core.constants import COMPUTED_FIELD_TYPES, DISPLAY_FIELD_TYPES, SectionStage
 from app.engine.conditions import evaluate_group
-from app.schemas.flow_definition import FieldPermissionRule, PermMode
+from app.schemas.flow_definition import FieldPermissionRule
 
 #: 权限模式 → (visible, editable, required)
 MODE_TABLE: dict[str, tuple[bool, bool, bool]] = {
@@ -171,12 +171,18 @@ def _resolve_one(
 ) -> FieldPermission:
     # ---- L0 节点类型默认 ----
     if node_type == "start":
-        mode: PermMode = "editable" if visible_at_start else "hidden"
-        perm = _from_mode(
-            mode,
-            "L0:start 阶段"
-            + ("（字段标记为发起可见）" if visible_at_start else "（补充字段默认隐藏）"),
-        )
+        if field_type in DISPLAY_FIELD_TYPES:
+            # 展示控件不是数据字段，visible_at_start 不对它生效：
+            # 它跟随分区阶段 —— 申请区显示，补充/审批/归档区在发起阶段隐藏。
+            mode = "readonly" if section_stage == SectionStage.APPLY else "hidden"
+            perm = _from_mode(mode, "L0:start 阶段（展示控件跟随分区）")
+        else:
+            mode = "editable" if visible_at_start else "hidden"
+            perm = _from_mode(
+                mode,
+                "L0:start 阶段"
+                + ("（字段标记为发起可见）" if visible_at_start else "（补充字段默认隐藏）"),
+            )
     else:
         # 申请区在后续节点默认只读；其他区（审批区/补充区/归档区）默认隐藏，
         # 由节点显式打开 —— 这就是「财务补充字段申请人全程看不到」的默认保障
