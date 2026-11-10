@@ -1,0 +1,99 @@
+{
+  "description": "表单联动规则前后端共享测试向量（M9）。后端 test_form_rules.py 与前端 formRules.spec.ts 消费同一份文件。",
+  "cases": [
+    {
+      "name": "条件命中时隐藏字段",
+      "base": {
+        "is_travel": { "visible": true, "editable": true, "required": false },
+        "travel_detail": { "visible": true, "editable": true, "required": false }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "when": { "op": "and", "conditions": [{ "field": "is_travel", "cmp": "==", "value": true }] },
+          "effects": [{ "target": "travel_detail", "effect": "hidden" }]
+        }
+      ],
+      "values": { "is_travel": true },
+      "expected": {
+        "is_travel": { "visible": true, "editable": true, "required": false },
+        "travel_detail": { "visible": false, "editable": false, "required": false }
+      }
+    },
+    {
+      "name": "条件未命中时保持基础权限",
+      "base": {
+        "is_travel": { "visible": true, "editable": true, "required": false },
+        "travel_detail": { "visible": true, "editable": true, "required": false }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "when": { "op": "and", "conditions": [{ "field": "is_travel", "cmp": "==", "value": true }] },
+          "effects": [{ "target": "travel_detail", "effect": "hidden" }]
+        }
+      ],
+      "values": { "is_travel": false },
+      "expected": {
+        "is_travel": { "visible": true, "editable": true, "required": false },
+        "travel_detail": { "visible": true, "editable": true, "required": false }
+      }
+    },
+    {
+      "name": "只读规则不能点亮已隐藏字段",
+      "base": {
+        "amount": { "visible": false, "editable": false, "required": false }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "when": { "op": "and", "conditions": [] },
+          "effects": [{ "target": "amount", "effect": "readonly" }]
+        }
+      ],
+      "values": {},
+      "expected": {
+        "amount": { "visible": false, "editable": false, "required": false }
+      }
+    },
+    {
+      "name": "必填只对可见且可编辑字段生效",
+      "base": {
+        "note": { "visible": true, "editable": false, "required": false }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "when": { "op": "and", "conditions": [] },
+          "effects": [{ "target": "note", "effect": "required" }]
+        }
+      ],
+      "values": {},
+      "expected": {
+        "note": { "visible": true, "editable": false, "required": false }
+      }
+    },
+    {
+      "name": "hidden 优先于 required（与规则声明顺序无关）",
+      "base": {
+        "note": { "visible": true, "editable": true, "required": false }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "when": { "op": "and", "conditions": [] },
+          "effects": [{ "target": "note", "effect": "required" }]
+        },
+        {
+          "id": "r2",
+          "when": { "op": "and", "conditions": [] },
+          "effects": [{ "target": "note", "effect": "hidden" }]
+        }
+      ],
+      "values": {},
+      "expected": {
+        "note": { "visible": false, "editable": false, "required": false }
+      }
+    }
+  ]
+}
