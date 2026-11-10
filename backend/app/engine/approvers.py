@@ -48,6 +48,8 @@ class ApproverContext:
     prev_actors: Mapping[str, Sequence[int]] = field(default_factory=dict)
     #: 上一个完成节点的 id（prev_node_actors 未指定 node_id 时的默认目标）
     last_completed_node_id: str | None = None
+    #: 发起节点 id —— prev_node_actors 指向它时解析为发起人
+    start_node_id: str | None = None
     #: 发布时校验过「无审批人」的节点：这些节点即使未命中也不算异常
     #: （on_empty="block_publish" 的节点在发布阶段就该被拦下）
     strict_on_empty: bool = False
@@ -137,13 +139,22 @@ def resolve_source(
 
     if source.type == "prev_node_actors":
         node_id = source.node_id or ctx.last_completed_node_id
-        if not node_id:
-            return [], "上一节点处理人（无可用节点）"
+        # 上一节点就是发起节点（首个审批节点的默认情况）：处理人即发起人
+        if not node_id or node_id == ctx.start_node_id:
+            return [ctx.initiator_id], "发起人（上一节点）"
         actors = list(ctx.prev_actors.get(node_id, ()))
         ids = provider.active_user_ids(actors)
         return ids, f"节点 {node_id} 的处理人"
 
     return [], f"未知来源 {source.type}"
+
+
+def _resolves_to_initiator(source: AssigneeSource, ctx: ApproverContext) -> bool:
+    """该来源是否明确取到了发起节点（上一节点=发起人）。"""
+    if source.type != "prev_node_actors":
+        return False
+    node_id = source.node_id or ctx.last_completed_node_id
+    return not node_id or node_id == ctx.start_node_id
 
 
 def resolve_approvers(
@@ -161,8 +172,12 @@ def resolve_approvers(
 
     for source in rule.sources:
         ids, description = resolve_source(source, ctx, provider)
-        # 发起人自己不做自己的审批人（避免自审）
-        filtered = [uid for uid in ids if uid != ctx.initiator_id]
+        # 发起人自己不做自己的审批人（避免自审）；
+        # 但「上一节点处理人」明确选了发起节点，是设计者的有意配置，允许自审。
+        if _resolves_to_initiator(source, ctx):
+            filtered = list(ids)
+        else:
+            filtered = [uid for uid in ids if uid != ctx.initiator_id]
         result.by_source.append({"type": source.type, "desc": description, "user_ids": filtered})
         for uid in filtered:
             seen.setdefault(uid, None)

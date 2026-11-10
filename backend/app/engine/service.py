@@ -1508,6 +1508,7 @@ class EngineService:
             values=instance.current_data or {},
             prev_actors=prev_actors,
             last_completed_node_id=completed[-1].node_key if completed else None,
+            start_node_id=compiled.definition.start.id,
         )
 
     def _pending_tasks(self, instance_id: int, *, exclude_task_id: int | None = None) -> list[Task]:

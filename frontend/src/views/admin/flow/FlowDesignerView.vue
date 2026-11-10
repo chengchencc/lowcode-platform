@@ -86,6 +86,7 @@ async function load(): Promise<void> {
     } else {
       target = await flowApi.createVersion(templateId.value)
     }
+    if (target.status === 'DRAFT') target = await bindLatestFormVersion(target)
     version.value = target
     definition.value = normalizeDefinition(target.definition)
 
@@ -98,6 +99,27 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 草稿版跟随表单的**最新发布版本**。
+ *
+ * 发布流程时后端本来就会锁到「表单当前发布版本」；设计期如果还绑着旧版本，
+ * 表单里新增的字段在审批人、条件、字段权限面板里都选不到。
+ * 只动草稿版，已发布版本仍保持它发布时锁定的表单版本。
+ */
+async function bindLatestFormVersion(target: FlowVersion): Promise<FlowVersion> {
+  if (!template.value) return target
+  const versions = await formApi.listVersions(template.value.form_template_id)
+  const latest = versions
+    .filter((v) => v.status === 'PUBLISHED')
+    .sort((a, b) => b.version_no - a.version_no)[0]
+  if (!latest || latest.id === target.locked_form_version_id) return target
+  // 已绑定的版本更新（极少见）时不要往回退
+  if (latest.version_no <= (target.locked_form_version_no ?? 0)) return target
+  return flowApi.saveVersion(target.id, target.definition, {
+    locked_form_version_id: latest.id,
+  })
 }
 
 /** 后端保证结构完整，这里只兜底缺省字段，避免面板读到 undefined */
@@ -196,7 +218,11 @@ const nodeNameById = computed(() => {
       if (step.type === 'parallel') walk(step.members as StepNode[])
     }
   }
-  if (definition.value) walk(definition.value.steps)
+  if (definition.value) {
+    // 发起节点也列出来：「上一节点处理人」可以把首个审批节点指派给发起人
+    out[definition.value.start.id] = '发起人'
+    walk(definition.value.steps)
+  }
   return out
 })
 
@@ -341,8 +367,8 @@ const treeItems = computed<TreeItem[]>(() => {
           <span class="title">{{ template?.name }}</span>
           <Tag :color="version?.status === 'PUBLISHED' ? 'green' : 'orange'">{{ versionLabel }}</Tag>
           <Tag v-if="readonly" color="red">已冻结，不可编辑</Tag>
-          <Tag v-if="template?.locked_form_version_no" color="blue">
-            锁定表单 v{{ template.locked_form_version_no }}
+          <Tag v-if="version?.locked_form_version_no" color="blue">
+            设计表单 v{{ version.locked_form_version_no }}
           </Tag>
           <a-radio-group v-model:value="viewMode" size="small" button-style="solid">
             <a-radio-button value="canvas">画布</a-radio-button>

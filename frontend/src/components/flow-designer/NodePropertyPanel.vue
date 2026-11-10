@@ -518,15 +518,17 @@ function conditionsOf(branch: Branch): EditableCondition[] {
           </div>
 
           <!-- 上一节点处理人 -->
-          <a-select
-            v-else-if="source.type === 'prev_node_actors'"
-            v-model:value="source.node_id"
-            :options="stepOptions"
-            placeholder="不选则取上一个完成的节点"
-            class="source-value"
-            allow-clear
-            @change="notify"
-          />
+          <div v-else-if="source.type === 'prev_node_actors'">
+            <a-select
+              v-model:value="source.node_id"
+              :options="stepOptions"
+              placeholder="不选则取上一个完成的节点（首个节点为发起人）"
+              class="source-value"
+              allow-clear
+              @change="notify"
+            />
+            <div class="text-muted tiny">选择「发起人」时，首个审批节点由提交申请的人处理</div>
+          </div>
 
           <!-- 发起人指定 -->
           <div v-else-if="source.type === 'initiator_select'">
