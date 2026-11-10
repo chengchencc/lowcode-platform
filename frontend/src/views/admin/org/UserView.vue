@@ -551,6 +551,8 @@ function downloadTemplate(): void {
             :options="roleOptions"
             placeholder="可多选；角色决定审批人解析与发起范围"
             allow-clear
+            show-search
+            option-filter-prop="label"
           />
         </a-form-item>
 

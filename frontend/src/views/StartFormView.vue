@@ -121,10 +121,28 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
 })
 
+/** 同一时刻只允许一个暂存请求：自动暂存和提交可能同时触发，否则会建出两份草稿。 */
+let draftSaving: Promise<void> | null = null
+
 async function saveDraft(quiet = false): Promise<void> {
   if (!options.value) return
+  if (draftSaving) {
+    await draftSaving
+    return
+  }
   // 首次提交时即使没有改动也要先建草稿；已有草稿且无改动则跳过
   if (instanceId.value !== null && !dirty.value) return
+
+  const task = doSaveDraft(quiet)
+  draftSaving = task
+  try {
+    await task
+  } finally {
+    if (draftSaving === task) draftSaving = null
+  }
+}
+
+async function doSaveDraft(quiet: boolean): Promise<void> {
   saving.value = true
   try {
     if (instanceId.value === null) {
@@ -160,6 +178,7 @@ function localIssues() {
 }
 
 async function prepareSubmit(): Promise<void> {
+  if (submitting.value) return
   const issues = localIssues()
   if (issues.length) {
     feedback.error(`还有必填项未完成：${issues.slice(0, 3).map((i) => i.label).join('、')}`)
@@ -178,16 +197,17 @@ async function prepareSubmit(): Promise<void> {
 }
 
 async function doSubmit(picks: Record<string, number[]>): Promise<void> {
-  if (!options.value) return
-  // 先确保草稿已落库（没有草稿则先建）
-  await saveDraft(true)
-  if (instanceId.value === null) {
-    feedback.error('暂存失败，请重试')
-    return
-  }
-
+  if (!options.value || submitting.value) return
+  // 从建草稿开始就进入提交态：连点两次提交不会再发一轮请求
   submitting.value = true
   try {
+    // 先确保草稿已落库（没有草稿则先建）
+    await saveDraft(true)
+    if (instanceId.value === null) {
+      feedback.error('暂存失败，请重试')
+      return
+    }
+
     const result = await instanceApi.submit(instanceId.value, {
       data: values.value,
       assignee_picks: picks,
