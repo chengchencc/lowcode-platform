@@ -89,7 +89,8 @@ function onTableChange(pagination: { current?: number; pageSize?: number }): voi
 }
 
 onMounted(async () => {
-  await Promise.all([org.loadDeptTree(), org.loadRoles()])
+  // 角色可能刚在角色管理里新建/改名；用户页强制刷新一次，避免拿到缓存旧列表
+  await Promise.all([org.loadDeptTree(), org.loadRoles(true)])
   await load()
 })
 

@@ -5,11 +5,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '@/api/http'
 import { roleApi } from '@/api/modules/role'
 import UserSelect from '@/components/common/UserSelect.vue'
+import { useOrgStore } from '@/stores/org'
 import type { DeptMember, Role } from '@/types/org'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
 
 
+const org = useOrgStore()
 const rows = ref<Role[]>([])
 const loading = ref(false)
 const keyword = ref('')
@@ -101,6 +103,8 @@ async function submitEditor(): Promise<void> {
       })
       feedback.success('角色已更新')
     }
+    // 用户/流程设计器共用 org.roles 缓存，角色变更后必须失效
+    org.invalidateRoles()
     editorOpen.value = false
     await load()
   } catch (error) {
@@ -121,6 +125,7 @@ async function removeRole(record: Role): Promise<void> {
   if (!ok) return
   try {
     await roleApi.remove(record.id)
+    org.invalidateRoles()
     feedback.success('角色已删除')
     await load()
   } catch {
