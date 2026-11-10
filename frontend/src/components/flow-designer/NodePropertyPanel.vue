@@ -343,6 +343,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             :options="userOptions"
             mode="multiple"
             placeholder="选择人员"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -355,6 +356,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             :options="roleOptions"
             mode="multiple"
             placeholder="选择角色"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -366,6 +368,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             v-model:value="source.field"
             :options="userFieldOptions"
             placeholder="选择人员控件"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -377,6 +380,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             v-model:value="source.field"
             :options="deptFieldOptions"
             placeholder="选择部门控件"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -388,6 +392,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
               v-model:value="source.dept_field"
               :options="deptFieldOptions"
               placeholder="不选则用发起人所在部门"
+              class="source-value"
               allow-clear
               show-search
               option-filter-prop="label"
@@ -402,6 +407,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             v-model:value="source.node_id"
             :options="stepOptions"
             placeholder="不选则取上一个完成的节点"
+            class="source-value"
             allow-clear
             @change="notify"
           />
@@ -413,7 +419,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
               :options="roleOptions"
               mode="multiple"
               placeholder="候选人范围：角色（可多选）"
-              class="scope-select"
+              class="source-value scope-select"
               @change="notify"
             />
             <div class="text-muted tiny">发起人提交时从这些角色里挑人；还可叠加部门范围</div>
@@ -606,6 +612,12 @@ function conditionsOf(branch: Branch): EditableCondition[] {
   border: 1px solid #f0f0f0;
   border-radius: 6px;
   background: #fafafa;
+}
+
+/* 来源控件在窄属性面板里必须有显式宽度，否则多选下拉会塌成 0 宽，
+   连 placeholder 与下拉菜单都看不到。 */
+.source-value {
+  width: 100%;
 }
 
 .source-head {
