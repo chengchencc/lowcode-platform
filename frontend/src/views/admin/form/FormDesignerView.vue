@@ -181,7 +181,8 @@ function addSection(): void {
   const section = makeSection(schema.value)
   schema.value.sections.push(section)
   resequence(schema.value.sections)
-  selected.value = null
+  // 添加后直接选中分区，右侧属性面板即可改名（fieldKey 为空表示选中的是分区）
+  selected.value = { sectionKey: section.key, fieldKey: '' }
   scheduleSave()
 }
 
@@ -435,7 +436,7 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <div
               class="section-head"
               :class="{ active: selected?.sectionKey === section.key && !selected?.fieldKey }"
-              @click="selected = null"
+              @click="selected = { sectionKey: section.key, fieldKey: '' }"
             >
               <span class="section-name">{{ section.title }}</span>
               <Tag class="stage-mini">{{ SECTION_STAGE_LABELS[section.stage ?? 'apply'] }}</Tag>
