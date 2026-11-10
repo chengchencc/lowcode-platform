@@ -50,6 +50,8 @@ export function normalizeField(field: FieldDef): FieldDef {
   field.validators ??= {}
   field.options ??= []
   field.columns ??= []
+  // antd Select 不接受 null；后端可能把可选 span 序列化成 null
+  if (field.span === null) field.span = undefined
 
   if (DISPLAY_FIELD_TYPES.includes(field.type)) {
     // 展示控件不绑定数据：清掉数据属性，属性面板只保留展示配置

@@ -118,6 +118,8 @@ function normalizeSchema(input: FormSchema): FormSchema {
     sections: (input.sections ?? []).map((section) => ({
       ...section,
       stage: section.stage ?? 'apply',
+      // antd Select 不接受 null：分区列数留空统一用 undefined
+      columns: section.columns ?? undefined,
       fields: (section.fields ?? []).map((f) => {
         normalizeField(f)
         for (const col of f.columns ?? []) normalizeField(col)
