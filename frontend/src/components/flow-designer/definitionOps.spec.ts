@@ -12,9 +12,9 @@ import {
   moveWithinSiblings,
   removeNode,
 } from '@/components/flow-designer/definitionOps'
-import type { FlowDefinition, StepNode } from '@/types/flow'
+import type { ApprovalNode, FillNode, FlowDefinition } from '@/types/flow'
 
-function approval(id: string, name = id): StepNode {
+function approval(id: string, name = id): ApprovalNode {
   return {
     id, type: 'approval', name,
     assignee: { mode: 'SINGLE', sources: [] },
@@ -27,7 +27,7 @@ function approval(id: string, name = id): StepNode {
   }
 }
 
-function fill(id: string, name = id): StepNode {
+function fill(id: string, name = id): FillNode {
   return {
     id, type: 'fill', name,
     assignee: { mode: 'SINGLE', sources: [] },
