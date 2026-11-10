@@ -422,5 +422,6 @@ interface CanvasNode {
 - [x] `bash scripts/check.sh` 全量通过。
 - [x] README / TECH-DESIGN / 本文档状态同步。
 
-**M7 实际测试**：布局纯函数 6 项、定义操作 9 项、画布组件 4 项；
-全量校验为 407 项 pytest + 107 项前端测试，`ruff` / `vue-tsc` / `vite build` 全绿。
+**M7 实际测试**：布局纯函数 6 项、定义操作 9 项、画布组件 6 项、完整设计器集成 1 项；
+全量校验为 407 项 pytest + 110 项前端测试，`ruff` / `vue-tsc` / `vite build` 全绿。
+真机验收中修掉一个指针捕获导致的按钮点击 bug，详见 `TECH-DESIGN.md` §8。

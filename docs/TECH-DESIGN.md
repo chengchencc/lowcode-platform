@@ -405,13 +405,23 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 
 ## 8. 测试策略
 
-**现状**：407 项 pytest + 107 项前端测试（渲染 + 公式向量 + 字段值规则 + 画布），
+**现状**：407 项 pytest + 110 项前端测试（渲染 + 公式向量 + 字段值规则 + 画布），
 `ruff` 全绿、`vue-tsc` 无错、`vite build` 成功。`bash scripts/check.sh` 一次跑完五项。
 
 **M7 新增的测试**：
 - **定义操作** `definitionOps.spec.ts`（9 项）：查找、删除级联、同级移动/插入、加分支/成员、跨容器拖拽、容器自嵌套防护、节点工厂唯一 id
 - **画布布局** `layout.spec.ts`（6 项）：顺序、空流程、条件泳道、并行泳道、嵌套条件、确定性
-- **画布组件** `FlowCanvas.spec.ts`（4 项）：节点/连线渲染、选中、删除、拖拽重排
+- **画布组件** `FlowCanvas.spec.ts`（6 项）：节点/连线渲染、选中、删除、拖拽重排、插入弹窗、pointerdown 指针捕获回归
+- **设计器集成** `render.spec.ts`（1 项）：在完整 `FlowDesignerView` 里点审批节点的“+ / 删除”，验证不是组件孤岛可用
+
+**M7 实现中修掉的真 bug**（浏览器真机复现）：
+
+1. **画布节点按钮点击无响应** —— `FlowCanvas.startPan` 用 `instanceof HTMLElement`
+   判断点击目标；antd 图标的点击目标是 SVG `<path>`（`SVGElement`），判断漏掉后
+   viewport 调用 `setPointerCapture`，后续 `pointerup/click` 全部落到 viewport，
+   节点上的“+ / 删除”永远不触发。改为 `instanceof Element`，并补 pointerdown 回归测试。
+   **教训**：DOM 事件目标不一定是 `HTMLElement`，SVG 子元素很常见；指针捕获一旦发生，
+   click 目标会被整体改写，组件级 happy-dom 测试不一定能发现，需要真实浏览器诊断。
 
 **M5 新增的测试**：
 - **字段值规则** `test_value_rules.py`（21 项，纯函数）：文本长度/正则、数字范围、

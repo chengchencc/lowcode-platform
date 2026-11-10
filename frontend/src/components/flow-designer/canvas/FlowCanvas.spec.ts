@@ -1,5 +1,5 @@
 import Antd from 'ant-design-vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
 import FlowCanvas from '@/components/flow-designer/canvas/FlowCanvas.vue'
@@ -45,6 +45,46 @@ describe('FlowCanvas', () => {
     const wrapper = mountCanvas()
     await wrapper.find('[data-node-id="s1"]').trigger('click')
     expect(wrapper.emitted('update:selectedId')?.[0]).toEqual(['s1'])
+    wrapper.unmount()
+  })
+
+  it('pointerdown 落在图标 SVG 上时不应让画布捕获指针', async () => {
+    const wrapper = mountCanvas()
+    const viewport = wrapper.find('.canvas-viewport').element as HTMLElement
+    const capture = vi.fn()
+    viewport.setPointerCapture = capture
+
+    // 图标内部是 <path>（SVGElement，不是 HTMLElement）。
+    // 曾经用 `instanceof HTMLElement` 判断，漏掉 SVG，viewport 捕获指针后
+    // pointerup/click 都落到 viewport，节点按钮永远不响应。
+    const path = wrapper.find('[data-node-id="s1"] [title="在后面插入节点"] path').element
+    path.dispatchEvent(new MouseEvent('pointerdown', {
+      bubbles: true, button: 0, clientX: 100, clientY: 100,
+    }))
+
+    expect(capture, '按钮区域不应触发画布平移/指针捕获').not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('点击节点上的 + 会打开插入弹窗并新增节点', async () => {
+    const def = definition()
+    const wrapper = mountCanvas(def)
+    const before = def.steps.length
+
+    await wrapper.find('[data-node-id="s1"] [title="在后面插入节点"]').trigger('click')
+    await flushPromises()
+
+    const bodyText = document.body.textContent?.replace(/\s+/g, '') ?? ''
+    expect(bodyText).toContain('插入节点')
+
+    const option = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.replace(/\s+/g, '') === '审批节点')
+    expect(option, '弹窗里应有「审批节点」选项').toBeTruthy()
+    option!.click()
+    await flushPromises()
+
+    expect(def.steps.length).toBe(before + 1)
+    expect(wrapper.emitted('change')).toBeTruthy()
     wrapper.unmount()
   })
 

@@ -81,7 +81,9 @@ let panStart = { x: 0, y: 0, panX: 0, panY: 0 }
 function startPan(event: PointerEvent): void {
   if (event.button !== 0) return
   const target = event.target
-  if (target instanceof HTMLElement && target.closest('.canvas-node, .canvas-toolbar, button')) {
+  // 必须用 Element 而不是 HTMLElement：点击 antd 图标时 target 是 <path>（SVGElement），
+  // 用 HTMLElement 判断会漏掉，导致 viewport 捕获指针、按钮的 click 永远不会触发。
+  if (target instanceof Element && target.closest('.canvas-node, .canvas-toolbar, button')) {
     return
   }
   panning = true

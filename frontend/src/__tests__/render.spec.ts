@@ -549,6 +549,42 @@ describe('布局与 antd 上下文', () => {
 })
 
 
+describe('画布节点按钮（完整设计器集成）', () => {
+  it('审批节点的 + 与删除都能生效', async () => {
+    const { messages, restore } = watchUnresolved()
+    try {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+      const wrapper = await mountView(FlowDesignerView, '/admin/flows/1/design')
+      await flushPromises()
+
+      expect(wrapper.find('[data-node-id="s1"]').exists(), '应渲染审批节点 s1').toBe(true)
+      const before = wrapper.findAll('[data-node-id]').length
+
+      await wrapper.find('[data-node-id="s1"] [title="在后面插入节点"]').trigger('click')
+      await flushPromises()
+      const modalText = document.body.textContent?.replace(/\s+/g, '') ?? ''
+      expect(modalText, '点击 + 应打开插入弹窗').toContain('插入节点')
+
+      const option = Array.from(document.body.querySelectorAll('button'))
+        .find((button) => button.textContent?.replace(/\s+/g, '') === '审批节点')
+      expect(option, '弹窗里应有「审批节点」选项').toBeTruthy()
+      option!.click()
+      await flushPromises()
+      expect(wrapper.findAll('[data-node-id]').length, '插入后节点数应增加').toBe(before + 1)
+
+      await wrapper.find('[data-node-id="s1"] [title="删除节点"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-node-id="s1"]').exists(), '删除后节点应消失').toBe(false)
+
+      expect(messages, `未注册的组件/指令：\n${messages.join('\n')}`).toEqual([])
+      wrapper.unmount()
+    } finally {
+      restore()
+    }
+  })
+})
+
+
 describe('设计器的发布按钮可用性', () => {
   // 曾经的 bug：发布按钮的禁用条件写成 `readonly || !dirty`，
   // 而设计器有 1.5s 自动保存，保存后 dirty=false → 按钮立刻变灰，
