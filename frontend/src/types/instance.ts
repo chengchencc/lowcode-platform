@@ -1,7 +1,6 @@
 /** 实例与任务的 TS 类型，与 backend/app/schemas/instance.py 对齐。 */
 
-import type { FieldState } from '@/types/form'
-import type { FormSchema } from '@/types/form'
+import type { FieldState, FormRule, FormSchema } from '@/types/form'
 
 export type InstanceStatus =
   | 'DRAFT'
@@ -146,6 +145,9 @@ export interface InstanceRender {
   schema_data: FormSchema
   values: Record<string, unknown>
   permissions: Record<string, FieldState & { reason?: string }>
+  /** 不含表单规则的节点权限；前端用它 + form_rules 随输入重算 */
+  base_permissions?: Record<string, FieldState & { reason?: string }>
+  form_rules?: FormRule[]
   progress: ProgressNode[]
   actions: ActionEntry[]
   allowed_actions: TaskAction[]
@@ -199,6 +201,8 @@ export interface StartOptions {
   form_version_no: number
   schema_data: FormSchema
   permissions: Record<string, FieldState & { reason?: string }>
+  base_permissions?: Record<string, FieldState & { reason?: string }>
+  form_rules?: FormRule[]
   initiator_select_nodes: Array<{
     node_id: string
     node_name: string

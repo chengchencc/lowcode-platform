@@ -17,6 +17,7 @@ import { userApi } from '@/api/modules/user'
 import { FormRenderer } from '@/components/form-renderer'
 import type { FieldState } from '@/types/form'
 import type { StartOptions } from '@/types/instance'
+import { applyFormRules } from '@/utils/formRules'
 import { buildInitialValues, validateValues } from '@/utils/formValue'
 import { feedback } from '@/utils/feedback'
 
@@ -31,7 +32,6 @@ const draftId = computed(() => {
 
 const options = ref<StartOptions | null>(null)
 const instanceId = ref<number | null>(null)
-const title = ref('')
 const values = ref<Record<string, unknown>>({})
 const loading = ref(false)
 const submitting = ref(false)
@@ -41,11 +41,16 @@ const dirty = ref(false)
 
 const permissions = computed<Record<string, FieldState>>(() => {
   const raw: Record<string, FieldState> = {}
-  for (const [key, perm] of Object.entries(options.value?.permissions ?? {})) {
+  const source = options.value?.base_permissions ?? options.value?.permissions ?? {}
+  for (const [key, perm] of Object.entries(source)) {
     raw[key] = { visible: perm.visible, editable: perm.editable, required: perm.required }
   }
   return raw
 })
+
+const formRules = computed(
+  () => options.value?.form_rules ?? options.value?.schema_data.rules ?? [],
+)
 
 const needsAssigneePick = computed(() => (options.value?.initiator_select_nodes.length ?? 0) > 0)
 
@@ -55,7 +60,6 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     options.value = await instanceApi.startOptions(flowTemplateId.value)
-    title.value = options.value.flow_template_name
 
     if (draftId.value) {
       // 续填：草稿值优先于默认值
@@ -63,7 +67,6 @@ async function load(): Promise<void> {
       const draft = drafts.find((d) => d.id === draftId.value)
       if (draft) {
         instanceId.value = draft.id
-        title.value = draft.title
         const all = await instanceApi.render(draft.id)
         values.value = { ...buildInitialValues(options.value.schema_data), ...all.values }
         return
@@ -96,18 +99,19 @@ onBeforeUnmount(() => {
 })
 
 async function saveDraft(quiet = false): Promise<void> {
-  if (!options.value || !dirty.value) return
+  if (!options.value) return
+  // 首次提交时即使没有改动也要先建草稿；已有草稿且无改动则跳过
+  if (instanceId.value !== null && !dirty.value) return
   saving.value = true
   try {
     if (instanceId.value === null) {
       const created = await instanceApi.createDraft({
         flow_template_id: flowTemplateId.value,
-        title: title.value,
         data: values.value,
       })
       instanceId.value = created.id
     } else {
-      await instanceApi.updateDraft(instanceId.value, { title: title.value, data: values.value })
+      await instanceApi.updateDraft(instanceId.value, { data: values.value })
     }
     lastSavedAt.value = new Date()
     dirty.value = false
@@ -128,7 +132,8 @@ const candidateUsers = ref<Array<{ value: number; label: string }>>([])
 /** 表单校验失败时把问题指明给用户，而不是让后端 400 回来 */
 function localIssues() {
   if (!options.value) return []
-  return validateValues(options.value.schema_data, values.value, permissions.value)
+  const states = applyFormRules(permissions.value, formRules.value, values.value)
+  return validateValues(options.value.schema_data, values.value, states)
 }
 
 async function prepareSubmit(): Promise<void> {
@@ -222,9 +227,6 @@ function confirmPicks(): void {
             </Space>
           </div>
 
-          <a-form-item label="标题" class="title-field">
-            <a-input v-model:value="title" placeholder="给这次申请起个名字" :maxlength="255" />
-          </a-form-item>
         </Card>
 
         <Card :bordered="false" class="block">
@@ -232,6 +234,7 @@ function confirmPicks(): void {
             :schema="options.schema_data"
             :model-value="values"
             :permissions="permissions"
+            :rules="formRules"
             mode="edit"
             @update:model-value="onFormChange"
           />
@@ -307,11 +310,6 @@ function confirmPicks(): void {
   font-size: 12px;
 }
 
-.title-field {
-  margin-top: 12px;
-  margin-bottom: 0;
-}
-
 .footer-actions {
   display: flex;
   justify-content: center;
@@ -325,5 +323,15 @@ function confirmPicks(): void {
 
 .tiny {
   font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  .footer-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    padding: 10px 0;
+    background: #f5f6f8;
+  }
 }
 </style>

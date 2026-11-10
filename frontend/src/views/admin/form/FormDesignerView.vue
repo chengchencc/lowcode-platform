@@ -16,6 +16,7 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
+  LinkOutlined,
   PlusOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
@@ -26,6 +27,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
 import FieldPropertyPanel from '@/components/form-designer/FieldPropertyPanel.vue'
+import FormRulesPanel from '@/components/form-designer/FormRulesPanel.vue'
 import { FormRenderer } from '@/components/form-renderer'
 import type {
   FieldDef,
@@ -35,7 +37,12 @@ import type {
   FormVersion,
   SectionDef,
 } from '@/types/form'
-import { FIELD_TYPE_GROUPS, FIELD_TYPE_LABELS, SECTION_STAGE_LABELS } from '@/types/form'
+import {
+  FIELD_TYPE_GROUPS,
+  FIELD_TYPE_LABELS,
+  SECTION_STAGE_LABELS,
+  isDisplayField,
+} from '@/types/form'
 import { buildInitialValues } from '@/utils/formValue'
 import { makeColumn, makeField, makeSection, moveInArray, normalizeField, resequence, stripFormulaRefs } from '@/utils/formSchemaEdit'
 import { feedback } from '@/utils/feedback'
@@ -52,8 +59,19 @@ const version = ref<FormVersion | null>(null)
 const schema = ref<FormSchema>({
   sections: [],
   layout: { label_position: 'top', columns: 2 },
+  rules: [],
 })
 const columnOptions = [1, 2, 3, 4].map((n) => ({ value: n, label: `${n} 列` }))
+const titleFieldOptions = computed(() =>
+  schema.value.sections
+    .flatMap((section) => section.fields)
+    .filter(
+      (field) =>
+        !isDisplayField(field)
+        && (field.type === 'text' || field.type === 'textarea'),
+    )
+    .map((field) => ({ value: field.key, label: `${field.label}（${field.key}）` })),
+)
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
@@ -120,6 +138,8 @@ function normalizeSchema(input: FormSchema): FormSchema {
   const next: FormSchema = {
     model_version: input.model_version ?? 1,
     layout: input.layout ?? { label_position: 'top', columns: 2 },
+    rules: input.rules ?? [],
+    title_field: input.title_field ?? undefined,
     sections: (input.sections ?? []).map((section) => ({
       ...section,
       stage: section.stage ?? 'apply',
@@ -215,6 +235,9 @@ function addField(section: SectionDef, type: FieldDef['type']): void {
 
 function removeField(section: SectionDef, field: FieldDef): void {
   section.fields = section.fields.filter((f) => f.key !== field.key)
+  if (schema.value.title_field === field.key) {
+    schema.value.title_field = null
+  }
   // 顺手清掉引用它的公式，避免留下必然报错的配置
   const cleaned = stripFormulaRefs(schema.value, field.key)
   if (cleaned.length) {
@@ -308,6 +331,7 @@ async function publish(): Promise<void> {
 
 // --------------------------------------------------------------------------- 预览
 
+const rulesOpen = ref(false)
 const previewOpen = ref(false)
 const previewValues = ref<Record<string, unknown>>({})
 const previewMode = ref<'edit' | 'readonly'>('edit')
@@ -373,6 +397,10 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <template #icon><CheckCircleOutlined /></template>
             校验
           </Button>
+          <Button @click="rulesOpen = true">
+            <template #icon><LinkOutlined /></template>
+            联动规则
+          </Button>
           <Button @click="openPreview">
             <template #icon><EyeOutlined /></template>
             预览
@@ -420,6 +448,17 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
                 <a-select
                   v-model:value="schema.layout!.columns"
                   :options="columnOptions"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+              <a-form-item label="申请标题字段" help="可选；不配置则用流程模板名">
+                <a-select
+                  v-model:value="schema.title_field"
+                  :options="titleFieldOptions"
+                  allow-clear
+                  show-search
+                  option-filter-prop="label"
+                  placeholder="不使用表单字段"
                   @change="scheduleSave"
                 />
               </a-form-item>
@@ -690,6 +729,15 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
           </ul>
         </div>
       </template>
+    </Drawer>
+
+    <!-- ------------------------------------------------ 联动规则 -->
+    <Drawer v-model:open="rulesOpen" title="字段联动规则" :width="780" placement="right">
+      <FormRulesPanel
+        :schema="schema"
+        :rules="schema.rules ?? []"
+        @change="scheduleSave"
+      />
     </Drawer>
 
     <!-- ------------------------------------------------ 预览 -->

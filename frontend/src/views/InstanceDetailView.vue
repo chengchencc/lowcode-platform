@@ -27,6 +27,7 @@ import { instanceApi } from '@/api/modules/instance'
 import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
 import ExtFieldManager from '@/components/instance/ExtFieldManager.vue'
+import PrintDocument from '@/components/instance/PrintDocument.vue'
 import ProgressBar from '@/components/instance/ProgressBar.vue'
 import ResubmitPanel from '@/components/instance/ResubmitPanel.vue'
 import SnapshotDiff from '@/components/instance/SnapshotDiff.vue'
@@ -62,15 +63,17 @@ const formValues = computed<Record<string, unknown>>(() => ({
   ...fieldPatch.value,
 }))
 
-/** 只有「可编辑」的字段允许改；其余保持服务端下发 */
+/** 节点权限矩阵（不含表单联动规则）；规则交给 FormRenderer 随输入重算 */
 const permissions = computed<Record<string, FieldState>>(() => {
-  const raw = data.value?.permissions ?? {}
+  const raw = data.value?.base_permissions ?? data.value?.permissions ?? {}
   const out: Record<string, FieldState> = {}
   for (const [key, perm] of Object.entries(raw)) {
     out[key] = { visible: perm.visible, editable: perm.editable, required: perm.required }
   }
   return out
 })
+
+const formRules = computed(() => data.value?.form_rules ?? data.value?.schema_data.rules ?? [])
 
 const canEditForm = computed(() => data.value?.my_role === 'CURRENT_HANDLER')
 
@@ -359,6 +362,7 @@ async function doExport(): Promise<void> {
             :schema="data.schema_data"
             :model-value="formValues"
             :permissions="permissions"
+            :rules="formRules"
             :mode="formMode"
             @update:model-value="onFormChange"
           />
@@ -415,6 +419,15 @@ async function doExport(): Promise<void> {
         />
       </a-form-item>
     </Modal>
+
+    <!-- 屏幕隐藏，window.print() 时由全局打印样式显示 -->
+    <PrintDocument
+      v-if="data"
+      :data="data"
+      :values="formValues"
+      :permissions="permissions"
+      :rules="formRules"
+    />
   </div>
 </template>
 
@@ -493,5 +506,25 @@ async function doExport(): Promise<void> {
 
 .mb {
   margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-ops {
+    flex-wrap: wrap;
+  }
+
+  .header-card :deep(.ant-card-body),
+  .block :deep(.ant-card-body) {
+    padding: 12px;
+  }
+
+  .title {
+    font-size: 15px;
+  }
 }
 </style>

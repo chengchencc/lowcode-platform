@@ -18,6 +18,12 @@ body {
   padding: 16px;
 }
 
+@media (max-width: 768px) {
+  .page-container {
+    padding: 8px;
+  }
+}
+
 .page-card {
   background: #fff;
   border-radius: 8px;
@@ -39,4 +45,62 @@ body {
 
 .text-mono {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* ------------------------------------------------------------------ 打印（M10）
+ * 屏幕上隐藏打印文档；window.print() 时只显示它。
+ * 顶部实例详情的导航、按钮、进度条等一律不进入打印输出。
+ */
+.print-document {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-document,
+  .print-document * {
+    visibility: visible;
+  }
+
+  .print-document {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .print-document .section-block {
+    break-inside: avoid;
+  }
+
+  .print-document .stage-tag,
+  .print-document .collapse-btn {
+    display: none !important;
+  }
+
+  .print-document .ant-card {
+    box-shadow: none !important;
+  }
+
+  .print-document table thead {
+    display: table-header-group;
+  }
+
+  .print-document tr,
+  .print-document .display-block {
+    break-inside: avoid;
+  }
 }

@@ -10,6 +10,8 @@
  * - 子表列：  `items[].amount`
  */
 
+import type { ConditionGroup } from '@/types/conditions'
+
 export type SectionStage = 'apply' | 'approve' | 'supplement' | 'archive'
 
 export type FieldType =
@@ -130,10 +132,29 @@ export interface FormLayout {
   columns?: 1 | 2 | 3 | 4
 }
 
+export type RuleEffectType = 'hidden' | 'readonly' | 'required'
+
+export interface RuleEffect {
+  target: string
+  effect: RuleEffectType
+}
+
+export interface FormRule {
+  id: string
+  name?: string | null
+  when: ConditionGroup
+  effects: RuleEffect[]
+  /** 规则把字段隐藏时是否清空值 */
+  clear_when_hidden?: boolean
+}
+
 export interface FormSchema {
   model_version?: number
   layout?: FormLayout
   sections: SectionDef[]
+  rules?: FormRule[]
+  /** 用哪个表单字段作为实例标题；不配置则用流程模板名 */
+  title_field?: string | null
 }
 
 // --------------------------------------------------------------------------- 渲染三态

@@ -47,6 +47,14 @@ function notify(): void {
  */
 function onTypeChange(): void {
   normalizeField(field.value)
+  // 标题字段只能是顶层文本控件；切成别的类型时顺手清掉引用
+  if (
+    props.schema.title_field === field.value.key
+    && field.value.type !== 'text'
+    && field.value.type !== 'textarea'
+  ) {
+    props.schema.title_field = null
+  }
   notify()
 }
 
