@@ -63,7 +63,8 @@ from app.engine.ext_fields import (
     merge_ext_fields,
     normalize_spec,
 )
-from app.engine.fields import apply_field_patch
+from app.engine.fields import FieldDiff, apply_field_patch, field_label_index
+from app.engine.form_rules import apply_form_rules, hidden_clear_keys
 from app.engine.machine import (
     EVENT_ABANDON,
     EVENT_FINISH,
@@ -235,11 +236,11 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, task.node_key, gates=task.gates, round_no=task.round
         )
-        values, diffs = apply_field_patch(
-            current=instance.current_data or {},
-            patch=dict(field_patch or {}),
-            permissions=permissions,
+        values, diffs, permissions = self._apply_patch_with_rules(
+            instance=instance,
             form_schema=form_schema,
+            base_permissions=permissions,
+            patch=dict(field_patch or {}),
         )
         self._assert_required(permissions, values, form_schema, partial=True)
         self._assert_values_valid(form_schema, values, permissions, editable_only=True)
@@ -670,11 +671,11 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, compiled.definition.start.id
         )
-        values, diffs = apply_field_patch(
-            current=instance.current_data or {},
-            patch=values_in,
-            permissions=permissions,
+        values, diffs, permissions = self._apply_patch_with_rules(
+            instance=instance,
             form_schema=form_schema,
+            base_permissions=permissions,
+            patch=values_in,
         )
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
@@ -1406,6 +1407,66 @@ class EngineService:
                 Cursor(node_key, tuple(gates), round_no or instance.round)
             ),
         )
+
+    def _apply_patch_with_rules(
+        self,
+        *,
+        instance: FlowInstance,
+        form_schema: Any,
+        base_permissions: Mapping[str, FieldPermission],
+        patch: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], list[FieldDiff], dict[str, FieldPermission]]:
+        """应用字段补丁，再用联动规则收紧权限并校验。
+
+        规则可能依赖本次提交的新值（例如「是否出差」刚被改成是），所以先用
+        「当前值 + 本次补丁」求一次权限，再吸收补丁；公式/清值可能再次改变
+        条件命中，最多再迭代两轮。
+        """
+        current = instance.current_data or {}
+        candidate = {**current, **patch}
+        effective = apply_form_rules(base_permissions, form_schema, candidate)
+        values, diffs = apply_field_patch(
+            current=current,
+            patch=patch,
+            permissions=effective,
+            form_schema=form_schema,
+        )
+
+        for _ in range(2):
+            next_effective = apply_form_rules(base_permissions, form_schema, values)
+            if next_effective == effective:
+                break
+            effective = next_effective
+            values, diffs = apply_field_patch(
+                current=current,
+                patch=patch,
+                permissions=effective,
+                form_schema=form_schema,
+            )
+
+        clear_keys = hidden_clear_keys(base_permissions, form_schema, values)
+        if clear_keys:
+            labels = field_label_index(form_schema)
+            cleared = False
+            for key in clear_keys:
+                permission = effective.get(key)
+                if permission is None or permission.visible:
+                    continue
+                if key in values and values.get(key) not in (None, "", []):
+                    diffs.append(FieldDiff(key, labels.get(key, key), values.get(key), None))
+                    values.pop(key, None)
+                    cleared = True
+            if cleared:
+                # 清值可能影响公式，公式再重算一遍
+                values, formula_diffs = apply_field_patch(
+                    current=values,
+                    patch={},
+                    permissions=effective,
+                    form_schema=form_schema,
+                )
+                diffs.extend(formula_diffs)
+
+        return values, diffs, effective
 
     def _ext_views(self, instance: FlowInstance) -> list[ExtFieldView]:
         return [

@@ -35,6 +35,7 @@ from app.core.constants import (
     SectionStage,
 )
 from app.core.formula_syntax import IDENTIFIER_PATTERN, strip_string_literals
+from app.schemas.conditions import ConditionGroup, referenced_fields
 
 #: 字段/分区 key 的合法形式。禁止 `.` 与 `[]`（保留给 items[].amount 记法）
 KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -173,12 +174,33 @@ class FormLayout(BaseModel):
     columns: Literal[1, 2, 3, 4] = 2
 
 
+class RuleEffect(BaseModel):
+    """联动规则命中的效果。只允许收紧权限。"""
+
+    target: str = Field(min_length=1, max_length=128)
+    effect: Literal["hidden", "readonly", "required"]
+
+
+class FormRule(BaseModel):
+    """表单字段联动规则（M9）。"""
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str | None = Field(default=None, max_length=128)
+    when: ConditionGroup
+    effects: list[RuleEffect] = Field(default_factory=list)
+    #: 规则把字段隐藏时是否清空值（默认保留）
+    clear_when_hidden: bool = False
+
+
 class FormSchema(BaseModel):
     """表单版本 schema 的根。"""
 
     model_version: int = 1
     layout: FormLayout = Field(default_factory=FormLayout)
     sections: list[SectionDef] = Field(default_factory=list)
+    rules: list[FormRule] = Field(default_factory=list)
+    #: 用哪个表单字段作为实例标题（可选；不配置则用流程模板名）
+    title_field: str | None = Field(default=None, max_length=64)
 
 
 # --------------------------------------------------------------------------- 校验
@@ -567,6 +589,132 @@ def _walk_fields(
     return seen
 
 
+MAX_RULES = 50
+MAX_EFFECTS_PER_RULE = 20
+
+
+def _find_cycle(graph: dict[str, set[str]]) -> list[str] | None:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node: str) -> list[str] | None:
+        if node in visiting:
+            start = stack.index(node)
+            return [*stack[start:], node]
+        if node in visited:
+            return None
+        visiting.add(node)
+        stack.append(node)
+        for nxt in graph.get(node, set()):
+            cycle = visit(nxt)
+            if cycle is not None:
+                return cycle
+        stack.pop()
+        visiting.discard(node)
+        visited.add(node)
+        return None
+
+    for node in graph:
+        cycle = visit(node)
+        if cycle is not None:
+            return cycle
+    return None
+
+
+def _check_rules(
+    rules: list[FormRule],
+    *,
+    data_refs: dict[str, FieldType],
+    target_refs: dict[str, FieldType],
+    issues: list[SchemaIssue],
+) -> None:
+    """联动规则的引用完整性、效果约束与依赖环。"""
+    if len(rules) > MAX_RULES:
+        issues.append(_issue("TOO_MANY_RULES", f"联动规则数量超过上限 {MAX_RULES}", "rules"))
+
+    seen_ids: set[str] = set()
+    graph: dict[str, set[str]] = {}
+
+    for index, rule in enumerate(rules):
+        path = f"rules[{index}]"
+        if rule.id in seen_ids:
+            issues.append(_issue("DUPLICATE_RULE_ID", f"规则标识 “{rule.id}” 重复", f"{path}.id"))
+        seen_ids.add(rule.id)
+
+        if not rule.effects:
+            issues.append(_issue("RULE_NO_EFFECT", "联动规则至少要配置一个效果", path))
+        elif len(rule.effects) > MAX_EFFECTS_PER_RULE:
+            issues.append(
+                _issue(
+                    "TOO_MANY_EFFECTS",
+                    f"单条规则的效果数超过上限 {MAX_EFFECTS_PER_RULE}",
+                    path,
+                )
+            )
+
+        condition_refs = referenced_fields(rule.when)
+        for ref in condition_refs:
+            if ref not in data_refs:
+                issues.append(
+                    _issue(
+                        "RULE_CONDITION_FIELD_MISSING",
+                        f"联动规则的条件引用了不存在或不可用于条件的字段 “{ref}”",
+                        f"{path}.when",
+                    )
+                )
+
+        hidden_targets: set[str] = set()
+        for eidx, effect in enumerate(rule.effects):
+            epath = f"{path}.effects[{eidx}]"
+            if effect.target not in target_refs:
+                if "[]." in effect.target:
+                    message = f"联动目标 “{effect.target}” 是子表列；规则目标暂只支持顶层字段"
+                else:
+                    message = (
+                        f"联动目标 “{effect.target}” 不存在，或不是可用的数据字段"
+                        "（展示控件不能作为目标）"
+                    )
+                issues.append(_issue("RULE_TARGET_INVALID", message, epath))
+                continue
+
+            if effect.effect == "hidden":
+                hidden_targets.add(effect.target)
+            if effect.effect == "required" and target_refs[effect.target] is FieldType.FORMULA:
+                issues.append(
+                    _issue(
+                        "RULE_REQUIRED_ON_COMPUTED",
+                        f"“{effect.target}”是公式字段，设为必填不会生效",
+                        epath,
+                        severity="warning",
+                    )
+                )
+
+            # target 依赖条件里引用到的顶层字段 -> 用于检测间接环
+            edges = graph.setdefault(effect.target, set())
+            edges.update(ref for ref in condition_refs if ref in target_refs)
+
+        if rule.clear_when_hidden and not hidden_targets:
+            issues.append(
+                _issue(
+                    "RULE_CLEAR_WITHOUT_HIDDEN",
+                    "开启了「隐藏时清值」，但规则没有 hidden 效果",
+                    path,
+                    severity="warning",
+                )
+            )
+
+    cycle = _find_cycle(graph)
+    if cycle is not None:
+        issues.append(
+            _issue(
+                "RULE_CYCLE",
+                "联动规则存在循环依赖：" + " → ".join(cycle),
+                "rules",
+            )
+        )
+
+
 def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
     """结构 + 语义校验。返回全部问题（error 会阻断发布，warning 只提示）。"""
     issues: list[SchemaIssue] = []
@@ -639,6 +787,39 @@ def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
                 issues,
                 top_level_keys=formula_fields,
                 subtable_by_key=subtable_by_key,
+            )
+
+    # 联动规则：条件可引用顶层字段与子表列；目标只允许顶层数据字段
+    data_refs: dict[str, FieldType] = {
+        key: ftype for key, ftype in top_level.items() if ftype not in DISPLAY_FIELD_TYPES
+    }
+    for sub in subtable_by_key.values():
+        for col in sub.columns:
+            if col.type not in DISPLAY_FIELD_TYPES:
+                data_refs[f"{sub.key}[].{col.key}"] = col.type
+    target_refs = {key: ftype for key, ftype in data_refs.items() if "[]." not in key}
+    _check_rules(schema.rules, data_refs=data_refs, target_refs=target_refs, issues=issues)
+
+    if schema.title_field:
+        title_type = data_refs.get(schema.title_field)
+        if title_type is None:
+            issues.append(
+                _issue(
+                    "TITLE_FIELD_MISSING",
+                    f"申请标题字段 “{schema.title_field}” 不存在，或不是可用的数据字段",
+                    "title_field",
+                )
+            )
+        elif "[]." in schema.title_field or title_type not in {
+            FieldType.TEXT,
+            FieldType.TEXTAREA,
+        }:
+            issues.append(
+                _issue(
+                    "TITLE_FIELD_TYPE",
+                    "申请标题字段必须是顶层的单行/多行文本控件",
+                    "title_field",
+                )
             )
 
     # 机制 B 的提示：非申请区的字段若 visible_at_start=true，

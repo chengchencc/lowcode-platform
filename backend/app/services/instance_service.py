@@ -23,6 +23,7 @@ from app.core.idgen import create_with_code
 from app.core.policy import is_admin, is_designer
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import ExtFieldSpec
+from app.engine.form_rules import apply_form_rules
 from app.engine.permissions import (
     resolve_field_permissions,
 )
@@ -90,12 +91,13 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
     form_schema = parse_form_schema(form_version.schema)
 
     compiled = compile_definition(current.definition)
-    permissions = resolve_field_permissions(
+    base_permissions = resolve_field_permissions(
         form_schema=form_schema,
         node_type="start",
         rule=compiled.definition.start.fields_permission,
         values={},
     )
+    permissions = apply_form_rules(base_permissions, form_schema, {})
 
     return {
         "flow_template_id": template.id,
@@ -106,6 +108,10 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         "form_version_no": form_version.version_no,
         "schema_data": form_version.schema,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
+        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
+        "form_rules": [
+            rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
+        ],
         # 需要发起人指定审批人的节点（F3.5）
         "initiator_select_nodes": _initiator_select_nodes(db, compiled, current),
         "nodes": _progress_nodes(compiled),
@@ -191,6 +197,17 @@ def get_or_404(db: Session, instance_id: int) -> FlowInstance:
     return instance
 
 
+def _title_from_form(form_schema: FormSchema | None, data: Mapping[str, Any] | None) -> str | None:
+    """按表单配置的 `title_field` 取标题；没配置/没填则返回 None。"""
+    key = getattr(form_schema, "title_field", None)
+    if not key:
+        return None
+    value = (data or {}).get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:255]
+    return None
+
+
 def create_draft(
     db: Session,
     *,
@@ -210,6 +227,9 @@ def create_draft(
         raise NotFoundError("流程没有已发布版本", code="FLOW_VERSION_MISSING")
 
     dept_id = actor.dept_id
+    form_version = db.get(FormVersion, current.locked_form_version_id)
+    form_schema = parse_form_schema(form_version.schema) if form_version else None
+    title_text = title or _title_from_form(form_schema, data) or template.name
 
     def factory(code: str) -> FlowInstance:
         return FlowInstance(
@@ -217,7 +237,7 @@ def create_draft(
             flow_template_id=template.id,
             flow_version_id=current.id,
             form_version_id=current.locked_form_version_id,
-            title=(title or template.name)[:255],
+            title=title_text[:255],
             initiator_id=actor.id,
             initiator_dept_id=dept_id,
             status=InstanceStatus.DRAFT,
@@ -262,8 +282,15 @@ def update_draft(
         form_schema=form_schema,
     )
     instance.current_data = values
+    derived = _title_from_form(form_schema, data)
     if title:
         instance.title = title[:255]
+    elif derived:
+        instance.title = derived
+    elif form_schema.title_field:
+        template = db.get(FlowTemplate, instance.flow_template_id)
+        if template is not None:
+            instance.title = template.name[:255]
     db.commit()
     db.refresh(instance)
     return instance
@@ -311,9 +338,17 @@ def submit(
     resubmit: bool = False,
 ):
     _assert_initiator(instance, actor)
-    title = data.get("__title__")
-    if isinstance(title, str) and title.strip():
-        instance.title = title.strip()[:255]
+    legacy_title = data.get("__title__")
+    form_schema = form_schema_of(db, instance)
+    derived = _title_from_form(form_schema, data)
+    if isinstance(legacy_title, str) and legacy_title.strip():
+        instance.title = legacy_title.strip()[:255]
+    elif derived:
+        instance.title = derived
+    elif form_schema.title_field:
+        template = db.get(FlowTemplate, instance.flow_template_id)
+        if template is not None:
+            instance.title = template.name[:255]
 
     engine = engine_for(db)
     if resubmit:

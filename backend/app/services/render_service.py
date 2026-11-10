@@ -31,6 +31,7 @@ from app.core.constants import (
 )
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import merge_ext_fields
+from app.engine.form_rules import apply_form_rules
 from app.engine.permissions import (
     ExtFieldView,
     FieldPermission,
@@ -91,10 +92,21 @@ def render_instance(
         viewing_snapshot = None
 
     # ---- 字段权限 ----
-    permissions = _resolve_permissions(
+    base_permissions = _resolve_permissions(
         db, instance, compiled=compiled, form_schema=form_schema,
         viewer=viewer, assignment=assignment, snapshot=snapshot_id is not None,
     )
+    # 历史快照与终态归档一律全量只读，不应用联动规则；运行中才按规则收紧。
+    # permissions 供旧调用方直接使用，base_permissions + form_rules 供前端随输入重算。
+    archived = snapshot_id is not None or instance.status in TERMINAL_STATUSES
+    form_rules = []
+    if not archived:
+        form_rules = [
+            rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
+        ]
+        permissions = apply_form_rules(base_permissions, form_schema, values)
+    else:
+        permissions = base_permissions
 
     # ---- 可执行动作 ----
     allowed_actions: list[str] = []
@@ -133,6 +145,8 @@ def render_instance(
         "schema_data": form_schema.model_dump(mode="json"),
         "values": values,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
+        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
+        "form_rules": form_rules,
         "progress": build_progress(db, instance, compiled),
         "actions": timeline_service.list_actions(db, instance),
         "allowed_actions": allowed_actions,

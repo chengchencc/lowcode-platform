@@ -29,9 +29,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.conditions import Comparison, Condition, ConditionGroup
+
+#: 条件结构从 conditions.py 复用（表单规则与流程分支同一套契约）
+__all__ = ["Comparison", "Condition", "ConditionGroup"]
 
 # --------------------------------------------------------------------------- 枚举
 
@@ -54,37 +59,11 @@ AssigneeSourceType = Literal[
     "prev_node_actors",   # 上一节点的同意者（V1 可选）
 ]
 
-Comparison = Literal["==", "!=", ">", ">=", "<", "<=", "in", "not_in", "contains", "is_empty", "is_not_empty"]
-
 #: 审批人未命中时的策略
 OnEmptyPolicy = Literal["to_admin", "block_publish"]
 
 #: 驳回策略
 RejectPolicy = Literal["reject_to_initiator", "reject_forbidden"]
-
-
-# --------------------------------------------------------------------------- 条件
-
-
-class Condition(BaseModel):
-    """单个比较条件。`field` 引用表单字段 key（子表列用 `items[].amount`）。"""
-
-    field: str = Field(min_length=1, max_length=128)
-    cmp: Comparison = "=="
-    value: Any = None
-
-
-class ConditionGroup(BaseModel):
-    """条件组，支持 and/or 与嵌套（PRD F2.4）。
-
-    `when` 为 null 表示「否则」分支（else），必须排在最后且只能有一个。
-    """
-
-    op: Literal["and", "or"] = "and"
-    conditions: list[Condition | ConditionGroup] = Field(default_factory=list)
-
-
-ConditionGroup.model_rebuild()
 
 
 # --------------------------------------------------------------------------- 审批人
