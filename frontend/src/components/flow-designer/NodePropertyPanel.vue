@@ -8,7 +8,7 @@
  * 前端不重复实现「哪些节点算前序」的规则，避免两边漂移。
  */
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 
 import FieldPermissionPanel from '@/components/flow-designer/FieldPermissionPanel.vue'
 import { useOrgStore } from '@/stores/org'
@@ -167,6 +167,7 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
   source.dept_ids = []
   source.dept_field = null
   source.node_id = null
+  deptManagerModes.delete(source)
   source.type = type
 
   const rule = currentRule()
@@ -189,7 +190,16 @@ const needsInitiatorScope = computed(() =>
 /** 部门主管的来源方式：发起人部门 / 固定部门 / 表单部门字段 */
 type DeptManagerMode = 'initiator' | 'fixed' | 'field'
 
+/**
+ * 只用于界面状态：数据上「刚切到指定部门但还没选」与「用发起人部门」都是空的，
+ * 只靠 dept_ids / dept_field 推导会让刚点的单选项立刻弹回去，看起来像点不动。
+ * 用 WeakMap 按来源对象记住用户的选择；不参与保存。
+ */
+const deptManagerModes = reactive(new WeakMap<AssigneeSource, DeptManagerMode>())
+
 function deptManagerMode(source: AssigneeSource): DeptManagerMode {
+  const remembered = deptManagerModes.get(source)
+  if (remembered === 'fixed' || remembered === 'field') return remembered
   if (source.dept_ids?.length) return 'fixed'
   if (source.dept_field) return 'field'
   return 'initiator'
@@ -197,6 +207,7 @@ function deptManagerMode(source: AssigneeSource): DeptManagerMode {
 
 function onDeptManagerModeChange(source: AssigneeSource, event: unknown): void {
   const mode = (event as { target: { value: DeptManagerMode } }).target.value
+  deptManagerModes.set(source, mode)
   // 切换方式时清掉另一侧的配置，避免固定部门与表单字段同时生效产生歧义
   if (mode !== 'fixed') source.dept_ids = []
   if (mode !== 'field') source.dept_field = null
