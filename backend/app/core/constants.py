@@ -201,6 +201,20 @@ DISPLAY_FIELD_TYPES: frozenset[str] = frozenset(
 )
 
 
+class AutoFillSource(StrEnum):
+    """发起时自动填充的系统值来源。"""
+
+    INITIATOR = "initiator"            # 当前发起人（user / user_multi）
+    INITIATOR_DEPT = "initiator_dept"  # 发起人所在部门（dept / dept_multi）
+
+
+#: 每种自动填充来源允许的控件类型
+AUTO_FILL_FIELD_TYPES: dict[str, frozenset[str]] = {
+    AutoFillSource.INITIATOR: frozenset({FieldType.USER, FieldType.USER_MULTI}),
+    AutoFillSource.INITIATOR_DEPT: frozenset({FieldType.DEPT, FieldType.DEPT_MULTI}),
+}
+
+
 class FormulaType(StrEnum):
     """公式基础子集（PRD §10 #9）。"""
 

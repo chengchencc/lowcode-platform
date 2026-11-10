@@ -80,6 +80,12 @@ class StartOptionsOut(BaseModel):
     schema_data: FormSchema
     #: 发起节点的字段权限 —— 前端据此渲染，不自己推导
     permissions: dict[str, dict[str, Any]]
+    #: 规则求值前的权限，前端据此在本地重放联动规则
+    base_permissions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    #: 表单联动规则
+    form_rules: list[dict[str, Any]] = Field(default_factory=list)
+    #: 发起时的系统自动填充值（发起人 / 发起人所在部门）
+    auto_fill_values: dict[str, Any] = Field(default_factory=dict)
     #: 需要发起人指定审批人的节点
     initiator_select_nodes: list[dict[str, Any]] = Field(default_factory=list)
     nodes: list[dict[str, Any]] = Field(default_factory=list)

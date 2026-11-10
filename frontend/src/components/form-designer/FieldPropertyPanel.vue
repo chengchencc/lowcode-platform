@@ -76,6 +76,18 @@ const isFormula = computed(() => field.value.type === 'formula')
 const isCascader = computed(() => field.value.type === 'cascader')
 const isDisplay = computed(() => isDisplayField(field.value))
 
+/** 发起时自动填充：只有顶层的人员/部门控件支持 */
+const autoFillOptions = computed(() => {
+  if (props.isColumn) return []
+  if (['user', 'user_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator', label: '当前发起人' }]
+  }
+  if (['dept', 'dept_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator_dept', label: '发起人所在部门' }]
+  }
+  return []
+})
+
 const spanOptions = [
   { value: 24, label: '整行' },
   { value: 12, label: '1/2 行' },
@@ -280,6 +292,21 @@ const defaultControl = computed(() => {
             <a-switch v-model:checked="field.required" @change="notify" />
           </a-form-item>
 
+          <a-form-item v-if="autoFillOptions.length" label="发起时自动填充">
+            <a-select
+              v-model:value="field.auto_fill"
+              :options="autoFillOptions"
+              allow-clear
+              placeholder="不自动填充"
+              @change="notify"
+            />
+            <template #extra>
+              <span class="text-muted">
+                发起时由系统带入并锁定；后续节点可按字段权限继续编辑
+              </span>
+            </template>
+          </a-form-item>
+
           <a-form-item label="发起阶段可见">
             <a-switch v-model:checked="field.visible_at_start" @change="notify" />
             <template #extra>
@@ -289,7 +316,7 @@ const defaultControl = computed(() => {
             </template>
           </a-form-item>
 
-          <a-form-item label="默认值">
+          <a-form-item v-if="!field.auto_fill" label="默认值">
             <a-switch
               v-if="defaultControl === 'switch'"
               v-model:checked="field.default_value as boolean"

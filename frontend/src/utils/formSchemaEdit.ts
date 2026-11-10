@@ -62,12 +62,21 @@ export function normalizeField(field: FieldDef): FieldDef {
     field.cascader = null
     field.columns = []
     field.default_value = null
+    field.auto_fill = null
     field.display ??= defaultDisplay(field.type)
     return field
   }
 
   // 从展示控件切回数据控件时清掉展示配置
   field.display = null
+
+  // 自动填充只对匹配的人员/部门控件有效，切类型时清掉不兼容的配置
+  if (field.auto_fill === 'initiator' && !['user', 'user_multi'].includes(field.type)) {
+    field.auto_fill = null
+  }
+  if (field.auto_fill === 'initiator_dept' && !['dept', 'dept_multi'].includes(field.type)) {
+    field.auto_fill = null
+  }
 
   if (NEEDS_FORMULA.includes(field.type)) {
     field.formula ??= { type: 'arithmetic', expression: '' }

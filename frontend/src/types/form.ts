@@ -92,6 +92,9 @@ export interface DisplayConfig {
   markdown?: string | null
 }
 
+/** 发起时自动填充来源：当前发起人 / 发起人所在部门 */
+export type AutoFillSource = 'initiator' | 'initiator_dept'
+
 export interface FieldDef {
   key: string
   label: string
@@ -101,6 +104,8 @@ export interface FieldDef {
   placeholder?: string | null
   help?: string | null
   default_value?: unknown
+  /** 发起时由系统自动填充（仅顶层人员/部门控件） */
+  auto_fill?: AutoFillSource | null
   options?: FieldOption[]
   validators?: FieldValidators
   /** true=发起阶段可编辑；false=发起阶段隐藏，由流程节点显式打开（F5.4） */

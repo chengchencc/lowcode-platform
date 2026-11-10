@@ -15,6 +15,8 @@ import { ApiError } from '@/api/http'
 import { instanceApi } from '@/api/modules/instance'
 import { userApi } from '@/api/modules/user'
 import { FormRenderer } from '@/components/form-renderer'
+import { useAuthStore } from '@/stores/auth'
+import { useOrgStore } from '@/stores/org'
 import type { FieldState } from '@/types/form'
 import type { StartOptions } from '@/types/instance'
 import { applyFormRules } from '@/utils/formRules'
@@ -23,6 +25,8 @@ import { feedback } from '@/utils/feedback'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
+const org = useOrgStore()
 
 const flowTemplateId = computed(() => Number(route.params.flowTemplateId))
 const draftId = computed(() => {
@@ -61,18 +65,30 @@ async function load(): Promise<void> {
   try {
     options.value = await instanceApi.startOptions(flowTemplateId.value)
 
+    // 自动填充的人员控件是只读展示，靠 org 缓存把 id 换成人名
+    if (auth.user) {
+      org.rememberUsers([
+        { id: auth.user.id, username: auth.user.username, real_name: auth.user.real_name },
+      ])
+    }
+
+    const initial = {
+      ...buildInitialValues(options.value.schema_data),
+      ...(options.value.auto_fill_values ?? {}),
+    }
+
     if (draftId.value) {
-      // 续填：草稿值优先于默认值
+      // 续填：草稿值优先于默认值/自动填充值（草稿里已经落过库）
       const drafts = await instanceApi.listDrafts()
       const draft = drafts.find((d) => d.id === draftId.value)
       if (draft) {
         instanceId.value = draft.id
         const all = await instanceApi.render(draft.id)
-        values.value = { ...buildInitialValues(options.value.schema_data), ...all.values }
+        values.value = { ...initial, ...all.values }
         return
       }
     }
-    values.value = buildInitialValues(options.value.schema_data)
+    values.value = initial
   } catch (error) {
     if (error instanceof ApiError) feedback.error(error.message)
     await router.replace({ name: 'start-center' })

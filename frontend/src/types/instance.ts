@@ -203,6 +203,8 @@ export interface StartOptions {
   permissions: Record<string, FieldState & { reason?: string }>
   base_permissions?: Record<string, FieldState & { reason?: string }>
   form_rules?: FormRule[]
+  /** 发起时的系统自动填充值（发起人 / 发起人所在部门） */
+  auto_fill_values?: Record<string, unknown>
   initiator_select_nodes: Array<{
     node_id: string
     node_name: string

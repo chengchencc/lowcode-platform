@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.constants import (
+    AUTO_FILL_FIELD_TYPES,
     DISPLAY_FIELD_TYPES,
     FORMULA_FUNCTIONS,
     FORMULA_KEYWORDS,
@@ -151,6 +152,10 @@ class FieldDef(BaseModel):
 
     formula: FieldFormula | None = None
     cascader: CascaderConfig | None = None
+
+    #: 发起时由系统自动填充：当前发起人 / 发起人所在部门。
+    #: 仅顶层的人员、部门控件支持；发起阶段强制只读，之后按节点权限处理。
+    auto_fill: Literal["initiator", "initiator_dept"] | None = None
 
     #: 仅 type=subtable：行内列定义（不允许再嵌套 subtable）
     columns: list[FieldDef] = Field(default_factory=list)
@@ -384,6 +389,43 @@ def _check_display(field: FieldDef, path: str, issues: list[SchemaIssue]) -> boo
     return True
 
 
+AUTO_FILL_LABELS = {
+    "initiator": "当前发起人",
+    "initiator_dept": "发起人所在部门",
+}
+
+
+def _check_auto_fill(
+    field: FieldDef,
+    path: str,
+    issues: list[SchemaIssue],
+    *,
+    in_subtable: bool,
+) -> None:
+    """自动填充只支持顶层的人员/部门控件 —— 子表行内没有「发起时」这一层语义。"""
+    if field.auto_fill is None:
+        return
+    if in_subtable:
+        issues.append(
+            _issue(
+                "AUTO_FILL_SUBTABLE",
+                f"子表列 “{field.label}” 不能配置发起时自动填充",
+                f"{path}.auto_fill",
+            )
+        )
+        return
+    allowed = AUTO_FILL_FIELD_TYPES.get(field.auto_fill, frozenset())
+    if field.type not in allowed:
+        issues.append(
+            _issue(
+                "AUTO_FILL_TYPE",
+                f"“{field.label}”的自动填充来源是「{AUTO_FILL_LABELS[field.auto_fill]}」，"
+                "该控件类型不匹配：请使用人员或部门选择控件",
+                f"{path}.auto_fill",
+            )
+        )
+
+
 def _check_formula(
     field: FieldDef,
     path: str,
@@ -507,6 +549,8 @@ def _walk_fields(
     fields: list[FieldDef],
     path_prefix: str,
     issues: list[SchemaIssue],
+    *,
+    in_subtable: bool = False,
 ) -> dict[str, FieldType]:
     """校验一层字段（分区内或子表内），返回 {key: type}。"""
     seen: dict[str, FieldType] = {}
@@ -523,6 +567,7 @@ def _walk_fields(
 
         _check_validators(field, path, issues)
         _check_options(field, path, issues)
+        _check_auto_fill(field, path, issues, in_subtable=in_subtable)
 
         # 展示控件不参与数据字段的级联/子表/公式校验；配置错误已在 _check_display 中收集
         if _check_display(field, path, issues):
@@ -574,7 +619,7 @@ def _walk_fields(
                         )
                     )
             # 列单独校验一层（不再递归下探，已禁止嵌套子表）
-            _walk_fields(field.columns, f"{path}.columns", issues)
+            _walk_fields(field.columns, f"{path}.columns", issues, in_subtable=True)
             _check_column_formulas(field, path, issues)
         elif field.columns:
             issues.append(

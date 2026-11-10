@@ -55,6 +55,7 @@ from app.engine.approvers import (
     resolve_approvers,
     resolve_cc,
 )
+from app.engine.auto_fill import auto_fill_values
 from app.engine.compile import compile_definition
 from app.engine.errors import FlowInvalid, IllegalTransition
 from app.engine.ext_fields import (
@@ -671,11 +672,18 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, compiled.definition.start.id
         )
+        # 发起时自动填充：发起人 / 发起人所在部门（服务端权威，覆盖客户端传值）
+        forced = auto_fill_values(
+            form_schema,
+            user_id=actor.id,
+            dept_id=instance.initiator_dept_id or actor.dept_id,
+        )
         values, diffs, permissions = self._apply_patch_with_rules(
             instance=instance,
             form_schema=form_schema,
             base_permissions=permissions,
             patch=values_in,
+            forced=forced,
         )
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
@@ -1415,19 +1423,26 @@ class EngineService:
         form_schema: Any,
         base_permissions: Mapping[str, FieldPermission],
         patch: Mapping[str, Any],
+        forced: Mapping[str, Any] | None = None,
     ) -> tuple[dict[str, Any], list[FieldDiff], dict[str, FieldPermission]]:
         """应用字段补丁，再用联动规则收紧权限并校验。
 
         规则可能依赖本次提交的新值（例如「是否出差」刚被改成是），所以先用
         「当前值 + 本次补丁」求一次权限，再吸收补丁；公式/清值可能再次改变
         条件命中，最多再迭代两轮。
+
+        `forced` 是服务端强制写入的系统值（发起时自动填充）：它不进补丁、
+        不受字段权限过滤，但仍然参与联动规则与公式求值。
         """
-        current = instance.current_data or {}
-        candidate = {**current, **patch}
+        forced = forced or {}
+        current = {**(instance.current_data or {}), **forced}
+        # 自动填充字段以服务端值为准，客户端传来的同名字段丢弃
+        incoming = {k: v for k, v in patch.items() if k not in forced}
+        candidate = {**current, **incoming}
         effective = apply_form_rules(base_permissions, form_schema, candidate)
         values, diffs = apply_field_patch(
             current=current,
-            patch=patch,
+            patch=incoming,
             permissions=effective,
             form_schema=form_schema,
         )
@@ -1439,7 +1454,7 @@ class EngineService:
             effective = next_effective
             values, diffs = apply_field_patch(
                 current=current,
-                patch=patch,
+                patch=incoming,
                 permissions=effective,
                 form_schema=form_schema,
             )

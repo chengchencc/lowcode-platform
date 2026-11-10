@@ -33,6 +33,7 @@ import ResubmitPanel from '@/components/instance/ResubmitPanel.vue'
 import SnapshotDiff from '@/components/instance/SnapshotDiff.vue'
 import TimelineList from '@/components/instance/TimelineList.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useOrgStore } from '@/stores/org'
 import type { FieldState } from '@/types/form'
 import type { InstanceRender } from '@/types/instance'
 import { INSTANCE_STATUS_META, MY_ROLE_LABELS } from '@/types/instance'
@@ -43,6 +44,7 @@ import { feedback } from '@/utils/feedback'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const org = useOrgStore()
 
 const instanceId = computed(() => Number(route.params.id))
 const assignmentId = computed(() => {
@@ -89,6 +91,18 @@ async function load(): Promise<void> {
       assignment_id: assignmentId.value,
       snapshot_id: activeSnapshotId.value ?? undefined,
     })
+    // 只读的人员控件靠 org 缓存换名字；发起人至少先塞进去，
+    // 否则「发起人」自动填充字段在详情页会显示成 #id
+    if (data.value.instance.initiator_name) {
+      org.rememberUsers([
+        {
+          id: data.value.instance.initiator_id,
+          username: '',
+          real_name: data.value.instance.initiator_name,
+          dept_name: data.value.instance.initiator_dept_name,
+        },
+      ])
+    }
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
       feedback.error('你没有权限查看该单据')

@@ -21,10 +21,12 @@ from app.core.constants import (
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.core.idgen import create_with_code
 from app.core.policy import is_admin, is_designer
+from app.engine.auto_fill import auto_fill_values
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import ExtFieldSpec
 from app.engine.form_rules import apply_form_rules
 from app.engine.permissions import (
+    FieldPermission,
     resolve_field_permissions,
 )
 from app.engine.service import EngineService
@@ -97,6 +99,17 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         rule=compiled.definition.start.fields_permission,
         values={},
     )
+    # 发起时自动填充的字段由系统带入，发起阶段强制只读（值仍可被后续节点按权限使用）
+    filled = auto_fill_values(form_schema, user_id=user.id, dept_id=user.dept_id)
+    for key in filled:
+        permission = base_permissions.get(key)
+        if permission is not None:
+            base_permissions[key] = FieldPermission(
+                visible=permission.visible,
+                editable=False,
+                required=False,
+                reason=f"{permission.reason} → 自动填充(只读)",
+            )
     permissions = apply_form_rules(base_permissions, form_schema, {})
 
     return {
@@ -112,6 +125,8 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         "form_rules": [
             rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
         ],
+        # 发起时的系统自动填充值：前端据此预填表单
+        "auto_fill_values": filled,
         # 需要发起人指定审批人的节点（F3.5）
         "initiator_select_nodes": _initiator_select_nodes(db, compiled, current),
         "nodes": _progress_nodes(compiled),
@@ -229,7 +244,11 @@ def create_draft(
     dept_id = actor.dept_id
     form_version = db.get(FormVersion, current.locked_form_version_id)
     form_schema = parse_form_schema(form_version.schema) if form_version else None
-    title_text = title or _title_from_form(form_schema, data) or template.name
+    values = dict(data or {})
+    if form_schema is not None:
+        # 自动填充字段以服务端值为准，覆盖客户端传值
+        values.update(auto_fill_values(form_schema, user_id=actor.id, dept_id=dept_id))
+    title_text = title or _title_from_form(form_schema, values) or template.name
 
     def factory(code: str) -> FlowInstance:
         return FlowInstance(
@@ -242,7 +261,7 @@ def create_draft(
             initiator_dept_id=dept_id,
             status=InstanceStatus.DRAFT,
             data_schema={},
-            current_data=dict(data or {}),
+            current_data=values,
         )
 
     instance = create_with_code(db, factory)
@@ -266,23 +285,30 @@ def update_draft(
 
     form_schema = form_schema_of(db, instance)
     compiled = compile_definition(version_of(db, instance).definition)
+    # 自动填充字段由服务端写入：客户端传值直接丢弃
+    filled = auto_fill_values(
+        form_schema,
+        user_id=actor.id,
+        dept_id=instance.initiator_dept_id or actor.dept_id,
+    )
+    incoming = {key: value for key, value in data.items() if key not in filled}
     permissions = resolve_field_permissions(
         form_schema=form_schema,
         node_type="start",
         rule=compiled.definition.start.fields_permission,
-        values=data,
+        values={**data, **filled},
     )
 
     from app.engine.fields import apply_field_patch
 
     values, _diffs = apply_field_patch(
-        current=instance.current_data or {},
-        patch=dict(data),
+        current={**(instance.current_data or {}), **filled},
+        patch=incoming,
         permissions=permissions,
         form_schema=form_schema,
     )
     instance.current_data = values
-    derived = _title_from_form(form_schema, data)
+    derived = _title_from_form(form_schema, {**data, **filled})
     if title:
         instance.title = title[:255]
     elif derived:
