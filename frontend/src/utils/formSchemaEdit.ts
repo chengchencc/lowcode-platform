@@ -8,13 +8,18 @@
  */
 
 import type {
+  DisplayConfig,
   FieldDef,
   FieldType,
   FormSchema,
   SectionDef,
   SectionStage,
 } from '@/types/form'
-import { OPTION_FIELD_TYPES } from '@/types/form'
+import {
+  DISPLAY_FIELD_TYPES,
+  FIELD_TYPE_LABELS,
+  OPTION_FIELD_TYPES,
+} from '@/types/form'
 
 /** 需要子表列的类型 */
 const NEEDS_COLUMNS: FieldType[] = ['subtable']
@@ -23,11 +28,44 @@ const NEEDS_FORMULA: FieldType[] = ['formula']
 /** 需要 cascader 对象的类型 */
 const NEEDS_CASCADER: FieldType[] = ['cascader']
 
+function defaultDisplay(type: FieldType): DisplayConfig {
+  switch (type) {
+    case 'heading':
+      return { text: '标题', level: 2 }
+    case 'paragraph':
+      return { text: '说明文字' }
+    case 'divider':
+      return { text: '' }
+    case 'image_view':
+      return { url: '', alt: '' }
+    case 'rich_text':
+      return { markdown: '说明文字' }
+    default:
+      return {}
+  }
+}
+
 /** 按类型补齐字段的各个可选结构，避免属性面板读到 null。 */
 export function normalizeField(field: FieldDef): FieldDef {
   field.validators ??= {}
   field.options ??= []
   field.columns ??= []
+
+  if (DISPLAY_FIELD_TYPES.includes(field.type)) {
+    // 展示控件不绑定数据：清掉数据属性，属性面板只保留展示配置
+    field.required = false
+    field.options = []
+    field.validators = {}
+    field.formula = null
+    field.cascader = null
+    field.columns = []
+    field.default_value = null
+    field.display ??= defaultDisplay(field.type)
+    return field
+  }
+
+  // 从展示控件切回数据控件时清掉展示配置
+  field.display = null
 
   if (NEEDS_FORMULA.includes(field.type)) {
     field.formula ??= { type: 'arithmetic', expression: '' }
@@ -66,9 +104,10 @@ function collectKeys(schema: FormSchema): string[] {
 
 export function makeField(schema: FormSchema, type: FieldType, label?: string): FieldDef {
   const key = uniqueKey(collectKeys(schema), type === 'formula' ? 'calc' : type)
+  const display = DISPLAY_FIELD_TYPES.includes(type)
   return normalizeField({
     key,
-    label: label ?? key,
+    label: label ?? (display ? FIELD_TYPE_LABELS[type] : key),
     type,
     sort: 0,
     required: false,

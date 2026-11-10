@@ -18,6 +18,7 @@ import type {
   SectionDef,
   SectionStage,
 } from '@/types/form'
+import { DISPLAY_FIELD_TYPES } from '@/types/form'
 
 // 类型定义放在 types/form.ts（与其余 schema 类型同处），这里只做转出方便使用
 export type { FieldState, RenderMode }
@@ -28,6 +29,11 @@ function isComputed(field: FieldDef): boolean {
 }
 
 function resolveOne(field: FieldDef, mode: RenderMode): FieldState {
+  if (DISPLAY_FIELD_TYPES.includes(field.type)) {
+    // 展示控件不是数据字段：永远只读、不必填；可见性由分区/节点权限决定
+    return { visible: true, editable: false, required: false }
+  }
+
   const required = mode === 'edit' && !isComputed(field) && Boolean(field.required)
 
   if (mode === 'preview' || mode === 'readonly') {

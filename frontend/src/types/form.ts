@@ -37,6 +37,12 @@ export type FieldType =
   // 增强
   | 'formula'
   | 'cascader'
+  // 展示（不绑定数据）
+  | 'heading'
+  | 'paragraph'
+  | 'divider'
+  | 'image_view'
+  | 'rich_text'
 
 export type FormulaType = 'arithmetic' | 'subtable_sum' | 'date_diff' | 'concat'
 
@@ -73,6 +79,17 @@ export interface FieldFormula {
   unit?: 'days'
 }
 
+export interface DisplayConfig {
+  text?: string | null
+  /** 仅 heading */
+  level?: 1 | 2 | 3
+  /** 仅 image_view */
+  url?: string | null
+  alt?: string | null
+  /** 仅 rich_text */
+  markdown?: string | null
+}
+
 export interface FieldDef {
   key: string
   label: string
@@ -86,6 +103,10 @@ export interface FieldDef {
   validators?: FieldValidators
   /** true=发起阶段可编辑；false=发起阶段隐藏，由流程节点显式打开（F5.4） */
   visible_at_start?: boolean
+  /** 栅格宽度（24 栅格制）；缺省按列数与控件类型自动决定 */
+  span?: number | null
+  /** 展示型控件配置 */
+  display?: DisplayConfig | null
   formula?: FieldFormula | null
   cascader?: CascaderConfig | null
   /** 仅 type=subtable */
@@ -99,12 +120,14 @@ export interface SectionDef {
   sort?: number
   description?: string | null
   collapsible?: boolean
+  /** 分区级列数覆盖；缺省跟随表单 layout.columns */
+  columns?: 1 | 2 | 3 | 4 | null
   fields: FieldDef[]
 }
 
 export interface FormLayout {
   label_position?: 'top' | 'left'
-  columns?: 1 | 2 | 3
+  columns?: 1 | 2 | 3 | 4
 }
 
 export interface FormSchema {
@@ -240,6 +263,11 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   subtable: '明细子表',
   formula: '公式',
   cascader: '级联下拉',
+  heading: '标题',
+  paragraph: '说明文字',
+  divider: '分割线',
+  image_view: '图片展示',
+  rich_text: '富文本说明',
 }
 
 /** 设计器左侧控件面板的分组（PRD §3.2.2）。 */
@@ -252,7 +280,17 @@ export const FIELD_TYPE_GROUPS: Array<{ title: string; types: FieldType[] }> = [
   { title: '文件', types: ['attachment', 'image'] },
   { title: '子表', types: ['subtable'] },
   { title: '增强', types: ['formula', 'cascader'] },
+  { title: '展示', types: ['heading', 'paragraph', 'divider', 'image_view', 'rich_text'] },
 ]
+
+/** 展示型控件：不绑定实例数据，不进入权限矩阵的编辑项。 */
+export const DISPLAY_FIELD_TYPES: FieldType[] = [
+  'heading', 'paragraph', 'divider', 'image_view', 'rich_text',
+]
+
+export function isDisplayField(field: FieldDef): boolean {
+  return DISPLAY_FIELD_TYPES.includes(field.type)
+}
 
 /** 子表行内允许的控件（与后端 SUBTABLE_COLUMN_TYPES 一致）。 */
 export const SUBTABLE_COLUMN_TYPES: FieldType[] = [

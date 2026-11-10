@@ -12,6 +12,7 @@ import { computed } from 'vue'
 
 import FieldPermissionPanel from '@/components/flow-designer/FieldPermissionPanel.vue'
 import type { FieldDef, FormSchema } from '@/types/form'
+import { isDisplayField } from '@/types/form'
 import type {
   ApprovalNode,
   AssigneeRule,
@@ -85,6 +86,7 @@ const allFieldOptions = computed(() => {
   const out: Array<{ value: string; label: string }> = []
   for (const section of props.formSchema?.sections ?? []) {
     for (const field of section.fields) {
+      if (isDisplayField(field)) continue
       out.push({ value: field.key, label: `${field.label}（${field.key}）` })
       for (const col of field.columns ?? []) {
         out.push({

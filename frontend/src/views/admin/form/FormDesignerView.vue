@@ -48,6 +48,7 @@ const templateId = computed(() => Number(route.params.id))
 const template = ref<FormTemplate | null>(null)
 const version = ref<FormVersion | null>(null)
 const schema = ref<FormSchema>({ sections: [] })
+const columnOptions = [1, 2, 3, 4].map((n) => ({ value: n, label: `${n} 列` }))
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
@@ -394,6 +395,29 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             </Button>
           </template>
 
+          <div class="form-layout-settings">
+            <div class="layout-title">整体布局</div>
+            <a-form layout="inline" size="small">
+              <a-form-item label="标签位置">
+                <a-select
+                  v-model:value="schema.layout!.label_position"
+                  :options="[
+                    { value: 'top', label: '顶部' },
+                    { value: 'left', label: '左侧' },
+                  ]"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+              <a-form-item label="默认列数">
+                <a-select
+                  v-model:value="schema.layout!.columns"
+                  :options="columnOptions"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+            </a-form>
+          </div>
+
           <a-empty v-if="!schema.sections.length" description="还没有分区" />
 
           <div
@@ -594,6 +618,18 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <a-form-item label="分区说明">
               <a-textarea v-model:value="selectedSection.description" :rows="2" @change="scheduleSave" />
             </a-form-item>
+            <a-form-item label="分区列数" help="留空则跟随表单默认列数">
+              <a-select
+                v-model:value="selectedSection.columns"
+                :options="columnOptions"
+                allow-clear
+                placeholder="跟随表单"
+                @change="scheduleSave"
+              />
+            </a-form-item>
+            <a-form-item label="可折叠">
+              <a-switch v-model:checked="selectedSection.collapsible" @change="scheduleSave" />
+            </a-form-item>
             <a-alert
               type="info"
               show-icon
@@ -698,6 +734,19 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
 
 .designer-body {
   align-items: flex-start;
+}
+
+.form-layout-settings {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.layout-title {
+  margin-bottom: 6px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
 }
 
 .panel {

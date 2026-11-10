@@ -42,6 +42,11 @@ const emit = defineEmits<{ 'update:modelValue': [Record<string, unknown>] }>()
 
 const mode = computed(() => props.mode ?? 'edit')
 
+/** 表单级标签位置：left → 水平标签；top → 垂直标签 */
+const labelLayout = computed(() =>
+  props.schema.layout?.label_position === 'left' ? 'horizontal' : 'vertical',
+)
+
 const states = computed(
   () => props.permissions ?? resolveFieldStates(props.schema, mode.value),
 )
@@ -77,20 +82,27 @@ function onValueChange(key: string, value: unknown): void {
 
 <template>
   <div class="form-renderer">
-    <template v-if="hasVisibleField">
-      <SectionBlock
-        v-for="section in schema.sections"
-        :key="section.key"
-        :section="section"
-        :values="displayValues"
-        :states="states"
-        :mode="mode"
-        :formula-values="computedValues"
-        @update:value="onValueChange"
-      />
-    </template>
+    <a-form
+      :layout="labelLayout"
+      :label-col="labelLayout === 'horizontal' ? { span: 6 } : undefined"
+      :wrapper-col="labelLayout === 'horizontal' ? { span: 18 } : undefined"
+    >
+      <template v-if="hasVisibleField">
+        <SectionBlock
+          v-for="section in schema.sections"
+          :key="section.key"
+          :section="section"
+          :layout="schema.layout"
+          :values="displayValues"
+          :states="states"
+          :mode="mode"
+          :formula-values="computedValues"
+          @update:value="onValueChange"
+        />
+      </template>
 
-    <a-empty v-else :description="emptyText" />
+      <a-empty v-else :description="emptyText" />
+    </a-form>
   </div>
 </template>
 
