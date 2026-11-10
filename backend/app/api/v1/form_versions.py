@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.core.constants import DISPLAY_FIELD_TYPES
 from app.core.deps import ClientIp, DbSession, DesignerUser
 from app.engine.expressions import evaluate_schema_formulas
 from app.schemas.common import OkResp
@@ -109,6 +110,8 @@ def preview_version(
     # 未提供样例值时用字段默认值兜底，让预览开箱就有内容
     for section in schema.sections:
         for field in section.fields:
+            if field.type in DISPLAY_FIELD_TYPES:
+                continue
             if field.default_value is not None and field.key not in values:
                 values[field.key] = field.default_value
 

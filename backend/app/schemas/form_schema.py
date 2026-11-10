@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import re
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.constants import (
+    DISPLAY_FIELD_TYPES,
     FORMULA_FUNCTIONS,
     FORMULA_KEYWORDS,
     OPTION_FIELD_TYPES,
@@ -84,6 +86,22 @@ class CascaderConfig(BaseModel):
     options_by_parent: dict[str, list[FieldOption]] = Field(default_factory=dict)
 
 
+class DisplayConfig(BaseModel):
+    """展示型控件的配置（M8）。
+
+    展示控件不绑定数据，所以只放排版/说明相关的字段；具体用哪些由 `type` 决定。
+    """
+
+    text: str | None = Field(default=None, max_length=2000)
+    #: 标题级别，仅 heading 使用
+    level: Literal[1, 2, 3] = 2
+    #: 图片地址，仅 image_view 使用；只允许 http(s) 或站内绝对路径
+    url: str | None = Field(default=None, max_length=2048)
+    alt: str | None = Field(default=None, max_length=256)
+    #: 受限 Markdown，仅 rich_text 使用
+    markdown: str | None = Field(default=None, max_length=10000)
+
+
 class FieldFormula(BaseModel):
     """公式基础子集（PRD §10 #9）：
 
@@ -118,6 +136,11 @@ class FieldDef(BaseModel):
     help: str | None = Field(default=None, max_length=512)
     default_value: Any = None
 
+    #: 栅格宽度（24 栅格制）。null = 按列数与控件类型自动决定。M8
+    span: int | None = Field(default=None, ge=1, le=24)
+    #: 展示型控件配置。M8
+    display: DisplayConfig | None = None
+
     options: list[FieldOption] = Field(default_factory=list)
     validators: FieldValidators = Field(default_factory=FieldValidators)
 
@@ -140,12 +163,14 @@ class SectionDef(BaseModel):
     sort: int = 0
     description: str | None = Field(default=None, max_length=512)
     collapsible: bool = False
+    #: 分区级列数覆盖；null 表示跟随表单 layout.columns。M8
+    columns: Literal[1, 2, 3, 4] | None = None
     fields: list[FieldDef] = Field(default_factory=list)
 
 
 class FormLayout(BaseModel):
     label_position: Literal["top", "left"] = "top"
-    columns: Literal[1, 2, 3] = 2
+    columns: Literal[1, 2, 3, 4] = 2
 
 
 class FormSchema(BaseModel):
@@ -246,6 +271,95 @@ def _check_options(field: FieldDef, path: str, issues: list[SchemaIssue]) -> Non
                     path,
                 )
             )
+
+
+def _valid_image_url(url: str) -> bool:
+    url = url.strip()
+    if url.startswith("/") and not url.startswith("//"):
+        return True
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _check_display(field: FieldDef, path: str, issues: list[SchemaIssue]) -> bool:
+    """校验展示型控件；返回 True 表示这是展示控件，调用方应跳过数据字段校验。"""
+    if field.type not in DISPLAY_FIELD_TYPES:
+        if field.display is not None:
+            issues.append(
+                _issue(
+                    "DISPLAY_ON_PLAIN_FIELD",
+                    f"“{field.label}”不是展示控件，配置的 display 不会生效",
+                    path,
+                    severity="warning",
+                )
+            )
+        return False
+
+    # 展示控件不绑定数据：这些配置即使写了也不会生效，提示设计者清理
+    if field.required:
+        issues.append(
+            _issue("DISPLAY_REQUIRED", f"“{field.label}”是展示控件，不应设为必填", path, severity="warning")
+        )
+    if field.options:
+        issues.append(
+            _issue("DISPLAY_OPTIONS", f"“{field.label}”是展示控件，选项不会生效", path, severity="warning")
+        )
+    if field.validators.model_dump(exclude_none=True):
+        issues.append(
+            _issue("DISPLAY_VALIDATORS", f"“{field.label}”是展示控件，校验规则不会生效", path, severity="warning")
+        )
+    if field.default_value is not None:
+        issues.append(
+            _issue("DISPLAY_DEFAULT", f"“{field.label}”是展示控件，默认值不会写入实例数据", path, severity="warning")
+        )
+    if field.formula is not None:
+        issues.append(
+            _issue("DISPLAY_FORMULA", f"“{field.label}”是展示控件，公式不会生效", path, severity="warning")
+        )
+    if field.cascader is not None:
+        issues.append(
+            _issue("DISPLAY_CASCADER", f"“{field.label}”是展示控件，级联配置不会生效", path, severity="warning")
+        )
+    if field.columns:
+        issues.append(
+            _issue("DISPLAY_COLUMNS", f"“{field.label}”是展示控件，不能再配置子表列", path, severity="warning")
+        )
+
+    display = field.display
+    if display is None:
+        issues.append(_issue("DISPLAY_CONFIG_REQUIRED", f"“{field.label}”缺少展示内容配置", path))
+        return True
+
+    text = (display.text or "").strip()
+    if field.type in {FieldType.HEADING, FieldType.PARAGRAPH} and not text:
+        issues.append(_issue("DISPLAY_TEXT_REQUIRED", f"“{field.label}”需要填写展示文字", path))
+    elif field.type is FieldType.DIVIDER and not text:
+        pass  # 分割线可以没有文字
+    elif field.type is FieldType.IMAGE_VIEW:
+        url = (display.url or "").strip()
+        if not url:
+            issues.append(_issue("DISPLAY_URL_REQUIRED", f"“{field.label}”需要填写图片地址", path))
+        elif not _valid_image_url(url):
+            issues.append(
+                _issue(
+                    "DISPLAY_URL_INVALID",
+                    f"“{field.label}”的图片地址只支持 http(s) 或站内绝对路径",
+                    path,
+                )
+            )
+    elif field.type is FieldType.RICH_TEXT:
+        markdown = display.markdown or ""
+        if not markdown.strip():
+            issues.append(_issue("DISPLAY_MARKDOWN_REQUIRED", f"“{field.label}”需要填写说明内容", path))
+        elif re.search(r"</?[A-Za-z][^>]*>", markdown):
+            issues.append(
+                _issue(
+                    "DISPLAY_RAW_HTML",
+                    f"“{field.label}”的说明只支持受限 Markdown，不允许直接写 HTML 标签",
+                    path,
+                )
+            )
+    return True
 
 
 def _check_formula(
@@ -388,6 +502,10 @@ def _walk_fields(
         _check_validators(field, path, issues)
         _check_options(field, path, issues)
 
+        # 展示控件不参与数据字段的级联/子表/公式校验；配置错误已在 _check_display 中收集
+        if _check_display(field, path, issues):
+            continue
+
         if field.cascader is not None:
             if field.type is not FieldType.CASCADER:
                 issues.append(
@@ -505,14 +623,21 @@ def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
             if field.type is FieldType.SUBTABLE:
                 subtable_by_key[field.key] = field
 
+    # 展示控件不是数据字段：公式不能引用它们
+    formula_fields = {
+        key: ftype for key, ftype in top_level.items() if ftype not in DISPLAY_FIELD_TYPES
+    }
+
     # 公式引用完整性（需要先收齐所有 key，故单独一轮）
     for s_idx, section in enumerate(schema.sections):
         for f_idx, field in enumerate(section.fields):
+            if field.type in DISPLAY_FIELD_TYPES:
+                continue
             _check_formula(
                 field,
                 f"sections[{s_idx}].fields[{f_idx}]",
                 issues,
-                top_level_keys=top_level,
+                top_level_keys=formula_fields,
                 subtable_by_key=subtable_by_key,
             )
 
@@ -522,6 +647,8 @@ def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
         if section.stage is SectionStage.APPLY:
             continue
         for f_idx, field in enumerate(section.fields):
+            if field.type in DISPLAY_FIELD_TYPES:
+                continue
             if field.visible_at_start:
                 issues.append(
                     _issue(

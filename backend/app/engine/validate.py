@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from app.core.constants import DISPLAY_FIELD_TYPES
 from app.engine.compile import compile_flow
 from app.engine.errors import FlowInvalid
 from app.engine.types import CompiledFlow, NodeDef
@@ -78,6 +79,9 @@ def _form_field_index(form_schema: Any) -> dict[str, str]:
         return index
     for section in getattr(form_schema, "sections", []):
         for f in section.fields:
+            # 展示控件不是数据字段：条件/权限引用它都应当报“字段不存在”
+            if f.type in DISPLAY_FIELD_TYPES:
+                continue
             index[f.key] = f.type
             for col in getattr(f, "columns", []) or []:
                 index[f"{f.key}[].{col.key}"] = col.type

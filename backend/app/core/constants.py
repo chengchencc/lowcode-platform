@@ -156,6 +156,12 @@ class FieldType(StrEnum):
     # 增强
     FORMULA = "formula"
     CASCADER = "cascader"
+    # 展示（不绑定数据，M8）
+    HEADING = "heading"
+    PARAGRAPH = "paragraph"
+    DIVIDER = "divider"
+    IMAGE_VIEW = "image_view"
+    RICH_TEXT = "rich_text"
 
 
 #: 需要配置 options 的控件
@@ -181,6 +187,18 @@ SUBTABLE_COLUMN_TYPES: frozenset[str] = frozenset(
 
 #: 只读控件（由公式计算，用户不可编辑）—— 这些控件类型在权限矩阵里不可配为 editable
 COMPUTED_FIELD_TYPES: frozenset[str] = frozenset({FieldType.FORMULA})
+
+#: 展示型控件（M8）：只负责排版与说明，不绑定实例数据。
+#: 不进入 current_data / 快照 / CSV / 值校验 / 字段权限矩阵的编辑项。
+DISPLAY_FIELD_TYPES: frozenset[str] = frozenset(
+    {
+        FieldType.HEADING,
+        FieldType.PARAGRAPH,
+        FieldType.DIVIDER,
+        FieldType.IMAGE_VIEW,
+        FieldType.RICH_TEXT,
+    }
+)
 
 
 class FormulaType(StrEnum):

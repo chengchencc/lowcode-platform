@@ -26,7 +26,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.constants import COMPUTED_FIELD_TYPES, SectionStage
+from app.core.constants import COMPUTED_FIELD_TYPES, DISPLAY_FIELD_TYPES, SectionStage
 from app.engine.conditions import evaluate_group
 from app.schemas.flow_definition import FieldPermissionRule, PermMode
 
@@ -215,6 +215,15 @@ def _apply_hard_constraints(
     perm: FieldPermission, field_type: str, schema_required: bool
 ) -> FieldPermission:
     """模板级的硬约束，不可被节点配置覆盖。"""
+    if field_type in DISPLAY_FIELD_TYPES:
+        # 展示控件只负责排版/说明，永远只读、谈不上必填
+        return FieldPermission(
+            visible=perm.visible,
+            editable=False,
+            required=False,
+            reason=(perm.reason + " → 展示字段只读"),
+        )
+
     if field_type in COMPUTED_FIELD_TYPES:
         # 公式字段的值由计算得出，永远只读、也谈不上必填
         return FieldPermission(
