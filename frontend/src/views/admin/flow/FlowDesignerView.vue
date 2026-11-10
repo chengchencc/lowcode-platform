@@ -26,6 +26,16 @@ import { ApiError } from '@/api/http'
 import { flowApi } from '@/api/modules/flow'
 import { formApi } from '@/api/modules/form'
 import { userApi } from '@/api/modules/user'
+import FlowCanvas from '@/components/flow-designer/canvas/FlowCanvas.vue'
+import {
+  ADDABLE_NODES,
+  findLocation,
+  findNode,
+  makeNode,
+  moveWithinSiblings,
+  removeNode,
+  type AddableNodeType,
+} from '@/components/flow-designer/definitionOps'
 import NodePropertyPanel from '@/components/flow-designer/NodePropertyPanel.vue'
 import { useOrgStore } from '@/stores/org'
 import type { FormSchema } from '@/types/form'
@@ -59,6 +69,7 @@ const dirty = ref(false)
 const lastSavedAt = ref<Date | null>(null)
 
 const selectedId = ref<string | null>(null)
+const viewMode = ref<'canvas' | 'list'>('canvas')
 const returnTargets = ref<ReturnTarget[]>([])
 const userOptions = ref<Array<{ value: number; label: string }>>([])
 
@@ -169,67 +180,11 @@ function onNodeChange(): void {
 
 // --------------------------------------------------------------------------- 节点查找
 
-/** 按 id 在定义里找出节点（含嵌套的分支与并行成员）。 */
-function findNode(id: string): StepNode | null {
-  const walk = (steps: StepNode[]): StepNode | null => {
-    for (const step of steps) {
-      if (step.id === id) return step
-      if (step.type === 'condition') {
-        for (const branch of step.branches) {
-          const hit = walk(branch.steps)
-          if (hit) return hit
-        }
-      }
-      if (step.type === 'parallel') {
-        const hit = walk(step.members as StepNode[])
-        if (hit) return hit
-      }
-    }
-    return null
-  }
-  return definition.value ? walk(definition.value.steps) : null
-}
-
-/** 删除节点：需要知道它在哪个容器里 */
-function removeNode(id: string): boolean {
-  if (!definition.value) return false
-  const strip = (steps: StepNode[]): boolean => {
-    const index = steps.findIndex((s) => s.id === id)
-    if (index >= 0) {
-      steps.splice(index, 1)
-      return true
-    }
-    for (const step of steps) {
-      if (step.type === 'condition' && step.branches.some((b) => strip(b.steps))) return true
-      if (step.type === 'parallel' && strip(step.members as StepNode[])) return true
-    }
-    return false
-  }
-  return strip(definition.value.steps)
-}
-
-/** 同级内移动 */
-function moveNode(id: string, delta: number): boolean {
-  if (!definition.value) return false
-  const move = (steps: StepNode[]): boolean => {
-    const index = steps.findIndex((s) => s.id === id)
-    if (index >= 0) {
-      const target = index + delta
-      if (target < 0 || target >= steps.length) return false
-      const [item] = steps.splice(index, 1)
-      steps.splice(target, 0, item)
-      return true
-    }
-    for (const step of steps) {
-      if (step.type === 'condition' && step.branches.some((b) => move(b.steps))) return true
-      if (step.type === 'parallel' && move(step.members as StepNode[])) return true
-    }
-    return false
-  }
-  return move(definition.value.steps)
-}
-
-const selectedNode = computed(() => (selectedId.value ? findNode(selectedId.value) : null))
+const selectedNode = computed(() =>
+  definition.value && selectedId.value
+    ? findNode(definition.value, selectedId.value)
+    : null,
+)
 
 /** 所有节点的 id→名称，供「上一节点处理人」的候选下拉 */
 const nodeNameById = computed(() => {
@@ -269,78 +224,9 @@ watch(selectedId, () => void refreshReturnTargets())
 
 // --------------------------------------------------------------------------- 增删节点
 
-function uniqueId(prefix: string): string {
-  const used = new Set(Object.keys(nodeNameById.value))
-  if (!used.has(prefix)) return prefix
-  let n = 2
-  while (used.has(`${prefix}${n}`)) n += 1
-  return `${prefix}${n}`
-}
-
-function makeApproval(): StepNode {
-  const id = uniqueId('s')
-  return {
-    id, type: 'approval', name: `审批节点 ${id}`,
-    assignee: { mode: 'SINGLE', sources: [] },
-    reject_policy: 'reject_to_initiator',
-    return_targets: null,
-    timeout_hours: null,
-    opinion_required: false,
-    attachment_required: false,
-    fields_permission: { base: 'readonly', partitions: {}, overrides: {}, conditional_overrides: [] },
-  }
-}
-
-function makeFill(): StepNode {
-  const id = uniqueId('f')
-  return {
-    id, type: 'fill', name: `填写节点 ${id}`,
-    assignee: { mode: 'SINGLE', sources: [] },
-    return_targets: null,
-    timeout_hours: null,
-    fields_permission: { base: 'hidden', partitions: {}, overrides: {}, conditional_overrides: [] },
-  }
-}
-
-function makeCc(): StepNode {
-  const id = uniqueId('cc')
-  return {
-    id, type: 'cc', name: `抄送 ${id}`,
-    cc_to: { mode: 'SINGLE', sources: [] },
-    allow_read: true,
-  }
-}
-
-function makeCondition(): StepNode {
-  const id = uniqueId('c')
-  return {
-    id, type: 'condition', name: `条件分支 ${id}`,
-    branches: [
-      { id: 'b1', name: '分支 1', when: { op: 'and', conditions: [] }, steps: [] },
-      { id: 'else', name: '否则', when: null, steps: [] },
-    ],
-  }
-}
-
-function makeParallel(): StepNode {
-  const id = uniqueId('p')
-  return {
-    id, type: 'parallel', name: `并行组 ${id}`, mode: 'all',
-    members: [makeApproval(), makeApproval()] as ParallelNode['members'],
-  }
-}
-
-const ADDABLE: Array<{ key: string; label: string; make: () => StepNode }> = [
-  { key: 'approval', label: '审批节点', make: makeApproval },
-  { key: 'fill', label: '填写节点', make: makeFill },
-  { key: 'cc', label: '抄送节点', make: makeCc },
-  { key: 'condition', label: '条件分支', make: makeCondition },
-  { key: 'parallel', label: '并行组', make: makeParallel },
-]
-
-function addNode(make: () => StepNode, into?: StepNode[]): void {
+function addNode(type: AddableNodeType, into?: StepNode[]): void {
   if (!definition.value) return
-  const node = make()
+  const node = makeNode(definition.value, type)
   ;(into ?? definition.value.steps).push(node)
   selectedId.value = node.id
   scheduleSave()
@@ -348,20 +234,22 @@ function addNode(make: () => StepNode, into?: StepNode[]): void {
 
 function deleteSelected(): void {
   const id = selectedId.value
-  if (!id) return
-  const node = findNode(id)
+  if (!id || !definition.value) return
+  const node = findNode(definition.value, id)
   if (!node) return
   if (!window.confirm(`删除节点「${node.name}」？其中配置的审批人与字段权限会一并移除。`)) return
-  if (removeNode(id)) {
-    selectedId.value = definition.value?.steps[0]?.id ?? null
+  if (removeNode(definition.value, id)) {
+    selectedId.value = definition.value.steps[0]?.id ?? null
     scheduleSave()
   }
 }
 
 function moveSelected(delta: number): void {
   const id = selectedId.value
-  if (!id) return
-  if (moveNode(id, delta)) scheduleSave()
+  if (!id || !definition.value) return
+  const location = findLocation(definition.value, id)
+  if (!location) return
+  if (moveWithinSiblings(definition.value, id, location.index + delta)) scheduleSave()
 }
 
 // --------------------------------------------------------------------------- 校验与发布
@@ -456,6 +344,10 @@ const treeItems = computed<TreeItem[]>(() => {
           <Tag v-if="template?.locked_form_version_no" color="blue">
             锁定表单 v{{ template.locked_form_version_no }}
           </Tag>
+          <a-radio-group v-model:value="viewMode" size="small" button-style="solid">
+            <a-radio-button value="canvas">画布</a-radio-button>
+            <a-radio-button value="list">清单</a-radio-button>
+          </a-radio-group>
         </Space>
 
         <Space>
@@ -487,9 +379,25 @@ const treeItems = computed<TreeItem[]>(() => {
     </Card>
 
     <a-row :gutter="16" class="designer-body">
-      <!-- ------------------------------------------------ 左侧节点清单 -->
-      <a-col :xs="24" :md="9" :lg="7">
-        <Card :bordered="false" :loading="loading" class="panel">
+      <!-- ------------------------------------------------ 左侧：画布 / 节点清单 -->
+      <a-col :xs="24" :md="viewMode === 'canvas' ? 16 : 9" :lg="viewMode === 'canvas' ? 17 : 7">
+        <Card
+          v-if="viewMode === 'canvas'"
+          :bordered="false"
+          :loading="loading"
+          class="panel canvas-panel"
+        >
+          <FlowCanvas
+            v-if="definition"
+            v-model:selected-id="selectedId"
+            :definition="definition"
+            :readonly="readonly"
+            @change="onNodeChange"
+          />
+          <a-empty v-else description="还没有流程定义" />
+        </Card>
+
+        <Card v-else :bordered="false" :loading="loading" class="panel">
           <template #title>流程节点</template>
 
           <a-empty v-if="!treeItems.length" description="还没有节点" />
@@ -533,9 +441,9 @@ const treeItems = computed<TreeItem[]>(() => {
               <template #overlay>
                 <a-menu>
                   <a-menu-item
-                    v-for="opt in ADDABLE"
-                    :key="opt.key"
-                    @click="addNode(opt.make)"
+                    v-for="opt in ADDABLE_NODES"
+                    :key="opt.type"
+                    @click="addNode(opt.type)"
                   >
                     {{ opt.label }}
                   </a-menu-item>
@@ -561,12 +469,12 @@ const treeItems = computed<TreeItem[]>(() => {
                 <a-menu>
                   <a-menu-item
                     v-for="opt in selectedNode.type === 'parallel'
-                      ? ADDABLE.filter((a) => a.key === 'approval' || a.key === 'fill')
-                      : ADDABLE.filter((a) => a.key !== 'parallel')"
-                    :key="opt.key"
+                      ? ADDABLE_NODES.filter((a) => a.type === 'approval' || a.type === 'fill')
+                      : ADDABLE_NODES.filter((a) => a.type !== 'parallel')"
+                    :key="opt.type"
                     @click="
                       addNode(
-                        opt.make,
+                        opt.type,
                         selectedNode.type === 'parallel'
                           ? (selectedNode.members as StepNode[])
                           : (selectedNode as Extract<StepNode, { type: 'condition' }>).branches[0]?.steps,
@@ -583,7 +491,7 @@ const treeItems = computed<TreeItem[]>(() => {
       </a-col>
 
       <!-- ------------------------------------------------ 右侧属性面板 -->
-      <a-col :xs="24" :md="15" :lg="17">
+      <a-col :xs="24" :md="viewMode === 'canvas' ? 8 : 15" :lg="viewMode === 'canvas' ? 7 : 17">
         <Card :bordered="false" class="panel">
           <template #title>
             <template v-if="selectedNode">
@@ -686,6 +594,14 @@ const treeItems = computed<TreeItem[]>(() => {
 
   :deep(.ant-card-body) {
     padding: 12px;
+  }
+}
+
+.canvas-panel {
+  min-height: 640px;
+
+  :deep(.ant-card-body) {
+    padding: 8px;
   }
 }
 
