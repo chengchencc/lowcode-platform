@@ -80,8 +80,10 @@ let panStart = { x: 0, y: 0, panX: 0, panY: 0 }
 
 function startPan(event: PointerEvent): void {
   if (event.button !== 0) return
-  const target = event.target as HTMLElement
-  if (target.closest('.canvas-node, .canvas-toolbar, button')) return
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('.canvas-node, .canvas-toolbar, button')) {
+    return
+  }
   panning = true
   panStart = {
     x: event.clientX,
