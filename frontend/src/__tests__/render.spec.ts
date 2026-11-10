@@ -550,6 +550,20 @@ describe('布局与 antd 上下文', () => {
 
 
 describe('画布节点按钮（完整设计器集成）', () => {
+  it('条件分支内的节点可以选中并在右侧面板配置', async () => {
+    const wrapper = await mountView(FlowDesignerView, '/admin/flows/1/design')
+    await flushPromises()
+
+    await wrapper.find('[data-node-id="s2"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      wrapper.text(),
+      '点击分支内节点后，右侧属性面板应切换到该节点',
+    ).toContain('节点属性：财务补充')
+    wrapper.unmount()
+  })
+
   it('审批节点的 + 与删除都能生效', async () => {
     const { messages, restore } = watchUnresolved()
     try {

@@ -7,6 +7,7 @@ import {
   findLocation,
   findNode,
   insertAfter,
+  insertIntoContainer,
   makeNode,
   moveNodeTo,
   moveWithinSiblings,
@@ -154,6 +155,50 @@ describe('definitionOps', () => {
     expect(moveNodeTo(def, 'c1', {
       kind: 'container', container: { kind: 'branch', conditionId: 'c1', branchId: 'b1' },
     })).toBe(false)
+  })
+
+  it('可以直接向根、条件分支与并行组插入节点', () => {
+    const def = definition()
+    expect(insertIntoContainer(def, { kind: 'root' }, approval('s0'))).toBe(true)
+    expect(def.steps.at(-1)?.id).toBe('s0')
+
+    expect(insertIntoContainer(
+      def,
+      { kind: 'branch', conditionId: 'c1', branchId: 'b1' },
+      approval('s5'),
+    )).toBe(true)
+    const condition = findNode(def, 'c1')
+    if (condition?.type !== 'condition') throw new Error('c1 应该是条件节点')
+    expect(condition.branches[0].steps.map((s) => s.id)).toEqual(['s2', 's5'])
+
+    expect(insertIntoContainer(
+      def,
+      { kind: 'parallel', parallelId: 'p1' },
+      approval('m5'),
+    )).toBe(true)
+    const parallel = findNode(def, 'p1')
+    if (parallel?.type !== 'parallel') throw new Error('p1 应该是并行组')
+    expect(parallel.members.map((m) => m.id)).toEqual(['m1', 'm2', 'm5'])
+  })
+
+  it('直接插入时遵守容器约束与 id 唯一性', () => {
+    const def = definition()
+    expect(insertIntoContainer(def, { kind: 'root' }, approval('s1'))).toBe(false)
+    expect(insertIntoContainer(
+      def,
+      { kind: 'parallel', parallelId: 'p1' },
+      makeNode(def, 'condition'),
+    )).toBe(false)
+    expect(insertIntoContainer(
+      def,
+      { kind: 'branch', conditionId: 'c1', branchId: 'b1' },
+      makeNode(def, 'parallel'),
+    )).toBe(false)
+    expect(insertIntoContainer(
+      def,
+      { kind: 'branch', conditionId: 'missing', branchId: 'b1' },
+      approval('x'),
+    )).toBe(false)
   })
 
   it('节点工厂生成唯一 id，并覆盖并行组两个成员', () => {

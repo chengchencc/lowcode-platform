@@ -26,6 +26,33 @@ function definition(): FlowDefinition {
   }
 }
 
+function conditionDefinition(): FlowDefinition {
+  return {
+    model_version: 1,
+    start: { id: 'start', type: 'start', name: '发起', fields_permission: null },
+    steps: [{
+      id: 'c1', type: 'condition', name: '按金额分流',
+      branches: [
+        { id: 'b1', name: '大额', when: { op: 'and', conditions: [] }, steps: [] },
+        { id: 'else', name: '否则', when: null, steps: [] },
+      ],
+    }],
+    end: { id: 'end', type: 'end', name: '结束' },
+  }
+}
+
+function parallelDefinition(): FlowDefinition {
+  return {
+    model_version: 1,
+    start: { id: 'start', type: 'start', name: '发起', fields_permission: null },
+    steps: [{
+      id: 'p1', type: 'parallel', name: '会签', mode: 'all',
+      members: [approval('m1')],
+    }],
+    end: { id: 'end', type: 'end', name: '结束' },
+  }
+}
+
 function mountCanvas(def = definition()) {
   return mount(FlowCanvas, {
     props: { definition: def, selectedId: null, readonly: false },
@@ -84,6 +111,48 @@ describe('FlowCanvas', () => {
     await flushPromises()
 
     expect(def.steps.length).toBe(before + 1)
+    expect(wrapper.emitted('change')).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('条件分支泳道的 + 可以直接把节点插入该分支', async () => {
+    const def = conditionDefinition()
+    const wrapper = mountCanvas(def)
+    const addButtons = wrapper.findAll('[title="向此分支添加节点"]')
+    expect(addButtons.length, '两个分支都应有添加按钮').toBe(2)
+
+    await addButtons[0].trigger('click')
+    await flushPromises()
+    expect(document.body.textContent?.replace(/\s+/g, '') ?? '').toContain('添加节点到分支')
+
+    const option = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ant-modal button'))
+      .find((button) => button.textContent?.replace(/\s+/g, '') === '审批节点')
+    expect(option, '弹窗里应有「审批节点」选项').toBeTruthy()
+    option!.click()
+    await flushPromises()
+
+    const condition = findNode(def, 'c1')
+    if (condition?.type !== 'condition') throw new Error('c1 应该是条件节点')
+    expect(condition.branches[0].steps.length).toBe(1)
+    expect(wrapper.emitted('change')).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('并行组的 + 成员可以直接添加成员', async () => {
+    const def = parallelDefinition()
+    const wrapper = mountCanvas(def)
+    await wrapper.find('[title="添加并行成员"]').trigger('click')
+    await flushPromises()
+
+    const option = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ant-modal button'))
+      .find((button) => button.textContent?.replace(/\s+/g, '') === '审批节点')
+    expect(option).toBeTruthy()
+    option!.click()
+    await flushPromises()
+
+    const parallel = findNode(def, 'p1')
+    if (parallel?.type !== 'parallel') throw new Error('p1 应该是并行组')
+    expect(parallel.members.length).toBe(2)
     expect(wrapper.emitted('change')).toBeTruthy()
     wrapper.unmount()
   })

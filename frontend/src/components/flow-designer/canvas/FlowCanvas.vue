@@ -11,6 +11,7 @@ import {
   addParallelMember,
   findNode,
   insertAfter,
+  insertIntoContainer,
   makeNode,
   moveNodeTo,
   removeNode,
@@ -133,27 +134,42 @@ function onDelete(id: string): void {
   }
 }
 
-const insertAfterId = ref<string | null>(null)
+type InsertTarget =
+  | { kind: 'after'; id: string }
+  | { kind: 'container'; container: NodeContainer }
+
+const insertTarget = ref<InsertTarget | null>(null)
 const insertOpen = computed({
-  get: () => insertAfterId.value !== null,
+  get: () => insertTarget.value !== null,
   set: (open: boolean) => {
-    if (!open) insertAfterId.value = null
+    if (!open) insertTarget.value = null
   },
 })
 
+const insertTitle = computed(() =>
+  insertTarget.value?.kind === 'container' ? '添加节点到分支/并行组' : '插入节点',
+)
+
 function openInsert(afterId: string): void {
-  if (!props.readonly) insertAfterId.value = afterId
+  if (!props.readonly) insertTarget.value = { kind: 'after', id: afterId }
+}
+
+function openInsertInto(container: NodeContainer): void {
+  if (!props.readonly) insertTarget.value = { kind: 'container', container }
 }
 
 function chooseInsert(type: AddableNodeType): void {
-  const afterId = insertAfterId.value
-  if (!afterId) return
+  const target = insertTarget.value
+  if (!target) return
   const node = makeNode(props.definition, type)
-  if (insertAfter(props.definition, afterId, node)) {
+  const inserted = target.kind === 'after'
+    ? insertAfter(props.definition, target.id, node)
+    : insertIntoContainer(props.definition, target.container, node)
+  if (inserted) {
     emit('change')
     emit('update:selectedId', node.id)
   }
-  insertAfterId.value = null
+  insertTarget.value = null
 }
 
 // --------------------------------------------------------------------------- 拖拽
@@ -295,6 +311,7 @@ function pathOf(edge: CanvasEdge): string {
           :group="group"
           @drag-over-container="onContainerDragOver"
           @drop-container="onContainerDrop"
+          @add-node="openInsertInto"
         />
         <svg class="canvas-edges" :width="layout.width" :height="layout.height">
           <path
@@ -323,7 +340,7 @@ function pathOf(edge: CanvasEdge): string {
       </div>
     </div>
 
-    <a-modal v-model:open="insertOpen" title="插入节点" :footer="null">
+    <a-modal v-model:open="insertOpen" :title="insertTitle" :footer="null">
       <div class="insert-grid">
         <a-button
           v-for="item in ADDABLE_NODES"

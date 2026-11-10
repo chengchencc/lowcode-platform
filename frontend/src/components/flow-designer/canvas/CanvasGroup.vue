@@ -9,6 +9,7 @@ const props = defineProps<{ group: CanvasGroup }>()
 const emit = defineEmits<{
   dragOverContainer: [container: NodeContainer, event: DragEvent]
   dropContainer: [container: NodeContainer, event: DragEvent]
+  addNode: [container: NodeContainer]
 }>()
 
 const style = computed(() => ({
@@ -39,6 +40,15 @@ function onDrop(container: NodeContainer, event: DragEvent): void {
 <template>
   <div class="canvas-group" :class="`kind-${group.kind}`" :style="style">
     <div class="group-caption">{{ group.kind === 'condition' ? '条件分支' : '并行组' }}</div>
+    <button
+      v-if="group.kind === 'parallel'"
+      type="button"
+      class="group-add"
+      title="添加并行成员"
+      @click.stop="emit('addNode', { kind: 'parallel', parallelId: group.id })"
+    >
+      + 成员
+    </button>
     <div
       v-for="lane in group.lanes"
       :key="lane.id"
@@ -49,8 +59,17 @@ function onDrop(container: NodeContainer, event: DragEvent): void {
       @drop.stop.prevent="onDrop(lane.target, $event)"
     >
       <div v-if="lane.kind === 'branch'" class="lane-label">{{ lane.label }}</div>
+      <button
+        v-if="lane.kind === 'branch'"
+        type="button"
+        class="lane-add"
+        title="向此分支添加节点"
+        @click.stop="emit('addNode', lane.target)"
+      >
+        +
+      </button>
       <div v-if="lane.empty" class="lane-empty">
-        {{ lane.kind === 'branch' ? '空分支，可拖入节点' : '空成员' }}
+        {{ lane.kind === 'branch' ? '空分支：点右上角 + 添加，或拖入节点' : '空成员' }}
       </div>
     </div>
   </div>
@@ -85,6 +104,38 @@ function onDrop(container: NodeContainer, event: DragEvent): void {
   letter-spacing: 0.5px;
 }
 
+.group-add,
+.lane-add {
+  position: absolute;
+  z-index: 1;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 18px;
+
+  &:hover {
+    border-color: #1677ff;
+    color: #1677ff;
+  }
+}
+
+.group-add {
+  top: 3px;
+  right: 8px;
+  padding: 0 6px;
+}
+
+.lane-add {
+  top: 3px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
 .canvas-lane {
   position: absolute;
   border: 1px solid #f0f0f0;
@@ -102,7 +153,7 @@ function onDrop(container: NodeContainer, event: DragEvent): void {
   position: absolute;
   top: 4px;
   left: 8px;
-  right: 8px;
+  right: 28px;
   overflow: hidden;
   color: rgba(0, 0, 0, 0.55);
   font-size: 11px;

@@ -164,6 +164,20 @@ export function insertAfter(
   return true
 }
 
+/** 把新节点直接追加到根 / 条件分支 / 并行组的末尾。 */
+export function insertIntoContainer(
+  definition: FlowDefinition,
+  container: NodeContainer,
+  node: StepNode,
+): boolean {
+  const list = containerList(definition, container)
+  if (!list) return false
+  if (!canContain(container, node)) return false
+  if (collectNodeIds(definition).has(node.id)) return false
+  list.push(node)
+  return true
+}
+
 export function addBranch(definition: FlowDefinition, conditionId: string): Branch | null {
   const node = findNode(definition, conditionId)
   if (node?.type !== 'condition') return null
