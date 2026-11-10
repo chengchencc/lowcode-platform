@@ -10,12 +10,13 @@
  * 简单标量控件内联在此；人员/部门、附件、子表、级联因为逻辑较重单独成组件。
  */
 import dayjs, { type Dayjs } from 'dayjs'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 
 import AttachmentControl from '@/components/form-renderer/controls/AttachmentControl.vue'
 import CascaderControl from '@/components/form-renderer/controls/CascaderControl.vue'
 import OrgPickerControl from '@/components/form-renderer/controls/OrgPickerControl.vue'
 import SubtableControl from '@/components/form-renderer/controls/SubtableControl.vue'
+import { useOrgStore } from '@/stores/org'
 import type { FieldDef, FieldState } from '@/types/form'
 import { evaluateFormula } from '@/utils/formula'
 import { formatValue } from '@/utils/formValue'
@@ -38,8 +39,15 @@ const props = withDefaults(
 
 const emit = defineEmits<{ 'update:modelValue': [unknown] }>()
 
+const org = useOrgStore()
+
 const editable = computed(() => props.state.editable && props.mode === 'edit')
 const label = computed(() => props.field.label)
+
+onMounted(() => {
+  // 只读态不经过 OrgPickerControl（它在可编辑时才挂载），部门 id 换名字要先有部门树
+  if (props.field.type.startsWith('dept')) void org.loadDeptTree()
+})
 
 function set(value: unknown): void {
   emit('update:modelValue', value ?? null)
@@ -74,7 +82,11 @@ const readonlyText = computed(() => {
         : evaluateFormula(props.field.formula ?? { type: 'arithmetic' }, {})
     return value === null || value === undefined ? '—' : String(value)
   }
-  return formatValue(props.field, props.modelValue)
+  // 人员/部门的值是 id，只读展示必须换成名字（否则就是一个 #1）
+  return formatValue(props.field, props.modelValue, (kind, id) => {
+    const numeric = Number(id)
+    return kind === 'dept' ? org.deptName(numeric) : org.userName(numeric)
+  })
 })
 
 // --------------------------------------------------------------------------- 选项
