@@ -9,6 +9,8 @@ import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { computed } from 'vue'
 
 import ConditionEditor from '@/components/form-designer/ConditionEditor.vue'
+import type { Condition, ConditionGroup } from '@/types/conditions'
+import { isConditionGroup } from '@/types/conditions'
 import type { FormRule, FormSchema, RuleEffectType } from '@/types/form'
 import { isDisplayField } from '@/types/form'
 
@@ -40,6 +42,35 @@ function notify(): void {
   emit('change')
 }
 
+function conditionKeys(group: ConditionGroup): Set<string> {
+  const out = new Set<string>()
+  const walk = (current: ConditionGroup): void => {
+    for (const item of current.conditions) {
+      if (isConditionGroup(item)) walk(item)
+      else out.add((item as Condition).field)
+    }
+  }
+  walk(group)
+  return out
+}
+
+function targetOptions(rule: FormRule): Array<{ value: string; label: string }> {
+  const used = conditionKeys(rule.when)
+  return fieldOptions.value.filter((option) => !used.has(option.value))
+}
+
+function targetInvalid(rule: FormRule, target: string): boolean {
+  return conditionKeys(rule.when).has(target)
+}
+
+const invalidTargetCount = computed(() =>
+  props.rules.reduce(
+    (count, rule) =>
+      count + rule.effects.filter((effect) => targetInvalid(rule, effect.target)).length,
+    0,
+  ),
+)
+
 function nextRuleId(): string {
   const used = new Set(props.rules.map((rule) => rule.id))
   let n = 1
@@ -49,8 +80,13 @@ function nextRuleId(): string {
 
 function addRule(): void {
   const first = fieldOptions.value[0]?.value ?? ''
-  // 默认目标用第二个字段，避免一建规则就形成“自己依赖自己”的循环
-  const target = fieldOptions.value[1]?.value ?? first
+  // 默认目标避开条件字段与标题字段，减少一建规则就自引用/误伤标题的情况
+  const target =
+    fieldOptions.value.find(
+      (option) => option.value !== first && option.value !== props.schema.title_field,
+    )?.value
+    ?? fieldOptions.value.find((option) => option.value !== first)?.value
+    ?? first
   props.rules.push({
     id: nextRuleId(),
     name: `规则 ${props.rules.length + 1}`,
@@ -86,7 +122,36 @@ function fieldLabel(key: string): string {
   return fieldOptions.value.find((item) => item.value === key)?.label ?? key
 }
 
-function onConditionChange(): void {
+function fixInvalidTargets(): void {
+  for (const rule of props.rules) {
+    const used = conditionKeys(rule.when)
+    const fallback =
+      fieldOptions.value.find(
+        (option) => !used.has(option.value) && option.value !== props.schema.title_field,
+      )?.value
+      ?? fieldOptions.value.find((option) => !used.has(option.value))?.value
+    if (!fallback) continue
+    for (const effect of rule.effects) {
+      if (used.has(effect.target)) effect.target = fallback
+    }
+  }
+  notify()
+}
+
+function onConditionChange(rule: FormRule): void {
+  // 条件字段变了以后，原本的目标可能变成了「目标 == 条件字段」的自引用。
+  // 自动换到第一个不与条件冲突的字段，避免规则静默失效。
+  const used = conditionKeys(rule.when)
+  const fallback =
+    fieldOptions.value.find(
+      (option) => !used.has(option.value) && option.value !== props.schema.title_field,
+    )?.value
+    ?? fieldOptions.value.find((option) => !used.has(option.value))?.value
+  if (fallback) {
+    for (const effect of rule.effects) {
+      if (used.has(effect.target)) effect.target = fallback
+    }
+  }
   notify()
 }
 </script>
@@ -99,6 +164,18 @@ function onConditionChange(): void {
       class="tip"
       message="规则只收紧权限：节点权限已经隐藏的字段不会被规则点亮；同一字段命中多条规则时，隐藏 > 只读 > 必填。"
     />
+
+    <a-alert
+      v-if="invalidTargetCount"
+      type="warning"
+      show-icon
+      class="tip"
+      :message="`有 ${invalidTargetCount} 个目标与规则条件字段相同；这种规则不会影响其他字段，请改选目标。`"
+    >
+      <template #action>
+        <a-button size="small" @click="fixInvalidTargets">自动修正</a-button>
+      </template>
+    </a-alert>
 
     <a-empty v-if="!rules.length" description="还没有联动规则" />
 
@@ -124,7 +201,7 @@ function onConditionChange(): void {
         <ConditionEditor
           :group="rule.when"
           :field-options="fieldOptions"
-          @change="onConditionChange"
+          @change="onConditionChange(rule)"
         />
       </div>
 
@@ -133,7 +210,7 @@ function onConditionChange(): void {
         <div v-for="(effect, eidx) in rule.effects" :key="eidx" class="effect-row">
           <a-select
             v-model:value="effect.target"
-            :options="fieldOptions"
+            :options="targetOptions(rule)"
             size="small"
             placeholder="目标字段"
             show-search
@@ -148,7 +225,8 @@ function onConditionChange(): void {
             class="effect-type"
             @change="notify"
           />
-          <span class="text-muted effect-hint">{{ fieldLabel(effect.target) }}</span>
+          <a-tag v-if="targetInvalid(rule, effect.target)" color="red">不能用条件字段</a-tag>
+          <span v-else class="text-muted effect-hint">{{ fieldLabel(effect.target) }}</span>
           <a-button type="text" size="small" danger @click="removeEffect(rule, eidx)">
             <template #icon><DeleteOutlined /></template>
           </a-button>

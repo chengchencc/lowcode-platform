@@ -361,7 +361,8 @@ interface CanvasNode {
   `clear_when_hidden` 会清值并留 diff。
 - `render` 返回 `permissions`（当前值生效结果）、`base_permissions` 与 `form_rules`；
   前端 `FormRenderer` 用基础权限 + 规则随输入实时重算。
-- 设计器新增“联动规则”抽屉：条件编辑器、效果列表、隐藏时清值。
+- 设计器新增“联动规则”抽屉：条件编辑器、效果列表、隐藏时清值；
+  目标字段与条件字段相同会被标红并可一键自动修正（这种自引用规则不会影响其他字段）。
 - 发布校验拦截：目标字段/条件字段不存在、展示控件目标、子表列目标、循环依赖、公式字段必填等。
 - **测试待补**：前后端共享向量已放在 `docs/form-rule-test-vectors.json`。
 
