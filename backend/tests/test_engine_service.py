@@ -106,6 +106,26 @@ def _published_form(db, actor: User) -> FormVersion:
     return version
 
 
+def _published_form_with(db, actor: User, schema: dict) -> FormVersion:
+    """指定 schema 的已发布表单版本（自动填充等用例需要自定义字段）。"""
+    from app.core.constants import FormStatus, FormVersionStatus
+
+    template = FormTemplate(
+        name=f"表单{next(_counter)}", status=FormStatus.PUBLISHED, created_by=actor.id
+    )
+    db.add(template)
+    db.flush()
+    version = FormVersion(
+        template_id=template.id, version_no=1, schema=schema,
+        status=FormVersionStatus.PUBLISHED, created_by=actor.id,
+    )
+    db.add(version)
+    db.flush()
+    template.current_version_id = version.id
+    db.flush()
+    return version
+
+
 def _published_flow(db, actor: User, form_version: FormVersion, definition: dict) -> FlowVersion:
     from app.core.constants import FlowStatus, FlowVersionStatus
 
@@ -225,6 +245,41 @@ class TestSubmit:
             select(Notification).where(Notification.user_id == approver.id)
         )
         assert notif is not None and notif.type == "TASK_CREATED"
+
+    def test_submit_auto_fills_initiator_and_dept(self, db):
+        dept = Department(code=f"D{next(_counter)}", name="测试部门")
+        db.add(dept)
+        db.flush()
+        admin = _user(db, dept_id=dept.id)
+        approver = _user(db)
+        form = _published_form_with(db, admin, {
+            "sections": [{
+                "key": "sec", "title": "申请", "fields": [
+                    {"key": "applicant", "label": "发起人", "type": "user",
+                     "auto_fill": "initiator"},
+                    {"key": "applyDept", "label": "发起部门", "type": "dept",
+                     "auto_fill": "initiator_dept"},
+                    {"key": "reason", "label": "事由", "type": "text"},
+                ],
+            }],
+        })
+        flow = _published_flow(db, admin, form, {
+            "steps": [{
+                "id": "s1", "type": "approval", "name": "审批",
+                "assignee": {"sources": [{"type": "user", "user_ids": [approver.id]}]},
+            }],
+        })
+        instance = _draft_instance(db, flow, form, admin)
+        db.commit()
+
+        # 客户端传的错误值必须被服务端的自动填充覆盖
+        _engine(db).submit(
+            instance=instance, actor=admin,
+            data={"applicant": 99999, "applyDept": 99999, "reason": "x"},
+        )
+
+        assert instance.current_data["applicant"] == admin.id
+        assert instance.current_data["applyDept"] == dept.id
 
     def test_submit_requires_required_fields(self, db):
         admin = _user(db)

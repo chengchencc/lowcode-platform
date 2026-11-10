@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from tests.conftest import make_user
 
 BASE = "/api/v1"
@@ -129,8 +131,9 @@ def test_upload_writes_file_to_storage(client, db, normal_headers):
     assert row is not None
     assert row.status == "TEMP"
     assert row.sha256 is not None
-    # 存储名是 uuid，不沿用原始文件名（防路径穿越与同名覆盖）
-    assert row.stored_name.endswith(".txt")
-    assert "a.txt" not in row.stored_name
+    # 存储名是 uuid + 原扩展名，不沿用原始文件名（防路径穿越与同名覆盖）。
+    # 不能用 `"a.txt" not in stored_name`：uuid 恰好以 a 结尾时，
+    # `<uuid>.txt` 的尾部就是 "a.txt"，会随机误报。
+    assert re.fullmatch(r"[0-9a-f]{32}\.txt", row.stored_name)
     assert (settings.storage_path / row.rel_path).is_file()
     assert get_storage().read(row.rel_path) == b"body"

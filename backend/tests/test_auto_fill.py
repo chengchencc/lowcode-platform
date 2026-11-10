@@ -8,7 +8,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.engine.approvers import ApproverContext, resolve_approvers
 from app.engine.auto_fill import auto_fill_values
