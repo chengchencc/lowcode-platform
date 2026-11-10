@@ -58,6 +58,13 @@ const formRules = computed(
 
 const needsAssigneePick = computed(() => (options.value?.initiator_select_nodes.length ?? 0) > 0)
 
+/** 表单已发布新版本，但流程还锁着旧版：字段/可见性等改动尚未生效 */
+const formOutdated = computed(() => {
+  const latest = options.value?.form_latest_version_no
+  const used = options.value?.form_version_no
+  return latest != null && used != null && latest > used
+})
+
 // --------------------------------------------------------------------------- 加载
 
 async function load(): Promise<void> {
@@ -211,6 +218,15 @@ function confirmPicks(): void {
   <div class="page-container">
     <a-spin :spinning="loading">
       <template v-if="options">
+        <a-alert
+          v-if="formOutdated && (auth.isAdmin || auth.isDesigner)"
+          type="warning"
+          show-icon
+          class="block"
+          message="流程仍在使用旧版表单"
+          :description="`当前锁定表单 v${options.form_version_no}，最新已发布 v${options.form_latest_version_no}。表单的字段、校验、发起阶段可见性等改动，需要设计者重新发布流程后才会生效。`"
+        />
+
         <Card :bordered="false" class="block" :body-style="{ padding: '12px 18px' }">
           <div class="header">
             <Space>

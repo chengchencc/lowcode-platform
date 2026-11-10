@@ -77,6 +77,8 @@ class StartOptionsOut(BaseModel):
     flow_version_no: int
     form_version_id: int
     form_version_no: int
+    #: 表单模板最新已发布版本；大于 form_version_no 说明流程还没跟到最新表单
+    form_latest_version_no: int | None = None
     schema_data: FormSchema
     #: 发起节点的字段权限 —— 前端据此渲染，不自己推导
     permissions: dict[str, dict[str, Any]]

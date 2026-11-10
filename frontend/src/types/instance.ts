@@ -199,6 +199,8 @@ export interface StartOptions {
   flow_version_no: number
   form_version_id: number
   form_version_no: number
+  /** 表单模板最新已发布版本；大于 form_version_no 说明流程还没重新发布 */
+  form_latest_version_no?: number | null
   schema_data: FormSchema
   permissions: Record<string, FieldState & { reason?: string }>
   base_permissions?: Record<string, FieldState & { reason?: string }>

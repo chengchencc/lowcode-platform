@@ -28,9 +28,10 @@ import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
 import FieldPropertyPanel from '@/components/form-designer/FieldPropertyPanel.vue'
 import FormRulesPanel from '@/components/form-designer/FormRulesPanel.vue'
-import { FormRenderer } from '@/components/form-renderer'
+import { FormRenderer, resolveFieldStates } from '@/components/form-renderer'
 import type {
   FieldDef,
+  FieldState,
   FormSchema,
   FormTemplate,
   FormValidateResult,
@@ -335,7 +336,34 @@ const rulesOpen = ref(false)
 const previewOpen = ref(false)
 const previewValues = ref<Record<string, unknown>>({})
 const previewMode = ref<'edit' | 'readonly'>('edit')
+/** 预览默认按「发起阶段可见」过滤；关掉可以看到全部字段（含节点专属补充字段） */
+const previewHonorStart = ref(true)
 const serverComputed = ref<Record<string, unknown>>({})
+
+/**
+ * 预览用的权限表。
+ *
+ * `resolveFieldStates` 在只读态会放行所有字段（真实页面的权限来自服务端节点矩阵）；
+ * 设计器的预览没有节点上下文，只读态也应该呈现「发起页」的样子，
+ * 所以这里额外按 visible_at_start 收窄可见性。
+ */
+const previewPermissions = computed<Record<string, FieldState> | null>(() => {
+  if (!previewHonorStart.value) return null
+  const states = resolveFieldStates(schema.value, previewMode.value)
+  for (const section of schema.value.sections) {
+    for (const field of section.fields) {
+      const visible = field.visible_at_start !== false
+      const state = states[field.key]
+      if (state) states[field.key] = { ...state, visible: state.visible && visible }
+      for (const col of field.columns ?? []) {
+        const ref = `${field.key}[].${col.key}`
+        const colState = states[ref]
+        if (colState) states[ref] = { ...colState, visible: colState.visible && visible }
+      }
+    }
+  }
+  return states
+})
 
 function openPreview(): void {
   previewValues.value = buildInitialValues(schema.value)
@@ -743,16 +771,20 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
     <!-- ------------------------------------------------ 预览 -->
     <Drawer v-model:open="previewOpen" title="表单预览" :width="760" placement="right">
       <template #extra>
-        <a-radio-group v-model:value="previewMode" size="small" button-style="solid">
-          <a-radio-button value="edit">编辑态</a-radio-button>
-          <a-radio-button value="readonly">只读态</a-radio-button>
-        </a-radio-group>
+        <a-space>
+          <a-checkbox v-model:checked="previewHonorStart">按发起阶段可见过滤</a-checkbox>
+          <a-radio-group v-model:value="previewMode" size="small" button-style="solid">
+            <a-radio-button value="edit">编辑态</a-radio-button>
+            <a-radio-button value="readonly">只读态</a-radio-button>
+          </a-radio-group>
+        </a-space>
       </template>
 
       <FormRenderer
         v-model="previewValues"
         :schema="schema"
         :mode="previewMode"
+        :permissions="previewPermissions"
         empty-text="还没有配置任何字段"
       />
 

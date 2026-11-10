@@ -40,7 +40,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import FormSchema, parse_form_schema
-from app.services import flow_service
+from app.services import flow_service, form_service
 from app.services.approver_provider import DbApproverProvider
 
 
@@ -92,6 +92,11 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         raise NotFoundError("锁定的表单版本不存在", code="FORM_VERSION_MISSING")
     form_schema = parse_form_schema(form_version.schema)
 
+    # 表单模板可能已经发布了更新的版本；流程没重新发布时，发起页仍用旧版 schema。
+    # 把最新发布版本号告诉前端，用来提示「字段/可见性改动尚未生效」。
+    form_template = form_service.get_or_404(db, template.form_template_id)
+    latest_form_version = form_service._current_version(db, form_template)
+
     compiled = compile_definition(current.definition)
     base_permissions = resolve_field_permissions(
         form_schema=form_schema,
@@ -119,6 +124,10 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         "flow_version_no": current.version_no,
         "form_version_id": form_version.id,
         "form_version_no": form_version.version_no,
+        # 表单模板最新已发布版本；大于 form_version_no 时说明流程需要重新发布
+        "form_latest_version_no": (
+            latest_form_version.version_no if latest_form_version else None
+        ),
         "schema_data": form_version.schema,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
         "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
