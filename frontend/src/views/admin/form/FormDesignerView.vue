@@ -47,7 +47,12 @@ const templateId = computed(() => Number(route.params.id))
 
 const template = ref<FormTemplate | null>(null)
 const version = ref<FormVersion | null>(null)
-const schema = ref<FormSchema>({ sections: [] })
+// 初始就要有 layout：首次渲染发生在 onMounted(load) 之前，
+// 而左侧“整体布局”会直接读 schema.layout；缺了它会整页渲染失败变白屏。
+const schema = ref<FormSchema>({
+  sections: [],
+  layout: { label_position: 'top', columns: 2 },
+})
 const columnOptions = [1, 2, 3, 4].map((n) => ({ value: n, label: `${n} 列` }))
 const loading = ref(false)
 const saving = ref(false)
