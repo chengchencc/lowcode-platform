@@ -14,6 +14,7 @@ import FieldPermissionPanel from '@/components/flow-designer/FieldPermissionPane
 import type { FieldDef, FormSchema } from '@/types/form'
 import type {
   ApprovalNode,
+  AssigneeRule,
   AssigneeSource,
   AssigneeSourceType,
   Branch,
@@ -108,13 +109,47 @@ function fieldsOf(types: string[]): FieldDef[] {
 
 // --------------------------------------------------------------------------- 审批人
 
-function addSource(rule: { sources: AssigneeSource[] }): void {
+function currentRule(): AssigneeRule {
+  return isCc.value ? ccNode.value.cc_to : assigneeNode.value.assignee
+}
+
+/**
+ * 发起人指定审批人的候选范围在**规则级** `initiator_select`，不在来源自身。
+ * 后端 `AssigneeRule` 的校验要求：只要有 initiator_select 来源，规则级范围就必须存在。
+ */
+function ensureInitiatorScope(source?: AssigneeSource): AssigneeSource {
+  const rule = currentRule()
+  if (rule.initiator_select) return rule.initiator_select
+  const scope: AssigneeSource = {
+    type: 'role',
+    scope_role_ids: source?.scope_role_ids ?? [],
+    scope_dept_ids: source?.scope_dept_ids ?? [],
+  }
+  rule.initiator_select = scope
+  return scope
+}
+
+function syncInitiatorScope(ids: number[]): void {
+  const rule = currentRule()
+  const scope = ensureInitiatorScope()
+  scope.scope_role_ids = ids
+  // 来源自身的 scope_* 字段保留并同步，兼容旧定义与只读查看
+  for (const item of rule.sources) {
+    if (item.type === 'initiator_select') item.scope_role_ids = ids
+  }
+  notify()
+}
+
+function addSource(rule: AssigneeRule): void {
   rule.sources.push({ type: 'role', role_ids: [] })
   notify()
 }
 
-function removeSource(rule: { sources: AssigneeSource[] }, index: number): void {
+function removeSource(rule: AssigneeRule, index: number): void {
   rule.sources.splice(index, 1)
+  if (!rule.sources.some((s) => s.type === 'initiator_select')) {
+    rule.initiator_select = null
+  }
   notify()
 }
 
@@ -126,6 +161,14 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
   source.dept_field = null
   source.node_id = null
   source.type = type
+
+  const rule = currentRule()
+  if (type === 'initiator_select') {
+    ensureInitiatorScope(source)
+  } else if (!rule.sources.some((s) => s.type === 'initiator_select')) {
+    // 已没有发起人指定来源，清掉候选范围，避免留下脏配置
+    rule.initiator_select = null
+  }
   notify()
 }
 
@@ -415,12 +458,12 @@ function conditionsOf(branch: Branch): EditableCondition[] {
           <!-- 发起人指定 -->
           <div v-else-if="source.type === 'initiator_select'">
             <a-select
-              v-model:value="source.scope_role_ids"
+              :value="currentRule().initiator_select?.scope_role_ids ?? []"
               :options="roleOptions"
               mode="multiple"
               placeholder="候选人范围：角色（可多选）"
               class="source-value scope-select"
-              @change="notify"
+              @change="syncInitiatorScope"
             />
             <div class="text-muted tiny">发起人提交时从这些角色里挑人；还可叠加部门范围</div>
           </div>
