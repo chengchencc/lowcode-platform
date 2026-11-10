@@ -105,8 +105,10 @@ def resolve_source(
         return ids, f"角色 {len(source.role_ids)} 个"
 
     if source.type == "dept_manager":
-        # 表单里指定了部门字段就用它，否则用发起人所在部门
-        if source.dept_field:
+        # 固定的部门优先；其次是表单里指定的部门字段；都没有则用发起人所在部门
+        if source.dept_ids:
+            dept_ids = list(source.dept_ids)
+        elif source.dept_field:
             dept_ids = _form_ids(ctx.values, source.dept_field)
         else:
             dept_ids = [ctx.initiator_dept_id] if ctx.initiator_dept_id else []

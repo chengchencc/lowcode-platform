@@ -52,7 +52,7 @@ PermMode = Literal["hidden", "readonly", "editable", "editable-required"]
 AssigneeSourceType = Literal[
     "user",               # 指定人员
     "role",               # 指定角色
-    "dept_manager",       # 发起人所在部门的主管
+    "dept_manager",       # 指定部门 / 表单部门字段 / 发起人所在部门的主管
     "form_user_field",    # 表单里的人员控件当前值
     "form_dept_field",    # 表单里的部门控件的负责人
     "initiator_select",   # 提交时由发起人从候选范围里选
@@ -78,6 +78,8 @@ class AssigneeSource(BaseModel):
     user_ids: list[int] = Field(default_factory=list)
     #: type=role
     role_ids: list[int] = Field(default_factory=list)
+    #: type=dept_manager —— 固定部门（优先于 dept_field）
+    dept_ids: list[int] = Field(default_factory=list)
     #: type=dept_manager —— 用表单里哪个部门字段定位部门；不给则用发起人所在部门
     dept_field: str | None = None
     #: type=form_user_field / form_dept_field —— 表单字段 key

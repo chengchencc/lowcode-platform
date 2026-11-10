@@ -93,7 +93,7 @@ async function load(): Promise<void> {
     const formVersion = await formApi.getVersion(target.locked_form_version_id)
     formSchema.value = formVersion.schema_data
 
-    await Promise.all([org.loadRoles(), loadUserOptions()])
+    await Promise.all([org.loadRoles(), org.loadDeptTree(), loadUserOptions()])
     selectedId.value = definition.value.steps[0]?.id ?? null
   } finally {
     loading.value = false

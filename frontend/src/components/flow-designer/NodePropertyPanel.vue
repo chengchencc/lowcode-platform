@@ -8,9 +8,10 @@
  * 前端不重复实现「哪些节点算前序」的规则，避免两边漂移。
  */
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 
 import FieldPermissionPanel from '@/components/flow-designer/FieldPermissionPanel.vue'
+import { useOrgStore } from '@/stores/org'
 import type { FieldDef, FormSchema } from '@/types/form'
 import { isDisplayField } from '@/types/form'
 import type {
@@ -45,6 +46,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ change: [] }>()
+
+const org = useOrgStore()
+onMounted(() => void org.loadDeptTree())
 
 function notify(): void {
   emit('change')
@@ -160,6 +164,7 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
   source.user_ids = []
   source.role_ids = []
   source.field = null
+  source.dept_ids = []
   source.dept_field = null
   source.node_id = null
   source.type = type
@@ -178,6 +183,25 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
 const needsInitiatorScope = computed(() =>
   assigneeNode.value.assignee?.sources?.some((s) => s.type === 'initiator_select'),
 )
+
+// --------------------------------------------------------------------------- 部门主管
+
+/** 部门主管的来源方式：发起人部门 / 固定部门 / 表单部门字段 */
+type DeptManagerMode = 'initiator' | 'fixed' | 'field'
+
+function deptManagerMode(source: AssigneeSource): DeptManagerMode {
+  if (source.dept_ids?.length) return 'fixed'
+  if (source.dept_field) return 'field'
+  return 'initiator'
+}
+
+function onDeptManagerModeChange(source: AssigneeSource, event: unknown): void {
+  const mode = (event as { target: { value: DeptManagerMode } }).target.value
+  // 切换方式时清掉另一侧的配置，避免固定部门与表单字段同时生效产生歧义
+  if (mode !== 'fixed') source.dept_ids = []
+  if (mode !== 'field') source.dept_field = null
+  notify()
+}
 
 // --------------------------------------------------------------------------- 退回
 
@@ -433,17 +457,53 @@ function conditionsOf(branch: Branch): EditableCondition[] {
 
           <!-- 部门主管 -->
           <div v-else-if="source.type === 'dept_manager'">
+            <a-radio-group
+              :value="deptManagerMode(source)"
+              size="small"
+              @change="(e: unknown) => onDeptManagerModeChange(source, e)"
+            >
+              <a-radio value="initiator">发起人所在部门</a-radio>
+              <a-radio value="fixed">指定部门</a-radio>
+              <a-radio value="field">表单部门字段</a-radio>
+            </a-radio-group>
+
+            <a-tree-select
+              v-if="deptManagerMode(source) === 'fixed'"
+              :value="source.dept_ids ?? []"
+              :tree-data="org.deptTree"
+              :field-names="{ children: 'children', label: 'name', value: 'id' }"
+              multiple
+              tree-checkable
+              tree-default-expand-all
+              placeholder="选择部门（可多选），取其主管"
+              class="source-value dept-select"
+              allow-clear
+              @change="(value: number[] | undefined) => { source.dept_ids = value ?? []; notify() }"
+            />
+
             <a-select
+              v-else-if="deptManagerMode(source) === 'field'"
               v-model:value="source.dept_field"
               :options="deptFieldOptions"
-              placeholder="不选则用发起人所在部门"
-              class="source-value"
+              placeholder="选择部门控件"
+              class="source-value dept-select"
               allow-clear
               show-search
               option-filter-prop="label"
               @change="notify"
             />
-            <div class="text-muted tiny">不指定部门字段时，取发起人所在部门的负责人</div>
+
+            <div class="text-muted tiny">
+              <template v-if="deptManagerMode(source) === 'initiator'">
+                取发起人所在部门的负责人；本级没设主管时沿部门树向上找
+              </template>
+              <template v-else-if="deptManagerMode(source) === 'fixed'">
+                取所选部门的负责人；本级没设主管时沿部门树向上找
+              </template>
+              <template v-else>
+                取表单里填写的部门值的负责人
+              </template>
+            </div>
           </div>
 
           <!-- 上一节点处理人 -->
@@ -663,6 +723,11 @@ function conditionsOf(branch: Branch): EditableCondition[] {
    连 placeholder 与下拉菜单都看不到。 */
 .source-value {
   width: 100%;
+}
+
+/* 部门主管的二级选择器与上面的方式单选留出间距 */
+.dept-select {
+  margin-top: 8px;
 }
 
 .source-head {

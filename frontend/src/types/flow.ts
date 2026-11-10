@@ -36,6 +36,7 @@ export interface AssigneeSource {
   type: AssigneeSourceType
   user_ids?: number[]
   role_ids?: number[]
+  dept_ids?: number[]
   dept_field?: string | null
   field?: string | null
   scope_role_ids?: number[]
