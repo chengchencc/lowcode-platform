@@ -244,7 +244,7 @@ sheet，自由编辑单元格、公式、格式、合并单元格。
   快照保存乐观锁、状态轮询接口；`backend/tests/test_spreadsheets.py` 6 项通过。
 - 前端：Univer 1.4.0 编辑器、工作簿列表/共享设置、自动保存 + 5 秒轮询、
   冲突加载/覆盖、SheetJS 导出。
-- 全量校验：456 pytest + 132 vitest + ruff / vue-tsc / vite build 全绿。
+- 全量校验：450 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
 - 构建提示：Univer 编辑器单独懒加载，chunk 约 7.2MB（gzip 1.95MB），只进入
   工作簿页面时加载；后续可再做 manualChunks 优化。
 
@@ -488,7 +488,7 @@ Pydantic 校验（FormSchema / FlowDefinition）
   不自动保存、不自动发布。
 - 配置：`AI_ENABLED` / `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` 等环境变量。
 - 测试：`backend/tests/test_ai_generate.py` 7 项（含修复重试、限流、关闭）。
-- 全量校验：450 pytest + 130 vitest + ruff / vue-tsc / vite build 全绿。
+- 全量校验：450 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
 
 ---
 

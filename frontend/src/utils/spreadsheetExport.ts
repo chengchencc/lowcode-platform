@@ -33,7 +33,10 @@ interface UniverWorkbook {
 
 function cellObject(cell: UniverCell): XLSX.CellObject | null {
   const value = cell.v
-  if (value === undefined || value === null) return null
+  if (value === undefined || value === null) {
+    // 公式单元格没有缓存结果时，给 SheetJS 一个占位结果，保留公式本身
+    return cell.f ? { t: 'n', v: 0, f: cell.f } : null
+  }
   if (typeof value === 'number') return { t: 'n', v: value }
   if (typeof value === 'boolean') return { t: 'b', v: value }
   return { t: 's', v: String(value) }
@@ -66,7 +69,7 @@ export function exportSnapshotToXlsx(
         if (!cell) continue
         const out = cellObject(cell)
         if (!out) continue
-        if (cell.f) out.f = cell.f
+        if (cell.f && !out.f) out.f = cell.f
         worksheet[XLSX.utils.encode_cell({ r: row, c: col })] = out
         maxRow = Math.max(maxRow, row)
         maxCol = Math.max(maxCol, col)

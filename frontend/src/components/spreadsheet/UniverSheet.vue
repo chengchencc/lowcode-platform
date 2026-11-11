@@ -45,8 +45,11 @@ onMounted(() => {
   univer = created.univer
   univerAPI = created.univerAPI
   install(props.snapshot)
-  commandSub = univerAPI.addEvent(univerAPI.Event.CommandExecuted, () => {
-    if (!suppressChange) emit('change')
+  commandSub = univerAPI.addEvent(univerAPI.Event.CommandExecuted, (event) => {
+    // 只有 MUTATION 会改动快照；选择单元格、滚动等 OPERATION 不应触发保存
+    if (!suppressChange && event.type === univerAPI!.Enum.CommandType.MUTATION) {
+      emit('change')
+    }
   })
   emit('ready')
 })
