@@ -177,6 +177,7 @@ def merge_ext_fields(
             sort=s.sort,
             description=s.description,
             collapsible=s.collapsible,
+            columns=s.columns,
             fields=list(s.fields),
         )
         for s in form_schema.sections
@@ -219,8 +220,13 @@ def merge_ext_fields(
     if virtual.key in by_key and not by_key[virtual.key].fields:
         sections = [s for s in sections if s.key != virtual.key]
 
-    return FormSchema(model_version=form_schema.model_version,
-                      layout=form_schema.layout, sections=sections)
+    return FormSchema(
+        model_version=form_schema.model_version,
+        layout=form_schema.layout,
+        sections=sections,
+        rules=form_schema.rules,
+        title_field=form_schema.title_field,
+    )
 
 
 def _attr(obj: Any, name: str, default: Any = None) -> Any:

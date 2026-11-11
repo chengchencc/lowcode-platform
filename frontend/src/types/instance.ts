@@ -1,7 +1,6 @@
 /** 实例与任务的 TS 类型，与 backend/app/schemas/instance.py 对齐。 */
 
-import type { FieldState } from '@/types/form'
-import type { FormSchema } from '@/types/form'
+import type { FieldState, FormRule, FormSchema } from '@/types/form'
 
 export type InstanceStatus =
   | 'DRAFT'
@@ -146,6 +145,9 @@ export interface InstanceRender {
   schema_data: FormSchema
   values: Record<string, unknown>
   permissions: Record<string, FieldState & { reason?: string }>
+  /** 不含表单规则的节点权限；前端用它 + form_rules 随输入重算 */
+  base_permissions?: Record<string, FieldState & { reason?: string }>
+  form_rules?: FormRule[]
   progress: ProgressNode[]
   actions: ActionEntry[]
   allowed_actions: TaskAction[]
@@ -197,8 +199,16 @@ export interface StartOptions {
   flow_version_no: number
   form_version_id: number
   form_version_no: number
+  /** 表单模板最新已发布版本；大于 form_version_no 说明流程还没重新发布 */
+  form_latest_version_no?: number | null
   schema_data: FormSchema
   permissions: Record<string, FieldState & { reason?: string }>
+  base_permissions?: Record<string, FieldState & { reason?: string }>
+  form_rules?: FormRule[]
+  /** 发起时的系统自动填充值（发起人 / 发起人所在部门 / 发起时间） */
+  auto_fill_values?: Record<string, unknown>
+  /** 发起时带入、但发起人仍可修改的默认值 */
+  default_values?: Record<string, unknown>
   initiator_select_nodes: Array<{
     node_id: string
     node_name: string

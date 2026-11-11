@@ -38,6 +38,7 @@ from app.core.errors import (
     NotFoundError,
     UnprocessableError,
 )
+from app.core.idgen import auto_number_values
 from app.engine import notify
 from app.engine import snapshot as snapshot_mod
 from app.engine.aggregate import (
@@ -55,6 +56,7 @@ from app.engine.approvers import (
     resolve_approvers,
     resolve_cc,
 )
+from app.engine.auto_fill import auto_fill_values, default_values
 from app.engine.compile import compile_definition
 from app.engine.errors import FlowInvalid, IllegalTransition
 from app.engine.ext_fields import (
@@ -63,7 +65,8 @@ from app.engine.ext_fields import (
     merge_ext_fields,
     normalize_spec,
 )
-from app.engine.fields import apply_field_patch
+from app.engine.fields import FieldDiff, apply_field_patch, field_label_index
+from app.engine.form_rules import apply_form_rules, hidden_clear_keys
 from app.engine.machine import (
     EVENT_ABANDON,
     EVENT_FINISH,
@@ -235,11 +238,11 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, task.node_key, gates=task.gates, round_no=task.round
         )
-        values, diffs = apply_field_patch(
-            current=instance.current_data or {},
-            patch=dict(field_patch or {}),
-            permissions=permissions,
+        values, diffs, permissions = self._apply_patch_with_rules(
+            instance=instance,
             form_schema=form_schema,
+            base_permissions=permissions,
+            patch=dict(field_patch or {}),
         )
         self._assert_required(permissions, values, form_schema, partial=True)
         self._assert_values_valid(form_schema, values, permissions, editable_only=True)
@@ -670,11 +673,31 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, compiled.definition.start.id
         )
-        values, diffs = apply_field_patch(
-            current=instance.current_data or {},
-            patch=values_in,
-            permissions=permissions,
+        # 发起时自动填充：发起人 / 发起人所在部门 / 发起时间（服务端权威，覆盖客户端传值）
+        forced = auto_fill_values(
+            form_schema,
+            user_id=actor.id,
+            dept_id=instance.initiator_dept_id or actor.dept_id,
+        )
+        # 自动编号：草稿里已有就沿用，没有则提交时补生成
+        forced.update(
+            auto_number_values(self.db, form_schema, existing=instance.current_data or {})
+        )
+        # 可修改的默认值只在用户没填时带入
+        defaults = default_values(
+            form_schema,
+            user_id=actor.id,
+            dept_id=instance.initiator_dept_id or actor.dept_id,
+        )
+        for key, value in defaults.items():
+            if values_in.get(key) in (None, "", []):
+                values_in[key] = value
+        values, diffs, permissions = self._apply_patch_with_rules(
+            instance=instance,
             form_schema=form_schema,
+            base_permissions=permissions,
+            patch=values_in,
+            forced=forced,
         )
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
@@ -1407,6 +1430,73 @@ class EngineService:
             ),
         )
 
+    def _apply_patch_with_rules(
+        self,
+        *,
+        instance: FlowInstance,
+        form_schema: Any,
+        base_permissions: Mapping[str, FieldPermission],
+        patch: Mapping[str, Any],
+        forced: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], list[FieldDiff], dict[str, FieldPermission]]:
+        """应用字段补丁，再用联动规则收紧权限并校验。
+
+        规则可能依赖本次提交的新值（例如「是否出差」刚被改成是），所以先用
+        「当前值 + 本次补丁」求一次权限，再吸收补丁；公式/清值可能再次改变
+        条件命中，最多再迭代两轮。
+
+        `forced` 是服务端强制写入的系统值（发起时自动填充）：它不进补丁、
+        不受字段权限过滤，但仍然参与联动规则与公式求值。
+        """
+        forced = forced or {}
+        current = {**(instance.current_data or {}), **forced}
+        # 自动填充字段以服务端值为准，客户端传来的同名字段丢弃
+        incoming = {k: v for k, v in patch.items() if k not in forced}
+        candidate = {**current, **incoming}
+        effective = apply_form_rules(base_permissions, form_schema, candidate)
+        values, diffs = apply_field_patch(
+            current=current,
+            patch=incoming,
+            permissions=effective,
+            form_schema=form_schema,
+        )
+
+        for _ in range(2):
+            next_effective = apply_form_rules(base_permissions, form_schema, values)
+            if next_effective == effective:
+                break
+            effective = next_effective
+            values, diffs = apply_field_patch(
+                current=current,
+                patch=incoming,
+                permissions=effective,
+                form_schema=form_schema,
+            )
+
+        clear_keys = hidden_clear_keys(base_permissions, form_schema, values)
+        if clear_keys:
+            labels = field_label_index(form_schema)
+            cleared = False
+            for key in clear_keys:
+                permission = effective.get(key)
+                if permission is None or permission.visible:
+                    continue
+                if key in values and values.get(key) not in (None, "", []):
+                    diffs.append(FieldDiff(key, labels.get(key, key), values.get(key), None))
+                    values.pop(key, None)
+                    cleared = True
+            if cleared:
+                # 清值可能影响公式，公式再重算一遍
+                values, formula_diffs = apply_field_patch(
+                    current=values,
+                    patch={},
+                    permissions=effective,
+                    form_schema=form_schema,
+                )
+                diffs.extend(formula_diffs)
+
+        return values, diffs, effective
+
     def _ext_views(self, instance: FlowInstance) -> list[ExtFieldView]:
         return [
             ExtFieldView(
@@ -1447,6 +1537,7 @@ class EngineService:
             values=instance.current_data or {},
             prev_actors=prev_actors,
             last_completed_node_id=completed[-1].node_key if completed else None,
+            start_node_id=compiled.definition.start.id,
         )
 
     def _pending_tasks(self, instance_id: int, *, exclude_task_id: int | None = None) -> list[Task]:

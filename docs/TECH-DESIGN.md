@@ -1,7 +1,7 @@
 # FlowForm 技术设计文档
 
-> 配套：`PRD-lowcode-form-approval.md`。本文是编码依据，随实现推进增量修订。
-> **当前状态：M1–M6 已实现**（含 PRD §9 两个场景的端到端验证）。
+> 配套：`PRD-lowcode-form-approval.md`、`PHASE2-DESIGN.md`。本文是编码依据，随实现推进增量修订。
+> **当前状态：M1–M6 已实现，二期 M7 已完成，M8/M9/M10 代码已完成待统一验收**（含 PRD §9 两个场景的端到端验证）。
 > 唯一未在本机验证的是 Docker 部署形态（本机 Docker 守护进程未运行）——
 > 容器配置写完即止，见 §7 的 M6 备注。
 
@@ -129,6 +129,24 @@ aggregate / machine / router）不得 import db
 `false` → 发起阶段隐藏，由流程节点的权限矩阵显式打开。这是「财务补充字段
 申请人全程看不到」的实现方式，不依赖任何硬编码。分区阶段标签
 （apply/approve/supplement/archive）给的是**默认值**，最终仍以节点权限矩阵为准（M3）。
+
+**发起时自动填充**（`field.auto_fill`）：人员控件可设为「当前发起人」，
+部门控件可设为「发起人所在部门」，日期时间控件可设为「流程发起时间」。
+值由服务端在暂存/提交时**强制写入**（客户端传来的同名字段一律丢弃），
+发起阶段强制只读；之后按普通字段权限处理。
+只支持顶层字段 —— 子表列没有「发起时」这一层语义，发布校验会拦。
+
+**发起时默认值**（`field.default_source`）：人员/部门控件可带入「当前发起人」/
+「发起人所在部门」，但发起人**可以修改**。与 `auto_fill` 互斥（发布校验会拦）；
+只在字段为空时写入，不覆盖用户填的值。
+
+**自审例外**：`form_user_field` 显式选到发起人时允许自审（例如「需求负责人」默认选自己），
+`prev_node_actors` 指向发起节点同理；角色/部门等宽口径来源仍会剔除发起人，避免无意自审。
+
+**自动编号**（`field.auto_number`）：顶层单行文本可配置标识位与流水号位数，
+服务端在首次暂存/提交时生成 `标识位 + YYYYMMDD + 当日流水号`（本地日期），
+写入 `generated_numbers` 表；`number` 唯一约束用于并发撞号重试，按「标识位 + 日期」
+每日重置。已有编号在后续暂存/重提中保持不变，客户端传来的编号一律被忽略。
 
 **key 的引用记法**：顶层字段 `amount`，子表列 `items[].amount`。
 key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
@@ -313,7 +331,11 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
   **`GET /instances/{id}/render`（详情页一次取全）**、`/{id}/progress`、`/{id}/timeline`、`/{id}/snapshots/{sid}`、`/{id}/snapshots/diff`、`POST /instances/{id}/ext-fields`
 - **任务**：`GET /tasks/todo|done|cc|mine`、`GET /tasks/assignments/{aid}`、`/{aid}/return-targets`、
   **`POST /tasks/assignments/{aid}/act`（统一动作接口）**、`/{aid}/diff-preview`、`/{aid}/read`
-- **消息/文件**：`/notifications`、`/notifications/unread-count`、`POST /files/upload`、`GET /files/{id}/download`
+- **消息/文件**：`/notifications`、`/notifications/unread-count`、`POST /files/upload`、
+  `GET /files/{id}`（元数据）、`GET /files/{id}/download`
+
+> 详情页的 `?assignment=` 只接受**仍为 PENDING** 的待办。审批完成后 URL 上残留的旧 id
+> 会回落到查看者在该实例的其他待办（没有则按只读展示），不会继续显示审批按钮与可编辑表单。
 
 ---
 
@@ -399,13 +421,36 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 | **M4** ✅ | ①草稿/提交/重提 ②`render/timeline/task_service` ③发起中心与发起页 ④工作台四列表 + 实例详情页 ⑤撤回/撤销/终止 ⑥站内通知与角标轮询 | **PRD §9 场景一（请假）端到端跑通**（已端到端验证） |
 | **M5** ✅ | ①驳回重提轮次与快照对照 ②机制 C 追加字段 ③公式与级联下拉补齐 ④消息中心打磨 | **PRD §9 场景二（报销）端到端跑通**（已端到端验证） |
 | **M6** ✅ | ①示例流程库 ②归档列表与导出 ③审计查询打磨 ④Docker 一键起 ⑤文档与演示 | 可交付内部试用（演示脚本见 `docs/DEMO.md`） |
+| **M7** ✅ | ①定义操作与节点工厂 ②自动布局纯函数 ③画布节点/分组组件 ④画布容器（缩放/平移/拖拽/插入）⑤设计器视图切换 | 画布与清单共用流程 JSON；示例流程可编辑并发布（见 `PHASE2-DESIGN.md` §1） |
+| **M8** 🚧 | ①展示字段与布局 schema ②渲染器栅格/折叠/DisplayBlock ③设计器展示分组与布局设置 ④富文本白名单 ⑤可配置标题字段 | 代码完成，待补测试与真机验收（见 `PHASE2-DESIGN.md` §2） |
+| **M9** 🚧 | ①共享条件契约 ②规则 schema/发布校验 ③服务端规则求值与补丁过滤 ④前端实时重算 ⑤设计器规则抽屉 | 代码完成，待补测试与真机验收（见 `PHASE2-DESIGN.md` §3） |
+| **M10** 🚧 | ①A4 打印文档与打印样式 ②核心路径移动端适配 ③侧边栏抽屉与吸底操作栏 | 代码完成，待真机验收（见 `PHASE2-DESIGN.md` §4） |
 
 ---
 
 ## 8. 测试策略
 
-**现状**：407 项 pytest + 87 项前端测试（渲染 + 公式向量 + 字段值规则），
+**现状**：407 项 pytest + 115 项前端测试（渲染 + 公式向量 + 字段值规则 + 画布），
 `ruff` 全绿、`vue-tsc` 无错、`vite build` 成功。`bash scripts/check.sh` 一次跑完五项。
+
+**M7 新增的测试**：
+- **定义操作** `definitionOps.spec.ts`（11 项）：查找、删除级联、同级移动/插入、加分支/成员、跨容器拖拽、直接插入容器、容器约束、节点工厂唯一 id
+- **画布布局** `layout.spec.ts`（6 项）：顺序、空流程、条件泳道、并行泳道、嵌套条件、确定性
+- **画布组件** `FlowCanvas.spec.ts`（8 项）：节点/连线渲染、选中、删除、拖拽重排、插入弹窗、条件泳道 +、并行组 + 成员、pointerdown 指针捕获回归
+- **设计器集成** `render.spec.ts`（2 项）：分支内节点选中后右侧面板切换；在完整 `FlowDesignerView` 里点审批节点的“+ / 删除”
+
+**M7 实现中修掉的真 bug / 补的入口**（浏览器真机复现）：
+
+1. **画布节点按钮点击无响应** —— `FlowCanvas.startPan` 用 `instanceof HTMLElement`
+   判断点击目标；antd 图标的点击目标是 SVG `<path>`（`SVGElement`），判断漏掉后
+   viewport 调用 `setPointerCapture`，后续 `pointerup/click` 全部落到 viewport，
+   节点上的“+ / 删除”永远不触发。改为 `instanceof Element`，并补 pointerdown 回归测试。
+   **教训**：DOM 事件目标不一定是 `HTMLElement`，SVG 子元素很常见；指针捕获一旦发生，
+   click 目标会被整体改写，组件级 happy-dom 测试不一定能发现，需要真实浏览器诊断。
+2. **条件分支下没有直接新增节点的入口** —— 条件节点上的“+”按语义插入**同级**节点；
+   空分支只有拖入入口，画布上无法直接创建子节点。为每个条件泳道增加“+”，
+   并行组增加“+ 成员”，调用 `insertIntoContainer()` 直接插入对应容器。
+   分支内节点本身可选中并配置，已由设计器集成测试与真机验证。
 
 **M5 新增的测试**：
 - **字段值规则** `test_value_rules.py`（21 项，纯函数）：文本长度/正则、数字范围、
@@ -437,6 +482,10 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 4. **附件下载只能走 blob**：下载接口只认 `Authorization` 头，
    所以 `<a href>` / `<img src>` 一律 401 —— 这是 M4 就存在的真 bug，
    M6 补 `utils/download.ts` 统一处理（取回 blob → 保存或转 object URL）。
+   两个容易踩的坑：axios 响应拦截器默认只返回 `data`，下载必须 `raw=true`
+   才能读到 `Content-Disposition`；URL 要用相对路径 `/files/{id}/download`
+   （baseURL 会补 `/api/v1`）。下载权限 = 上传者 / 管理员 / 所属实例参与者；
+   提交与审批动作会把 TEMP 附件绑定到实例（`instance_id`），否则审批人无权查看。
 5. **Docker 形态仅写完、未在本机验证**：本机 Docker 守护进程没起来，
    容器配置（Dockerfile / compose / nginx）是按文档与实际启动顺序写的，
    但「build 得出来、起得来」这件事没有被实际执行过 —— 首次部署请预留排查时间。

@@ -6,6 +6,7 @@ import axios, {
 
 import type { ApiErrorDetail } from '@/types/api'
 import { feedback } from '@/utils/feedback'
+import { newRequestId } from '@/utils/requestId'
 
 const ACCESS_KEY = 'flowform.access_token'
 const REFRESH_KEY = 'flowform.refresh_token'
@@ -52,6 +53,8 @@ export interface RequestConfig extends AxiosRequestConfig {
   silent?: boolean
   /** 内部使用：标记这是刷新 token 后的一次重试，避免无限循环。 */
   _retried?: boolean
+  /** 返回完整 AxiosResponse（下载 blob 时需要读 headers），不做 data 解包。 */
+  raw?: boolean
 }
 
 const http = axios.create({
@@ -82,7 +85,9 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // 的唯一索引上，网络重试就不会产生重复的业务动作。
   const method = (config.method ?? 'get').toLowerCase()
   if (MUTATING.has(method) && !config.headers['X-Request-Id']) {
-    config.headers['X-Request-Id'] = crypto.randomUUID()
+    // 别写成 crypto.randomUUID()：非安全上下文（http + 局域网 IP）里它是 undefined，
+    // 会在请求发出前抛异常，表现成「点了按钮没有任何请求」。
+    config.headers['X-Request-Id'] = newRequestId()
   }
   return config
 })
@@ -147,7 +152,8 @@ function toApiError(error: AxiosError): ApiError {
 }
 
 http.interceptors.response.use(
-  (response) => response.data,
+  (response) =>
+    (response.config as RequestConfig).raw ? response : response.data,
   async (error: AxiosError) => {
     const config = error.config as RequestConfig | undefined
     const apiError = toApiError(error)

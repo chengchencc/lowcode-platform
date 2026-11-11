@@ -4,6 +4,7 @@ import {
   KeyOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
+  MenuOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
 import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
@@ -66,6 +67,7 @@ provide('refreshTodoSummary', refreshSummary)
 const menuItems = computed<MenuProps['items']>(() =>
   buildMenuItems({
     isAdmin: auth.isAdmin,
+    isDesigner: auth.isDesigner,
     todoCount: summary.value.todo,
     ccUnread: summary.value.cc_unread,
   }),
@@ -74,6 +76,7 @@ const menuItems = computed<MenuProps['items']>(() =>
 const selectedKeys = computed<string[]>(() => [String(route.name ?? 'dashboard')])
 
 const openKeys = ref<string[]>(['org', 'design'])
+const mobileMenuOpen = ref(false)
 
 /**
  * 可跳转的菜单 key 从**路由表推导**（见 layouts/menu.ts 的说明）——
@@ -83,6 +86,7 @@ const navigable = computed(() => navigableNames(router))
 
 function onMenuClick(info: { key: string | number }): void {
   const key = String(info.key)
+  mobileMenuOpen.value = false
   if (navigable.value.has(key)) {
     void router.push({ name: key, params: MENU_DEFAULT_PARAMS[key] })
     return
@@ -147,7 +151,9 @@ async function handleLogout(): Promise<void> {
 
 <template>
   <a-layout class="app-layout">
-    <a-layout-sider       v-model:collapsed="app.sidebarCollapsed"
+    <a-layout-sider
+      v-model:collapsed="app.sidebarCollapsed"
+      class="app-sider"
       :trigger="null"
       collapsible
       theme="dark"
@@ -168,9 +174,10 @@ async function handleLogout(): Promise<void> {
 
     <a-layout>
       <a-layout-header class="app-header">
+        <MenuOutlined class="mobile-menu-btn" @click="mobileMenuOpen = true" />
         <component
           :is="app.sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined"
-          class="collapse-btn"
+          class="collapse-btn desktop-collapse-btn"
           @click="app.toggleSidebar"
         />
         <div class="header-right">
@@ -205,6 +212,28 @@ async function handleLogout(): Promise<void> {
         <router-view />
       </a-layout-content>
     </a-layout>
+
+    <a-drawer
+      v-model:open="mobileMenuOpen"
+      placement="left"
+      :width="220"
+      :closable="false"
+      class="mobile-menu-drawer"
+      :body-style="{ padding: 0, background: '#001529' }"
+    >
+      <div class="logo">
+        <span class="logo-mark">FF</span>
+        <span class="logo-text">FlowForm</span>
+      </div>
+      <a-menu
+        theme="dark"
+        mode="inline"
+        :items="menuItems"
+        :selected-keys="selectedKeys"
+        v-model:open-keys="openKeys"
+        @click="onMenuClick"
+      />
+    </a-drawer>
 
     <a-modal
       v-model:open="passwordOpen"
@@ -295,7 +324,8 @@ async function handleLogout(): Promise<void> {
   box-shadow: 0 1px 4px rgb(0 0 0 / 6%);
 }
 
-.collapse-btn {
+.collapse-btn,
+.mobile-menu-btn {
   font-size: 17px;
   cursor: pointer;
   color: rgba(0, 0, 0, 0.65);
@@ -303,6 +333,10 @@ async function handleLogout(): Promise<void> {
   &:hover {
     color: #1677ff;
   }
+}
+
+.mobile-menu-btn {
+  display: none;
 }
 
 .header-right {
@@ -335,6 +369,33 @@ async function handleLogout(): Promise<void> {
 .app-content {
   margin: 0;
   overflow: auto;
+}
+
+@media (max-width: 768px) {
+  .app-sider {
+    display: none;
+  }
+
+  .desktop-collapse-btn {
+    display: none;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .user-name,
+  .user-dept {
+    display: none;
+  }
+
+  .app-content {
+    overflow-x: hidden;
+  }
 }
 </style>
 

@@ -8,12 +8,15 @@
  * 前端不重复实现「哪些节点算前序」的规则，避免两边漂移。
  */
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { computed } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 
 import FieldPermissionPanel from '@/components/flow-designer/FieldPermissionPanel.vue'
+import { useOrgStore } from '@/stores/org'
 import type { FieldDef, FormSchema } from '@/types/form'
+import { isDisplayField } from '@/types/form'
 import type {
   ApprovalNode,
+  AssigneeRule,
   AssigneeSource,
   AssigneeSourceType,
   Branch,
@@ -43,6 +46,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ change: [] }>()
+
+const org = useOrgStore()
+onMounted(() => void org.loadDeptTree())
 
 function notify(): void {
   emit('change')
@@ -84,6 +90,7 @@ const allFieldOptions = computed(() => {
   const out: Array<{ value: string; label: string }> = []
   for (const section of props.formSchema?.sections ?? []) {
     for (const field of section.fields) {
+      if (isDisplayField(field)) continue
       out.push({ value: field.key, label: `${field.label}（${field.key}）` })
       for (const col of field.columns ?? []) {
         out.push({
@@ -108,13 +115,47 @@ function fieldsOf(types: string[]): FieldDef[] {
 
 // --------------------------------------------------------------------------- 审批人
 
-function addSource(rule: { sources: AssigneeSource[] }): void {
+function currentRule(): AssigneeRule {
+  return isCc.value ? ccNode.value.cc_to : assigneeNode.value.assignee
+}
+
+/**
+ * 发起人指定审批人的候选范围在**规则级** `initiator_select`，不在来源自身。
+ * 后端 `AssigneeRule` 的校验要求：只要有 initiator_select 来源，规则级范围就必须存在。
+ */
+function ensureInitiatorScope(source?: AssigneeSource): AssigneeSource {
+  const rule = currentRule()
+  if (rule.initiator_select) return rule.initiator_select
+  const scope: AssigneeSource = {
+    type: 'role',
+    scope_role_ids: source?.scope_role_ids ?? [],
+    scope_dept_ids: source?.scope_dept_ids ?? [],
+  }
+  rule.initiator_select = scope
+  return scope
+}
+
+function syncInitiatorScope(ids: number[]): void {
+  const rule = currentRule()
+  const scope = ensureInitiatorScope()
+  scope.scope_role_ids = ids
+  // 来源自身的 scope_* 字段保留并同步，兼容旧定义与只读查看
+  for (const item of rule.sources) {
+    if (item.type === 'initiator_select') item.scope_role_ids = ids
+  }
+  notify()
+}
+
+function addSource(rule: AssigneeRule): void {
   rule.sources.push({ type: 'role', role_ids: [] })
   notify()
 }
 
-function removeSource(rule: { sources: AssigneeSource[] }, index: number): void {
+function removeSource(rule: AssigneeRule, index: number): void {
   rule.sources.splice(index, 1)
+  if (!rule.sources.some((s) => s.type === 'initiator_select')) {
+    rule.initiator_select = null
+  }
   notify()
 }
 
@@ -123,9 +164,19 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
   source.user_ids = []
   source.role_ids = []
   source.field = null
+  source.dept_ids = []
   source.dept_field = null
   source.node_id = null
+  deptManagerModes.delete(source)
   source.type = type
+
+  const rule = currentRule()
+  if (type === 'initiator_select') {
+    ensureInitiatorScope(source)
+  } else if (!rule.sources.some((s) => s.type === 'initiator_select')) {
+    // 已没有发起人指定来源，清掉候选范围，避免留下脏配置
+    rule.initiator_select = null
+  }
   notify()
 }
 
@@ -133,6 +184,35 @@ function onSourceTypeChange(source: AssigneeSource, type: AssigneeSourceType): v
 const needsInitiatorScope = computed(() =>
   assigneeNode.value.assignee?.sources?.some((s) => s.type === 'initiator_select'),
 )
+
+// --------------------------------------------------------------------------- 部门主管
+
+/** 部门主管的来源方式：发起人部门 / 固定部门 / 表单部门字段 */
+type DeptManagerMode = 'initiator' | 'fixed' | 'field'
+
+/**
+ * 只用于界面状态：数据上「刚切到指定部门但还没选」与「用发起人部门」都是空的，
+ * 只靠 dept_ids / dept_field 推导会让刚点的单选项立刻弹回去，看起来像点不动。
+ * 用 WeakMap 按来源对象记住用户的选择；不参与保存。
+ */
+const deptManagerModes = reactive(new WeakMap<AssigneeSource, DeptManagerMode>())
+
+function deptManagerMode(source: AssigneeSource): DeptManagerMode {
+  const remembered = deptManagerModes.get(source)
+  if (remembered === 'fixed' || remembered === 'field') return remembered
+  if (source.dept_ids?.length) return 'fixed'
+  if (source.dept_field) return 'field'
+  return 'initiator'
+}
+
+function onDeptManagerModeChange(source: AssigneeSource, event: unknown): void {
+  const mode = (event as { target: { value: DeptManagerMode } }).target.value
+  deptManagerModes.set(source, mode)
+  // 切换方式时清掉另一侧的配置，避免固定部门与表单字段同时生效产生歧义
+  if (mode !== 'fixed') source.dept_ids = []
+  if (mode !== 'field') source.dept_field = null
+  notify()
+}
 
 // --------------------------------------------------------------------------- 退回
 
@@ -343,6 +423,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             :options="userOptions"
             mode="multiple"
             placeholder="选择人员"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -355,6 +436,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             :options="roleOptions"
             mode="multiple"
             placeholder="选择角色"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -366,6 +448,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             v-model:value="source.field"
             :options="userFieldOptions"
             placeholder="选择人员控件"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -377,6 +460,7 @@ function conditionsOf(branch: Branch): EditableCondition[] {
             v-model:value="source.field"
             :options="deptFieldOptions"
             placeholder="选择部门控件"
+            class="source-value"
             show-search
             option-filter-prop="label"
             @change="notify"
@@ -384,37 +468,77 @@ function conditionsOf(branch: Branch): EditableCondition[] {
 
           <!-- 部门主管 -->
           <div v-else-if="source.type === 'dept_manager'">
+            <a-radio-group
+              :value="deptManagerMode(source)"
+              size="small"
+              @change="(e: unknown) => onDeptManagerModeChange(source, e)"
+            >
+              <a-radio value="initiator">发起人所在部门</a-radio>
+              <a-radio value="fixed">指定部门</a-radio>
+              <a-radio value="field">表单部门字段</a-radio>
+            </a-radio-group>
+
+            <a-tree-select
+              v-if="deptManagerMode(source) === 'fixed'"
+              :value="source.dept_ids ?? []"
+              :tree-data="org.deptTree"
+              :field-names="{ children: 'children', label: 'name', value: 'id' }"
+              multiple
+              tree-checkable
+              tree-default-expand-all
+              placeholder="选择部门（可多选），取其主管"
+              class="source-value dept-select"
+              allow-clear
+              @change="(value: number[] | undefined) => { source.dept_ids = value ?? []; notify() }"
+            />
+
             <a-select
+              v-else-if="deptManagerMode(source) === 'field'"
               v-model:value="source.dept_field"
               :options="deptFieldOptions"
-              placeholder="不选则用发起人所在部门"
+              placeholder="选择部门控件"
+              class="source-value dept-select"
               allow-clear
               show-search
               option-filter-prop="label"
               @change="notify"
             />
-            <div class="text-muted tiny">不指定部门字段时，取发起人所在部门的负责人</div>
+
+            <div class="text-muted tiny">
+              <template v-if="deptManagerMode(source) === 'initiator'">
+                取发起人所在部门的负责人；本级没设主管时沿部门树向上找
+              </template>
+              <template v-else-if="deptManagerMode(source) === 'fixed'">
+                取所选部门的负责人；本级没设主管时沿部门树向上找
+              </template>
+              <template v-else>
+                取表单里填写的部门值的负责人
+              </template>
+            </div>
           </div>
 
           <!-- 上一节点处理人 -->
-          <a-select
-            v-else-if="source.type === 'prev_node_actors'"
-            v-model:value="source.node_id"
-            :options="stepOptions"
-            placeholder="不选则取上一个完成的节点"
-            allow-clear
-            @change="notify"
-          />
+          <div v-else-if="source.type === 'prev_node_actors'">
+            <a-select
+              v-model:value="source.node_id"
+              :options="stepOptions"
+              placeholder="不选则取上一个完成的节点（首个节点为发起人）"
+              class="source-value"
+              allow-clear
+              @change="notify"
+            />
+            <div class="text-muted tiny">选择「发起人」时，首个审批节点由提交申请的人处理</div>
+          </div>
 
           <!-- 发起人指定 -->
           <div v-else-if="source.type === 'initiator_select'">
             <a-select
-              v-model:value="source.scope_role_ids"
+              :value="currentRule().initiator_select?.scope_role_ids ?? []"
               :options="roleOptions"
               mode="multiple"
               placeholder="候选人范围：角色（可多选）"
-              class="scope-select"
-              @change="notify"
+              class="source-value scope-select"
+              @change="syncInitiatorScope"
             />
             <div class="text-muted tiny">发起人提交时从这些角色里挑人；还可叠加部门范围</div>
           </div>
@@ -606,6 +730,17 @@ function conditionsOf(branch: Branch): EditableCondition[] {
   border: 1px solid #f0f0f0;
   border-radius: 6px;
   background: #fafafa;
+}
+
+/* 来源控件在窄属性面板里必须有显式宽度，否则多选下拉会塌成 0 宽，
+   连 placeholder 与下拉菜单都看不到。 */
+.source-value {
+  width: 100%;
+}
+
+/* 部门主管的二级选择器与上面的方式单选留出间距 */
+.dept-select {
+  margin-top: 8px;
 }
 
 .source-head {

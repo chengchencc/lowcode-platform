@@ -89,7 +89,8 @@ function onTableChange(pagination: { current?: number; pageSize?: number }): voi
 }
 
 onMounted(async () => {
-  await Promise.all([org.loadDeptTree(), org.loadRoles()])
+  // 角色可能刚在角色管理里新建/改名；用户页强制刷新一次，避免拿到缓存旧列表
+  await Promise.all([org.loadDeptTree(), org.loadRoles(true)])
   await load()
 })
 
@@ -550,6 +551,8 @@ function downloadTemplate(): void {
             :options="roleOptions"
             placeholder="可多选；角色决定审批人解析与发起范围"
             allow-clear
+            show-search
+            option-filter-prop="label"
           />
         </a-form-item>
 

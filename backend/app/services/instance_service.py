@@ -19,11 +19,14 @@ from app.core.constants import (
     InstanceStatus,
 )
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
-from app.core.idgen import create_with_code
+from app.core.idgen import auto_number_values, create_with_code
 from app.core.policy import is_admin, is_designer
+from app.engine.auto_fill import auto_fill_values, default_values
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import ExtFieldSpec
+from app.engine.form_rules import apply_form_rules
 from app.engine.permissions import (
+    FieldPermission,
     resolve_field_permissions,
 )
 from app.engine.service import EngineService
@@ -37,7 +40,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import FormSchema, parse_form_schema
-from app.services import flow_service
+from app.services import file_service, flow_service, form_service
 from app.services.approver_provider import DbApproverProvider
 
 
@@ -89,13 +92,38 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         raise NotFoundError("锁定的表单版本不存在", code="FORM_VERSION_MISSING")
     form_schema = parse_form_schema(form_version.schema)
 
+    # 表单模板可能已经发布了更新的版本；流程没重新发布时，发起页仍用旧版 schema。
+    # 把最新发布版本号告诉前端，用来提示「字段/可见性改动尚未生效」。
+    form_template = form_service.get_or_404(db, template.form_template_id)
+    latest_form_version = form_service._current_version(db, form_template)
+
     compiled = compile_definition(current.definition)
-    permissions = resolve_field_permissions(
+    base_permissions = resolve_field_permissions(
         form_schema=form_schema,
         node_type="start",
         rule=compiled.definition.start.fields_permission,
         values={},
     )
+    # 发起时自动填充的字段由系统带入，发起阶段强制只读（值仍可被后续节点按权限使用）
+    filled = auto_fill_values(form_schema, user_id=user.id, dept_id=user.dept_id)
+    auto_number_keys = {
+        field.key
+        for section in form_schema.sections
+        for field in section.fields
+        if field.auto_number is not None
+    }
+    for key in [*filled, *auto_number_keys]:
+        permission = base_permissions.get(key)
+        if permission is not None:
+            base_permissions[key] = FieldPermission(
+                visible=permission.visible,
+                editable=False,
+                required=False,
+                reason=f"{permission.reason} → 系统编号/自动填充(只读)",
+            )
+    # 默认值只带入、不锁定：发起人仍可改
+    defaults = default_values(form_schema, user_id=user.id, dept_id=user.dept_id)
+    permissions = apply_form_rules(base_permissions, form_schema, {})
 
     return {
         "flow_template_id": template.id,
@@ -104,8 +132,20 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         "flow_version_no": current.version_no,
         "form_version_id": form_version.id,
         "form_version_no": form_version.version_no,
+        # 表单模板最新已发布版本；大于 form_version_no 时说明流程需要重新发布
+        "form_latest_version_no": (
+            latest_form_version.version_no if latest_form_version else None
+        ),
         "schema_data": form_version.schema,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
+        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
+        "form_rules": [
+            rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
+        ],
+        # 发起时的系统自动填充值：前端据此预填表单
+        "auto_fill_values": filled,
+        # 可修改的默认值（发起人仍可改）
+        "default_values": defaults,
         # 需要发起人指定审批人的节点（F3.5）
         "initiator_select_nodes": _initiator_select_nodes(db, compiled, current),
         "nodes": _progress_nodes(compiled),
@@ -191,6 +231,17 @@ def get_or_404(db: Session, instance_id: int) -> FlowInstance:
     return instance
 
 
+def _title_from_form(form_schema: FormSchema | None, data: Mapping[str, Any] | None) -> str | None:
+    """按表单配置的 `title_field` 取标题；没配置/没填则返回 None。"""
+    key = getattr(form_schema, "title_field", None)
+    if not key:
+        return None
+    value = (data or {}).get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:255]
+    return None
+
+
 def create_draft(
     db: Session,
     *,
@@ -210,6 +261,20 @@ def create_draft(
         raise NotFoundError("流程没有已发布版本", code="FLOW_VERSION_MISSING")
 
     dept_id = actor.dept_id
+    form_version = db.get(FormVersion, current.locked_form_version_id)
+    form_schema = parse_form_schema(form_version.schema) if form_version else None
+    values = dict(data or {})
+    if form_schema is not None:
+        # 自动填充字段以服务端值为准，覆盖客户端传值；默认值只在空值时带入
+        values.update(auto_fill_values(form_schema, user_id=actor.id, dept_id=dept_id))
+        for key, value in default_values(
+            form_schema, user_id=actor.id, dept_id=dept_id
+        ).items():
+            if values.get(key) in (None, "", []):
+                values[key] = value
+        # 自动编号由服务端生成，忽略客户端传值
+        values.update(auto_number_values(db, form_schema, existing={}))
+    title_text = title or _title_from_form(form_schema, values) or template.name
 
     def factory(code: str) -> FlowInstance:
         return FlowInstance(
@@ -217,12 +282,12 @@ def create_draft(
             flow_template_id=template.id,
             flow_version_id=current.id,
             form_version_id=current.locked_form_version_id,
-            title=(title or template.name)[:255],
+            title=title_text[:255],
             initiator_id=actor.id,
             initiator_dept_id=dept_id,
             status=InstanceStatus.DRAFT,
             data_schema={},
-            current_data=dict(data or {}),
+            current_data=values,
         )
 
     instance = create_with_code(db, factory)
@@ -246,24 +311,48 @@ def update_draft(
 
     form_schema = form_schema_of(db, instance)
     compiled = compile_definition(version_of(db, instance).definition)
+    # 自动填充字段由服务端写入：客户端传值直接丢弃
+    filled = auto_fill_values(
+        form_schema,
+        user_id=actor.id,
+        dept_id=instance.initiator_dept_id or actor.dept_id,
+    )
+    incoming = {key: value for key, value in data.items() if key not in filled}
     permissions = resolve_field_permissions(
         form_schema=form_schema,
         node_type="start",
         rule=compiled.definition.start.fields_permission,
-        values=data,
+        values={**data, **filled},
     )
 
     from app.engine.fields import apply_field_patch
 
     values, _diffs = apply_field_patch(
-        current=instance.current_data or {},
-        patch=dict(data),
+        current={**(instance.current_data or {}), **filled},
+        patch=incoming,
         permissions=permissions,
         form_schema=form_schema,
     )
+    # 可修改的默认值：只在字段仍为空时带入
+    for key, value in default_values(
+        form_schema,
+        user_id=actor.id,
+        dept_id=instance.initiator_dept_id or actor.dept_id,
+    ).items():
+        if values.get(key) in (None, "", []):
+            values[key] = value
+    # 自动编号：已有编号保持不变，缺失时补生成
+    values.update(auto_number_values(db, form_schema, existing=instance.current_data or {}))
     instance.current_data = values
+    derived = _title_from_form(form_schema, {**data, **filled})
     if title:
         instance.title = title[:255]
+    elif derived:
+        instance.title = derived
+    elif form_schema.title_field:
+        template = db.get(FlowTemplate, instance.flow_template_id)
+        if template is not None:
+            instance.title = template.name[:255]
     db.commit()
     db.refresh(instance)
     return instance
@@ -311,9 +400,25 @@ def submit(
     resubmit: bool = False,
 ):
     _assert_initiator(instance, actor)
-    title = data.get("__title__")
-    if isinstance(title, str) and title.strip():
-        instance.title = title.strip()[:255]
+    legacy_title = data.get("__title__")
+    form_schema = form_schema_of(db, instance)
+    derived = _title_from_form(form_schema, data)
+    if isinstance(legacy_title, str) and legacy_title.strip():
+        instance.title = legacy_title.strip()[:255]
+    elif derived:
+        instance.title = derived
+    elif form_schema.title_field:
+        template = db.get(FlowTemplate, instance.flow_template_id)
+        if template is not None:
+            instance.title = template.name[:255]
+
+    # 提交前把表单里的临时附件绑定到实例，审批参与者才能下载
+    file_service.bind_instance_attachments(
+        db,
+        instance,
+        form_schema,
+        {**(instance.current_data or {}), **dict(data)},
+    )
 
     engine = engine_for(db)
     if resubmit:

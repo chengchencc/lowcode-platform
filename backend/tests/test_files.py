@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import re
+
+from app.core.constants import AttachmentBizType, AttachmentStatus
+from app.models import Attachment
+from app.schemas.form_schema import parse_form_schema
+from app.services import file_service
 from tests.conftest import make_user
 
 BASE = "/api/v1"
@@ -113,6 +119,62 @@ def test_delete_attachment(client, normal_headers):
     assert client.get(attachment["url"], headers=normal_headers).status_code == 404
 
 
+def test_bind_form_attachments_to_instance(db):
+    """提交后附件要从 TEMP 绑定到实例，审批参与者才能下载。"""
+    user = make_user(db, username="attach-owner")
+    attachment = Attachment(
+        file_name="需求说明书.txt",
+        stored_name="bind-test.txt",
+        rel_path="test/bind-test.txt",
+        size_bytes=1,
+        uploader_id=user.id,
+        status=AttachmentStatus.TEMP,
+        biz_type=AttachmentBizType.TEMP,
+    )
+    db.add(attachment)
+    db.flush()
+
+    schema = parse_form_schema({
+        "sections": [{
+            "key": "sec", "title": "申请", "fields": [
+                {"key": "files", "label": "附件", "type": "attachment"},
+            ],
+        }],
+    })
+
+    class Instance:
+        id = 99
+
+    file_service.bind_instance_attachments(db, Instance(), schema, {"files": [attachment.id]})
+    db.flush()
+
+    assert attachment.status == AttachmentStatus.BOUND
+    assert attachment.instance_id == 99
+    assert attachment.biz_type == AttachmentBizType.INSTANCE
+    assert attachment.biz_id == 99
+
+
+def test_collect_attachment_ids_from_subtable(db):
+    schema = parse_form_schema({
+        "sections": [{
+            "key": "sec", "title": "申请", "fields": [
+                {"key": "files", "label": "附件", "type": "attachment"},
+                {
+                    "key": "rows", "label": "明细", "type": "subtable",
+                    "columns": [
+                        {"key": "doc", "label": "文档", "type": "attachment"},
+                    ],
+                },
+            ],
+        }],
+    })
+    ids = file_service.collect_attachment_ids(
+        schema,
+        {"files": [1, 2], "rows": [{"doc": [3]}, {"doc": 4}]},
+    )
+    assert sorted(ids) == [1, 2, 3, 4]
+
+
 def test_upload_writes_file_to_storage(client, db, normal_headers):
     """元数据落库、文件本体落盘，两者都要对得上。
 
@@ -129,8 +191,9 @@ def test_upload_writes_file_to_storage(client, db, normal_headers):
     assert row is not None
     assert row.status == "TEMP"
     assert row.sha256 is not None
-    # 存储名是 uuid，不沿用原始文件名（防路径穿越与同名覆盖）
-    assert row.stored_name.endswith(".txt")
-    assert "a.txt" not in row.stored_name
+    # 存储名是 uuid + 原扩展名，不沿用原始文件名（防路径穿越与同名覆盖）。
+    # 不能用 `"a.txt" not in stored_name`：uuid 恰好以 a 结尾时，
+    # `<uuid>.txt` 的尾部就是 "a.txt"，会随机误报。
+    assert re.fullmatch(r"[0-9a-f]{32}\.txt", row.stored_name)
     assert (settings.storage_path / row.rel_path).is_file()
     assert get_storage().read(row.rel_path) == b"body"

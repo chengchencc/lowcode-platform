@@ -15,7 +15,7 @@ import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { computed } from 'vue'
 
 import type { FieldDef, FormSchema, SectionDef } from '@/types/form'
-import { SECTION_STAGE_LABELS } from '@/types/form'
+import { SECTION_STAGE_LABELS, isDisplayField } from '@/types/form'
 import type { FieldPermissionRule, PermMode } from '@/types/flow'
 import { PERM_MODE_COLORS, PERM_MODE_LABELS } from '@/types/flow'
 
@@ -31,7 +31,14 @@ const MODE_OPTIONS = (Object.keys(PERM_MODE_LABELS) as PermMode[]).map((m) => ({
   label: PERM_MODE_LABELS[m],
 }))
 
-const sections = computed<SectionDef[]>(() => props.formSchema?.sections ?? [])
+const sections = computed<SectionDef[]>(() =>
+  (props.formSchema?.sections ?? [])
+    .map((section) => ({
+      ...section,
+      fields: section.fields.filter((field) => !isDisplayField(field)),
+    }))
+    .filter((section) => section.fields.length > 0),
+)
 
 function notify(): void {
   emit('change')

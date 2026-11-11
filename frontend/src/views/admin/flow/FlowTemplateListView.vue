@@ -2,10 +2,12 @@
 import {
   DeleteOutlined,
   EditOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   SettingOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Input, Select, Space, Table, Tag } from 'ant-design-vue'
+import { Button, Card, Input, Select, Space, Table, Tag, Tooltip } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -36,7 +38,8 @@ const columns = [
   { title: '当前版本', key: 'version', width: 180 },
   { title: '状态', key: 'status', width: 100 },
   { title: '更新时间', key: 'updated_at', width: 150 },
-  { title: '操作', key: 'action', width: 200, fixed: 'right' as const },
+  // 四个操作都带图标 + 文字，固定宽度按实测留足，避免换行
+  { title: '操作', key: 'action', width: 280, fixed: 'right' as const },
 ]
 
 const STATUS_META: Record<FlowStatus, { text: string; color: string }> = {
@@ -245,7 +248,7 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
         :loading="loading"
         row-key="id"
         size="middle"
-        :scroll="{ x: 1150 }"
+        :scroll="{ x: 1250 }"
         :pagination="{ pageSize: 20, showTotal: (total: number) => `共 ${total} 条流程` }"
       >
         <template #bodyCell="{ column, record }">
@@ -294,34 +297,53 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
 
           <template v-else-if="column.key === 'action'">
             <Space :size="2">
-              <Button
-                type="link"
-                size="small"
-                @click="router.push({ name: 'flow-designer', params: { id: record.id } })"
+              <Tooltip title="打开流程设计器">
+                <Button
+                  type="link"
+                  size="small"
+                  @click="router.push({ name: 'flow-designer', params: { id: record.id } })"
+                >
+                  <template #icon><SettingOutlined /></template>
+                  配置
+                </Button>
+              </Tooltip>
+              <Tooltip title="修改名称、分类等基础信息">
+                <Button type="link" size="small" @click="openEdit(record as FlowTemplate)">
+                  <template #icon><EditOutlined /></template>
+                  编辑
+                </Button>
+              </Tooltip>
+              <Tooltip
+                :title="
+                  record.status === 'DISABLED'
+                    ? '恢复后可以发起新单据'
+                    : '停用后不能再发起新单据，已有实例不受影响'
+                "
               >
-                <template #icon><SettingOutlined /></template>
-                配置
-              </Button>
-              <Button type="link" size="small" @click="openEdit(record as FlowTemplate)">
-                <template #icon><EditOutlined /></template>
-                编辑
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                :danger="record.status !== 'DISABLED'"
-                @click="toggleStatus(record as FlowTemplate)"
-              >
-                {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                danger
-                @click="removeTemplate(record as FlowTemplate)"
-              >
-                <template #icon><DeleteOutlined /></template>
-              </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  :danger="record.status !== 'DISABLED'"
+                  @click="toggleStatus(record as FlowTemplate)"
+                >
+                  <template #icon>
+                    <PlayCircleOutlined v-if="record.status === 'DISABLED'" />
+                    <PauseCircleOutlined v-else />
+                  </template>
+                  {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
+                </Button>
+              </Tooltip>
+              <Tooltip title="删除流程及全部版本，不可恢复">
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  @click="removeTemplate(record as FlowTemplate)"
+                >
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </Button>
+              </Tooltip>
             </Space>
           </template>
         </template>

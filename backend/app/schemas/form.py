@@ -46,6 +46,8 @@ class FormTemplateCreate(BaseModel):
 
 class FormTemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    #: 仅允许在尚未设置时补录；已设置的值不可修改（见 form_service.update_template）
+    code: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
     group_name: str | None = Field(default=None, max_length=64)
     icon: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=512)

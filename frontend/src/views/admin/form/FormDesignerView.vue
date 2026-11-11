@@ -16,6 +16,7 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
+  LinkOutlined,
   PlusOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
@@ -26,16 +27,23 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
 import FieldPropertyPanel from '@/components/form-designer/FieldPropertyPanel.vue'
-import { FormRenderer } from '@/components/form-renderer'
+import FormRulesPanel from '@/components/form-designer/FormRulesPanel.vue'
+import { FormRenderer, resolveFieldStates } from '@/components/form-renderer'
 import type {
   FieldDef,
+  FieldState,
   FormSchema,
   FormTemplate,
   FormValidateResult,
   FormVersion,
   SectionDef,
 } from '@/types/form'
-import { FIELD_TYPE_GROUPS, FIELD_TYPE_LABELS, SECTION_STAGE_LABELS } from '@/types/form'
+import {
+  FIELD_TYPE_GROUPS,
+  FIELD_TYPE_LABELS,
+  SECTION_STAGE_LABELS,
+  isDisplayField,
+} from '@/types/form'
 import { buildInitialValues } from '@/utils/formValue'
 import { makeColumn, makeField, makeSection, moveInArray, normalizeField, resequence, stripFormulaRefs } from '@/utils/formSchemaEdit'
 import { feedback } from '@/utils/feedback'
@@ -47,7 +55,24 @@ const templateId = computed(() => Number(route.params.id))
 
 const template = ref<FormTemplate | null>(null)
 const version = ref<FormVersion | null>(null)
-const schema = ref<FormSchema>({ sections: [] })
+// 初始就要有 layout：首次渲染发生在 onMounted(load) 之前，
+// 而左侧“整体布局”会直接读 schema.layout；缺了它会整页渲染失败变白屏。
+const schema = ref<FormSchema>({
+  sections: [],
+  layout: { label_position: 'top', columns: 2 },
+  rules: [],
+})
+const columnOptions = [1, 2, 3, 4].map((n) => ({ value: n, label: `${n} 列` }))
+const titleFieldOptions = computed(() =>
+  schema.value.sections
+    .flatMap((section) => section.fields)
+    .filter(
+      (field) =>
+        !isDisplayField(field)
+        && (field.type === 'text' || field.type === 'textarea'),
+    )
+    .map((field) => ({ value: field.key, label: `${field.label}（${field.key}）` })),
+)
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
@@ -114,9 +139,13 @@ function normalizeSchema(input: FormSchema): FormSchema {
   const next: FormSchema = {
     model_version: input.model_version ?? 1,
     layout: input.layout ?? { label_position: 'top', columns: 2 },
+    rules: input.rules ?? [],
+    title_field: input.title_field ?? undefined,
     sections: (input.sections ?? []).map((section) => ({
       ...section,
       stage: section.stage ?? 'apply',
+      // antd Select 不接受 null：分区列数留空统一用 undefined
+      columns: section.columns ?? undefined,
       fields: (section.fields ?? []).map((f) => {
         normalizeField(f)
         for (const col of f.columns ?? []) normalizeField(col)
@@ -173,7 +202,8 @@ function addSection(): void {
   const section = makeSection(schema.value)
   schema.value.sections.push(section)
   resequence(schema.value.sections)
-  selected.value = null
+  // 添加后直接选中分区，右侧属性面板即可改名（fieldKey 为空表示选中的是分区）
+  selected.value = { sectionKey: section.key, fieldKey: '' }
   scheduleSave()
 }
 
@@ -206,6 +236,9 @@ function addField(section: SectionDef, type: FieldDef['type']): void {
 
 function removeField(section: SectionDef, field: FieldDef): void {
   section.fields = section.fields.filter((f) => f.key !== field.key)
+  if (schema.value.title_field === field.key) {
+    schema.value.title_field = null
+  }
   // 顺手清掉引用它的公式，避免留下必然报错的配置
   const cleaned = stripFormulaRefs(schema.value, field.key)
   if (cleaned.length) {
@@ -299,10 +332,38 @@ async function publish(): Promise<void> {
 
 // --------------------------------------------------------------------------- 预览
 
+const rulesOpen = ref(false)
 const previewOpen = ref(false)
 const previewValues = ref<Record<string, unknown>>({})
 const previewMode = ref<'edit' | 'readonly'>('edit')
+/** 预览默认按「发起阶段可见」过滤；关掉可以看到全部字段（含节点专属补充字段） */
+const previewHonorStart = ref(true)
 const serverComputed = ref<Record<string, unknown>>({})
+
+/**
+ * 预览用的权限表。
+ *
+ * `resolveFieldStates` 在只读态会放行所有字段（真实页面的权限来自服务端节点矩阵）；
+ * 设计器的预览没有节点上下文，只读态也应该呈现「发起页」的样子，
+ * 所以这里额外按 visible_at_start 收窄可见性。
+ */
+const previewPermissions = computed<Record<string, FieldState> | null>(() => {
+  if (!previewHonorStart.value) return null
+  const states = resolveFieldStates(schema.value, previewMode.value)
+  for (const section of schema.value.sections) {
+    for (const field of section.fields) {
+      const visible = field.visible_at_start !== false
+      const state = states[field.key]
+      if (state) states[field.key] = { ...state, visible: state.visible && visible }
+      for (const col of field.columns ?? []) {
+        const ref = `${field.key}[].${col.key}`
+        const colState = states[ref]
+        if (colState) states[ref] = { ...colState, visible: colState.visible && visible }
+      }
+    }
+  }
+  return states
+})
 
 function openPreview(): void {
   previewValues.value = buildInitialValues(schema.value)
@@ -364,6 +425,10 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <template #icon><CheckCircleOutlined /></template>
             校验
           </Button>
+          <Button @click="rulesOpen = true">
+            <template #icon><LinkOutlined /></template>
+            联动规则
+          </Button>
           <Button @click="openPreview">
             <template #icon><EyeOutlined /></template>
             预览
@@ -394,6 +459,40 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             </Button>
           </template>
 
+          <div class="form-layout-settings">
+            <div class="layout-title">整体布局</div>
+            <a-form layout="inline" size="small">
+              <a-form-item label="标签位置">
+                <a-select
+                  v-model:value="schema.layout!.label_position"
+                  :options="[
+                    { value: 'top', label: '顶部' },
+                    { value: 'left', label: '左侧' },
+                  ]"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+              <a-form-item label="默认列数">
+                <a-select
+                  v-model:value="schema.layout!.columns"
+                  :options="columnOptions"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+              <a-form-item label="申请标题字段" help="可选；不配置则用流程模板名">
+                <a-select
+                  v-model:value="schema.title_field"
+                  :options="titleFieldOptions"
+                  allow-clear
+                  show-search
+                  option-filter-prop="label"
+                  placeholder="不使用表单字段"
+                  @change="scheduleSave"
+                />
+              </a-form-item>
+            </a-form>
+          </div>
+
           <a-empty v-if="!schema.sections.length" description="还没有分区" />
 
           <div
@@ -404,7 +503,7 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <div
               class="section-head"
               :class="{ active: selected?.sectionKey === section.key && !selected?.fieldKey }"
-              @click="selected = null"
+              @click="selected = { sectionKey: section.key, fieldKey: '' }"
             >
               <span class="section-name">{{ section.title }}</span>
               <Tag class="stage-mini">{{ SECTION_STAGE_LABELS[section.stage ?? 'apply'] }}</Tag>
@@ -594,6 +693,18 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <a-form-item label="分区说明">
               <a-textarea v-model:value="selectedSection.description" :rows="2" @change="scheduleSave" />
             </a-form-item>
+            <a-form-item label="分区列数" help="留空则跟随表单默认列数">
+              <a-select
+                v-model:value="selectedSection.columns"
+                :options="columnOptions"
+                allow-clear
+                placeholder="跟随表单"
+                @change="scheduleSave"
+              />
+            </a-form-item>
+            <a-form-item label="可折叠">
+              <a-switch v-model:checked="selectedSection.collapsible" @change="scheduleSave" />
+            </a-form-item>
             <a-alert
               type="info"
               show-icon
@@ -648,19 +759,32 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
       </template>
     </Drawer>
 
+    <!-- ------------------------------------------------ 联动规则 -->
+    <Drawer v-model:open="rulesOpen" title="字段联动规则" :width="780" placement="right">
+      <FormRulesPanel
+        :schema="schema"
+        :rules="schema.rules ?? []"
+        @change="scheduleSave"
+      />
+    </Drawer>
+
     <!-- ------------------------------------------------ 预览 -->
     <Drawer v-model:open="previewOpen" title="表单预览" :width="760" placement="right">
       <template #extra>
-        <a-radio-group v-model:value="previewMode" size="small" button-style="solid">
-          <a-radio-button value="edit">编辑态</a-radio-button>
-          <a-radio-button value="readonly">只读态</a-radio-button>
-        </a-radio-group>
+        <a-space>
+          <a-checkbox v-model:checked="previewHonorStart">按发起阶段可见过滤</a-checkbox>
+          <a-radio-group v-model:value="previewMode" size="small" button-style="solid">
+            <a-radio-button value="edit">编辑态</a-radio-button>
+            <a-radio-button value="readonly">只读态</a-radio-button>
+          </a-radio-group>
+        </a-space>
       </template>
 
       <FormRenderer
         v-model="previewValues"
         :schema="schema"
         :mode="previewMode"
+        :permissions="previewPermissions"
         empty-text="还没有配置任何字段"
       />
 
@@ -698,6 +822,19 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
 
 .designer-body {
   align-items: flex-start;
+}
+
+.form-layout-settings {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.layout-title {
+  margin-bottom: 6px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
 }
 
 .panel {

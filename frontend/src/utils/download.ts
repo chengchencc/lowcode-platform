@@ -5,7 +5,7 @@
  * 而浏览器点链接时不会带这个头 —— 结果是一个 401 的空白页。
  * 所以下载必须走 axios（拦截器自动加 token），拿到 blob 再由前端触发保存。
  */
-import http from '@/api/http'
+import http, { type RequestConfig } from '@/api/http'
 
 /** 从 Content-Disposition 里取文件名（后端用 RFC 5987 的 filename*）。 */
 function filenameOf(disposition: string | undefined, fallback: string): string {
@@ -42,7 +42,9 @@ export interface DownloadedFile {
 
 /** 下载并返回文件（不自动保存，调用方可以决定何时保存或先做别的处理）。 */
 export async function fetchFile(url: string, fallbackName = 'download'): Promise<DownloadedFile> {
-  const response = await http.get(url, { responseType: 'blob' })
+  // raw=true：响应拦截器默认只返回 data，下载要读 Content-Disposition 头
+  const config: RequestConfig = { responseType: 'blob', raw: true }
+  const response = await http.get(url, config)
   const disposition = response.headers?.['content-disposition'] as string | undefined
   return {
     blob: response.data as Blob,

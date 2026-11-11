@@ -29,9 +29,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.conditions import Comparison, Condition, ConditionGroup
+
+#: 条件结构从 conditions.py 复用（表单规则与流程分支同一套契约）
+__all__ = ["Comparison", "Condition", "ConditionGroup"]
 
 # --------------------------------------------------------------------------- 枚举
 
@@ -47,44 +52,18 @@ PermMode = Literal["hidden", "readonly", "editable", "editable-required"]
 AssigneeSourceType = Literal[
     "user",               # 指定人员
     "role",               # 指定角色
-    "dept_manager",       # 发起人所在部门的主管
+    "dept_manager",       # 指定部门 / 表单部门字段 / 发起人所在部门的主管
     "form_user_field",    # 表单里的人员控件当前值
     "form_dept_field",    # 表单里的部门控件的负责人
     "initiator_select",   # 提交时由发起人从候选范围里选
     "prev_node_actors",   # 上一节点的同意者（V1 可选）
 ]
 
-Comparison = Literal["==", "!=", ">", ">=", "<", "<=", "in", "not_in", "contains", "is_empty", "is_not_empty"]
-
 #: 审批人未命中时的策略
 OnEmptyPolicy = Literal["to_admin", "block_publish"]
 
 #: 驳回策略
 RejectPolicy = Literal["reject_to_initiator", "reject_forbidden"]
-
-
-# --------------------------------------------------------------------------- 条件
-
-
-class Condition(BaseModel):
-    """单个比较条件。`field` 引用表单字段 key（子表列用 `items[].amount`）。"""
-
-    field: str = Field(min_length=1, max_length=128)
-    cmp: Comparison = "=="
-    value: Any = None
-
-
-class ConditionGroup(BaseModel):
-    """条件组，支持 and/or 与嵌套（PRD F2.4）。
-
-    `when` 为 null 表示「否则」分支（else），必须排在最后且只能有一个。
-    """
-
-    op: Literal["and", "or"] = "and"
-    conditions: list[Condition | ConditionGroup] = Field(default_factory=list)
-
-
-ConditionGroup.model_rebuild()
 
 
 # --------------------------------------------------------------------------- 审批人
@@ -99,6 +78,8 @@ class AssigneeSource(BaseModel):
     user_ids: list[int] = Field(default_factory=list)
     #: type=role
     role_ids: list[int] = Field(default_factory=list)
+    #: type=dept_manager —— 固定部门（优先于 dept_field）
+    dept_ids: list[int] = Field(default_factory=list)
     #: type=dept_manager —— 用表单里哪个部门字段定位部门；不给则用发起人所在部门
     dept_field: str | None = None
     #: type=form_user_field / form_dept_field —— 表单字段 key

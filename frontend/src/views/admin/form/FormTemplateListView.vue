@@ -4,11 +4,13 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   SettingOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Input, Select, Space, Table, Tag, Upload } from 'ant-design-vue'
+import { Button, Card, Input, Select, Space, Table, Tag, Tooltip, Upload } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -37,7 +39,8 @@ const columns = [
   { title: '当前版本', key: 'version', width: 130 },
   { title: '状态', key: 'status', width: 100 },
   { title: '更新时间', key: 'updated_at', width: 150 },
-  { title: '操作', key: 'action', width: 280, fixed: 'right' as const },
+  // 六个操作都带图标 + 文字，固定宽度按实测留足，避免换行
+  { title: '操作', key: 'action', width: 420, fixed: 'right' as const },
 ]
 
 const STATUS_META: Record<FormStatus, { text: string; color: string }> = {
@@ -81,6 +84,8 @@ function resetQuery(): void {
 const editorOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
+/** 正在编辑的模板是否已有编码：已有则不可改，未设置才允许补录 */
+const editingHasCode = ref(false)
 const isCreate = computed(() => editingId.value === null)
 
 const form = reactive({ name: '', code: '', group_name: '', description: '' })
@@ -88,6 +93,7 @@ const formErrors = reactive<Record<string, string>>({})
 
 function openCreate(): void {
   editingId.value = null
+  editingHasCode.value = false
   Object.assign(form, { name: '', code: '', group_name: '', description: '' })
   Object.keys(formErrors).forEach((k) => delete formErrors[k])
   editorOpen.value = true
@@ -95,6 +101,7 @@ function openCreate(): void {
 
 function openEdit(record: FormTemplate): void {
   editingId.value = record.id
+  editingHasCode.value = !!record.code
   Object.assign(form, {
     name: record.name,
     code: record.code ?? '',
@@ -129,12 +136,19 @@ async function submitEditor(): Promise<void> {
       await router.push({ name: 'form-designer', params: { id: created.id } })
       return
     }
-    await formApi.updateTemplate(editingId.value as number, payload)
+    await formApi.updateTemplate(editingId.value as number, {
+      ...payload,
+      // 已设置的编码不可改，不必回传；未设置时允许补录
+      ...(editingHasCode.value ? {} : { code: form.code || null }),
+    })
     editorOpen.value = false
     feedback.success('已保存')
     await Promise.all([load(), loadGroups()])
   } catch (error) {
-    if (error instanceof ApiError && error.code === 'FORM_CODE_EXISTS') {
+    if (
+      error instanceof ApiError &&
+      (error.code === 'FORM_CODE_EXISTS' || error.code === 'FORM_CODE_IMMUTABLE')
+    ) {
       formErrors.code = error.message
     }
   } finally {
@@ -213,7 +227,7 @@ async function handleImportFile(file: File): Promise<boolean> {
   try {
     const text = await file.text()
     const payload = JSON.parse(text) as Record<string, unknown>
-    // 导入时清掉编码，避免与已有表单冲突；用户可在设计器里改
+    // 导入时清掉编码，避免与已有表单冲突；需要时可在列表「编辑」里补录
     await formApi.importTemplate({ ...payload, code: null })
     feedback.success('导入成功')
     await Promise.all([load(), loadGroups()])
@@ -285,7 +299,7 @@ async function handleImportFile(file: File): Promise<boolean> {
         :loading="loading"
         row-key="id"
         size="middle"
-        :scroll="{ x: 1300 }"
+        :scroll="{ x: 1400 }"
         :pagination="{ pageSize: 20, showTotal: (total: number) => `共 ${total} 个表单` }"
       >
         <template #bodyCell="{ column, record }">
@@ -331,41 +345,65 @@ async function handleImportFile(file: File): Promise<boolean> {
 
           <template v-else-if="column.key === 'action'">
             <Space :size="2">
-              <Button
-                type="link"
-                size="small"
-                @click="router.push({ name: 'form-designer', params: { id: record.id } })"
+              <Tooltip title="打开表单设计器">
+                <Button
+                  type="link"
+                  size="small"
+                  @click="router.push({ name: 'form-designer', params: { id: record.id } })"
+                >
+                  <template #icon><SettingOutlined /></template>
+                  设计
+                </Button>
+              </Tooltip>
+              <Tooltip title="修改名称、分组等基础信息">
+                <Button type="link" size="small" @click="openEdit(record as FormTemplate)">
+                  <template #icon><EditOutlined /></template>
+                  编辑
+                </Button>
+              </Tooltip>
+              <Tooltip title="以当前表单为模板新建一份">
+                <Button type="link" size="small" @click="copyTemplate(record as FormTemplate)">
+                  <template #icon><CopyOutlined /></template>
+                  复制
+                </Button>
+              </Tooltip>
+              <Tooltip title="导出为 JSON 文件，可用于导入">
+                <Button type="link" size="small" @click="exportTemplate(record as FormTemplate)">
+                  <template #icon><DownloadOutlined /></template>
+                  导出
+                </Button>
+              </Tooltip>
+              <Tooltip
+                :title="
+                  record.status === 'DISABLED'
+                    ? '恢复后可被新流程引用'
+                    : '停用后不能被新流程引用，已有实例不受影响'
+                "
               >
-                <template #icon><SettingOutlined /></template>
-                设计
-              </Button>
-              <Button type="link" size="small" @click="openEdit(record as FormTemplate)">
-                <template #icon><EditOutlined /></template>
-                编辑
-              </Button>
-              <Button type="link" size="small" @click="copyTemplate(record as FormTemplate)">
-                <template #icon><CopyOutlined /></template>
-                复制
-              </Button>
-              <Button type="link" size="small" @click="exportTemplate(record as FormTemplate)">
-                <template #icon><DownloadOutlined /></template>
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                :danger="record.status !== 'DISABLED'"
-                @click="toggleStatus(record as FormTemplate)"
-              >
-                {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                danger
-                @click="removeTemplate(record as FormTemplate)"
-              >
-                <template #icon><DeleteOutlined /></template>
-              </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  :danger="record.status !== 'DISABLED'"
+                  @click="toggleStatus(record as FormTemplate)"
+                >
+                  <template #icon>
+                    <PlayCircleOutlined v-if="record.status === 'DISABLED'" />
+                    <PauseCircleOutlined v-else />
+                  </template>
+                  {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
+                </Button>
+              </Tooltip>
+              <Tooltip title="删除表单及全部版本，不可恢复">
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  @click="removeTemplate(record as FormTemplate)"
+                >
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </Button>
+              </Tooltip>
             </Space>
           </template>
         </template>
@@ -390,10 +428,15 @@ async function handleImportFile(file: File): Promise<boolean> {
           <Input v-model:value="form.name" placeholder="如：费用报销单" />
         </a-form-item>
         <a-form-item
-          v-if="isCreate"
+          v-if="isCreate || !editingHasCode"
           label="表单编码"
           :validate-status="formErrors.code ? 'error' : undefined"
-          :help="formErrors.code || '选填，用于导入导出与人工引用；创建后不可修改'"
+          :help="
+            formErrors.code ||
+            (isCreate
+              ? '选填，用于导入导出与人工引用；设置后不可修改'
+              : '当前未设置，可补录；设置后不可修改')
+          "
         >
           <Input v-model:value="form.code" placeholder="如：REIMBURSEMENT" />
         </a-form-item>

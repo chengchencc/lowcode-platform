@@ -20,6 +20,8 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.constants import DISPLAY_FIELD_TYPES
+
 #: 值必须是已配选项之一的控件
 _OPTION_TYPES = frozenset({"select", "radio"})
 #: 多值且每项都必须是已配选项
@@ -54,6 +56,9 @@ def validate_values(
 
     for section in form_schema.sections:
         for field in section.fields:
+            if field.type in DISPLAY_FIELD_TYPES:
+                # 展示控件不绑定数据，没有值可校验
+                continue
             if field.type == "formula":
                 # 公式值由服务端重算，不接受外部传入，也就没什么可校验的
                 continue

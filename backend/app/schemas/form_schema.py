@@ -20,10 +20,14 @@ from __future__ import annotations
 
 import re
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.constants import (
+    AUTO_FILL_FIELD_TYPES,
+    DEFAULT_SOURCE_FIELD_TYPES,
+    DISPLAY_FIELD_TYPES,
     FORMULA_FUNCTIONS,
     FORMULA_KEYWORDS,
     OPTION_FIELD_TYPES,
@@ -33,6 +37,7 @@ from app.core.constants import (
     SectionStage,
 )
 from app.core.formula_syntax import IDENTIFIER_PATTERN, strip_string_literals
+from app.schemas.conditions import ConditionGroup, referenced_fields
 
 #: 字段/分区 key 的合法形式。禁止 `.` 与 `[]`（保留给 items[].amount 记法）
 KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -84,6 +89,22 @@ class CascaderConfig(BaseModel):
     options_by_parent: dict[str, list[FieldOption]] = Field(default_factory=dict)
 
 
+class DisplayConfig(BaseModel):
+    """展示型控件的配置（M8）。
+
+    展示控件不绑定数据，所以只放排版/说明相关的字段；具体用哪些由 `type` 决定。
+    """
+
+    text: str | None = Field(default=None, max_length=2000)
+    #: 标题级别，仅 heading 使用
+    level: Literal[1, 2, 3] = 2
+    #: 图片地址，仅 image_view 使用；只允许 http(s) 或站内绝对路径
+    url: str | None = Field(default=None, max_length=2048)
+    alt: str | None = Field(default=None, max_length=256)
+    #: 受限 Markdown，仅 rich_text 使用
+    markdown: str | None = Field(default=None, max_length=10000)
+
+
 class FieldFormula(BaseModel):
     """公式基础子集（PRD §10 #9）：
 
@@ -102,6 +123,15 @@ class FieldFormula(BaseModel):
     unit: Literal["days"] = "days"
 
 
+class AutoNumberConfig(BaseModel):
+    """表单字段自动编号：标识位 + YYYYMMDD + 当日流水号。"""
+
+    #: 标识位，如 REQ / BX / QJ
+    prefix: str = Field(min_length=1, max_length=16, pattern=r"^[A-Za-z0-9_-]+$")
+    #: 流水号位数（左侧补零）
+    seq_length: int = Field(default=4, ge=1, le=8)
+
+
 class FieldDef(BaseModel):
     """单个字段。
 
@@ -118,6 +148,11 @@ class FieldDef(BaseModel):
     help: str | None = Field(default=None, max_length=512)
     default_value: Any = None
 
+    #: 栅格宽度（24 栅格制）。null = 按列数与控件类型自动决定。M8
+    span: int | None = Field(default=None, ge=1, le=24)
+    #: 展示型控件配置。M8
+    display: DisplayConfig | None = None
+
     options: list[FieldOption] = Field(default_factory=list)
     validators: FieldValidators = Field(default_factory=FieldValidators)
 
@@ -127,6 +162,16 @@ class FieldDef(BaseModel):
 
     formula: FieldFormula | None = None
     cascader: CascaderConfig | None = None
+
+    #: 发起时由系统自动填充并锁定：当前发起人 / 发起人所在部门 / 流程发起时间。
+    #: 仅顶层的人员、部门、日期时间控件支持；发起阶段强制只读，之后按节点权限处理。
+    auto_fill: Literal["initiator", "initiator_dept", "start_time"] | None = None
+
+    #: 发起时带入但**允许发起人修改**的默认值来源（人员 / 部门）。
+    default_source: Literal["initiator", "initiator_dept"] | None = None
+
+    #: 自动编号（仅顶层单行文本）：标识位 + YYYYMMDD + 当日流水号
+    auto_number: AutoNumberConfig | None = None
 
     #: 仅 type=subtable：行内列定义（不允许再嵌套 subtable）
     columns: list[FieldDef] = Field(default_factory=list)
@@ -140,12 +185,32 @@ class SectionDef(BaseModel):
     sort: int = 0
     description: str | None = Field(default=None, max_length=512)
     collapsible: bool = False
+    #: 分区级列数覆盖；null 表示跟随表单 layout.columns。M8
+    columns: Literal[1, 2, 3, 4] | None = None
     fields: list[FieldDef] = Field(default_factory=list)
 
 
 class FormLayout(BaseModel):
     label_position: Literal["top", "left"] = "top"
-    columns: Literal[1, 2, 3] = 2
+    columns: Literal[1, 2, 3, 4] = 2
+
+
+class RuleEffect(BaseModel):
+    """联动规则命中的效果。只允许收紧权限。"""
+
+    target: str = Field(min_length=1, max_length=128)
+    effect: Literal["hidden", "readonly", "required"]
+
+
+class FormRule(BaseModel):
+    """表单字段联动规则（M9）。"""
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str | None = Field(default=None, max_length=128)
+    when: ConditionGroup
+    effects: list[RuleEffect] = Field(default_factory=list)
+    #: 规则把字段隐藏时是否清空值（默认保留）
+    clear_when_hidden: bool = False
 
 
 class FormSchema(BaseModel):
@@ -154,6 +219,9 @@ class FormSchema(BaseModel):
     model_version: int = 1
     layout: FormLayout = Field(default_factory=FormLayout)
     sections: list[SectionDef] = Field(default_factory=list)
+    rules: list[FormRule] = Field(default_factory=list)
+    #: 用哪个表单字段作为实例标题（可选；不配置则用流程模板名）
+    title_field: str | None = Field(default=None, max_length=64)
 
 
 # --------------------------------------------------------------------------- 校验
@@ -246,6 +314,208 @@ def _check_options(field: FieldDef, path: str, issues: list[SchemaIssue]) -> Non
                     path,
                 )
             )
+
+
+def _valid_image_url(url: str) -> bool:
+    url = url.strip()
+    if url.startswith("/") and not url.startswith("//"):
+        return True
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _check_display(field: FieldDef, path: str, issues: list[SchemaIssue]) -> bool:
+    """校验展示型控件；返回 True 表示这是展示控件，调用方应跳过数据字段校验。"""
+    if field.type not in DISPLAY_FIELD_TYPES:
+        if field.display is not None:
+            issues.append(
+                _issue(
+                    "DISPLAY_ON_PLAIN_FIELD",
+                    f"“{field.label}”不是展示控件，配置的 display 不会生效",
+                    path,
+                    severity="warning",
+                )
+            )
+        return False
+
+    # 展示控件不绑定数据：这些配置即使写了也不会生效，提示设计者清理
+    if field.required:
+        issues.append(
+            _issue("DISPLAY_REQUIRED", f"“{field.label}”是展示控件，不应设为必填", path, severity="warning")
+        )
+    if field.options:
+        issues.append(
+            _issue("DISPLAY_OPTIONS", f"“{field.label}”是展示控件，选项不会生效", path, severity="warning")
+        )
+    if field.validators.model_dump(exclude_none=True):
+        issues.append(
+            _issue("DISPLAY_VALIDATORS", f"“{field.label}”是展示控件，校验规则不会生效", path, severity="warning")
+        )
+    if field.default_value is not None:
+        issues.append(
+            _issue("DISPLAY_DEFAULT", f"“{field.label}”是展示控件，默认值不会写入实例数据", path, severity="warning")
+        )
+    if field.formula is not None:
+        issues.append(
+            _issue("DISPLAY_FORMULA", f"“{field.label}”是展示控件，公式不会生效", path, severity="warning")
+        )
+    if field.cascader is not None:
+        issues.append(
+            _issue("DISPLAY_CASCADER", f"“{field.label}”是展示控件，级联配置不会生效", path, severity="warning")
+        )
+    if field.columns:
+        issues.append(
+            _issue("DISPLAY_COLUMNS", f"“{field.label}”是展示控件，不能再配置子表列", path, severity="warning")
+        )
+
+    display = field.display
+    if display is None:
+        issues.append(_issue("DISPLAY_CONFIG_REQUIRED", f"“{field.label}”缺少展示内容配置", path))
+        return True
+
+    text = (display.text or "").strip()
+    if field.type in {FieldType.HEADING, FieldType.PARAGRAPH} and not text:
+        issues.append(_issue("DISPLAY_TEXT_REQUIRED", f"“{field.label}”需要填写展示文字", path))
+    elif field.type is FieldType.DIVIDER and not text:
+        pass  # 分割线可以没有文字
+    elif field.type is FieldType.IMAGE_VIEW:
+        url = (display.url or "").strip()
+        if not url:
+            issues.append(_issue("DISPLAY_URL_REQUIRED", f"“{field.label}”需要填写图片地址", path))
+        elif not _valid_image_url(url):
+            issues.append(
+                _issue(
+                    "DISPLAY_URL_INVALID",
+                    f"“{field.label}”的图片地址只支持 http(s) 或站内绝对路径",
+                    path,
+                )
+            )
+    elif field.type is FieldType.RICH_TEXT:
+        markdown = display.markdown or ""
+        if not markdown.strip():
+            issues.append(_issue("DISPLAY_MARKDOWN_REQUIRED", f"“{field.label}”需要填写说明内容", path))
+        elif re.search(r"</?[A-Za-z][^>]*>", markdown):
+            issues.append(
+                _issue(
+                    "DISPLAY_RAW_HTML",
+                    f"“{field.label}”的说明只支持受限 Markdown，不允许直接写 HTML 标签",
+                    path,
+                )
+            )
+    return True
+
+
+AUTO_FILL_LABELS = {
+    "initiator": "当前发起人",
+    "initiator_dept": "发起人所在部门",
+    "start_time": "流程发起时间",
+}
+
+_AUTO_FILL_TYPE_HINTS = {
+    "initiator": "人员选择控件",
+    "initiator_dept": "部门选择控件",
+    "start_time": "日期时间控件",
+}
+
+
+def _check_auto_fill(
+    field: FieldDef,
+    path: str,
+    issues: list[SchemaIssue],
+    *,
+    in_subtable: bool,
+) -> None:
+    """自动填充/默认值只支持顶层字段 —— 子表行内没有「发起时」这一层语义。"""
+    if field.auto_fill is None and field.default_source is None:
+        return
+    if field.auto_fill is not None and field.default_source is not None:
+        issues.append(
+            _issue(
+                "AUTO_FILL_CONFLICT",
+                f"“{field.label}”同时配置了自动填充和默认值，两者只能选一个",
+                path,
+            )
+        )
+        return
+    if in_subtable:
+        issues.append(
+            _issue(
+                "AUTO_FILL_SUBTABLE",
+                f"子表列 “{field.label}” 不能配置发起时自动填充/默认值",
+                path,
+            )
+        )
+        return
+
+    if field.auto_fill is not None:
+        allowed = AUTO_FILL_FIELD_TYPES.get(field.auto_fill, frozenset())
+        if field.type not in allowed:
+            issues.append(
+                _issue(
+                    "AUTO_FILL_TYPE",
+                    f"“{field.label}”的自动填充来源是「{AUTO_FILL_LABELS[field.auto_fill]}」，"
+                    f"该控件类型不匹配：请使用{_AUTO_FILL_TYPE_HINTS[field.auto_fill]}",
+                    f"{path}.auto_fill",
+                )
+            )
+
+    if field.default_source is not None:
+        allowed = DEFAULT_SOURCE_FIELD_TYPES.get(field.default_source, frozenset())
+        if field.type not in allowed:
+            issues.append(
+                _issue(
+                    "DEFAULT_SOURCE_TYPE",
+                    f"“{field.label}”的默认值来源是「{AUTO_FILL_LABELS[field.default_source]}」，"
+                    f"该控件类型不匹配：请使用{_AUTO_FILL_TYPE_HINTS[field.default_source]}",
+                    f"{path}.default_source",
+                )
+            )
+
+
+def _check_auto_number(
+    field: FieldDef,
+    path: str,
+    issues: list[SchemaIssue],
+    *,
+    in_subtable: bool,
+) -> None:
+    """自动编号只支持顶层单行文本，且不能与自动填充/默认值混用。"""
+    if field.auto_number is None:
+        return
+    if in_subtable:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_SUBTABLE",
+                f"子表列 “{field.label}” 不能配置自动编号",
+                f"{path}.auto_number",
+            )
+        )
+        return
+    if field.type is not FieldType.TEXT:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_TYPE",
+                f"“{field.label}”的自动编号只能用在单行文本控件上",
+                f"{path}.auto_number",
+            )
+        )
+    if field.auto_fill is not None or field.default_source is not None:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_CONFLICT",
+                f"“{field.label}”不能同时配置自动编号与发起时自动填充/默认值",
+                path,
+            )
+        )
+    if field.default_value not in (None, ""):
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_DEFAULT_IGNORED",
+                f"“{field.label}”已配置自动编号，静态默认值不会生效",
+                f"{path}.default_value",
+                severity="warning",
+            )
+        )
 
 
 def _check_formula(
@@ -371,6 +641,8 @@ def _walk_fields(
     fields: list[FieldDef],
     path_prefix: str,
     issues: list[SchemaIssue],
+    *,
+    in_subtable: bool = False,
 ) -> dict[str, FieldType]:
     """校验一层字段（分区内或子表内），返回 {key: type}。"""
     seen: dict[str, FieldType] = {}
@@ -387,6 +659,12 @@ def _walk_fields(
 
         _check_validators(field, path, issues)
         _check_options(field, path, issues)
+        _check_auto_fill(field, path, issues, in_subtable=in_subtable)
+        _check_auto_number(field, path, issues, in_subtable=in_subtable)
+
+        # 展示控件不参与数据字段的级联/子表/公式校验；配置错误已在 _check_display 中收集
+        if _check_display(field, path, issues):
+            continue
 
         if field.cascader is not None:
             if field.type is not FieldType.CASCADER:
@@ -434,7 +712,7 @@ def _walk_fields(
                         )
                     )
             # 列单独校验一层（不再递归下探，已禁止嵌套子表）
-            _walk_fields(field.columns, f"{path}.columns", issues)
+            _walk_fields(field.columns, f"{path}.columns", issues, in_subtable=True)
             _check_column_formulas(field, path, issues)
         elif field.columns:
             issues.append(
@@ -447,6 +725,132 @@ def _walk_fields(
             )
 
     return seen
+
+
+MAX_RULES = 50
+MAX_EFFECTS_PER_RULE = 20
+
+
+def _find_cycle(graph: dict[str, set[str]]) -> list[str] | None:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node: str) -> list[str] | None:
+        if node in visiting:
+            start = stack.index(node)
+            return [*stack[start:], node]
+        if node in visited:
+            return None
+        visiting.add(node)
+        stack.append(node)
+        for nxt in graph.get(node, set()):
+            cycle = visit(nxt)
+            if cycle is not None:
+                return cycle
+        stack.pop()
+        visiting.discard(node)
+        visited.add(node)
+        return None
+
+    for node in graph:
+        cycle = visit(node)
+        if cycle is not None:
+            return cycle
+    return None
+
+
+def _check_rules(
+    rules: list[FormRule],
+    *,
+    data_refs: dict[str, FieldType],
+    target_refs: dict[str, FieldType],
+    issues: list[SchemaIssue],
+) -> None:
+    """联动规则的引用完整性、效果约束与依赖环。"""
+    if len(rules) > MAX_RULES:
+        issues.append(_issue("TOO_MANY_RULES", f"联动规则数量超过上限 {MAX_RULES}", "rules"))
+
+    seen_ids: set[str] = set()
+    graph: dict[str, set[str]] = {}
+
+    for index, rule in enumerate(rules):
+        path = f"rules[{index}]"
+        if rule.id in seen_ids:
+            issues.append(_issue("DUPLICATE_RULE_ID", f"规则标识 “{rule.id}” 重复", f"{path}.id"))
+        seen_ids.add(rule.id)
+
+        if not rule.effects:
+            issues.append(_issue("RULE_NO_EFFECT", "联动规则至少要配置一个效果", path))
+        elif len(rule.effects) > MAX_EFFECTS_PER_RULE:
+            issues.append(
+                _issue(
+                    "TOO_MANY_EFFECTS",
+                    f"单条规则的效果数超过上限 {MAX_EFFECTS_PER_RULE}",
+                    path,
+                )
+            )
+
+        condition_refs = referenced_fields(rule.when)
+        for ref in condition_refs:
+            if ref not in data_refs:
+                issues.append(
+                    _issue(
+                        "RULE_CONDITION_FIELD_MISSING",
+                        f"联动规则的条件引用了不存在或不可用于条件的字段 “{ref}”",
+                        f"{path}.when",
+                    )
+                )
+
+        hidden_targets: set[str] = set()
+        for eidx, effect in enumerate(rule.effects):
+            epath = f"{path}.effects[{eidx}]"
+            if effect.target not in target_refs:
+                if "[]." in effect.target:
+                    message = f"联动目标 “{effect.target}” 是子表列；规则目标暂只支持顶层字段"
+                else:
+                    message = (
+                        f"联动目标 “{effect.target}” 不存在，或不是可用的数据字段"
+                        "（展示控件不能作为目标）"
+                    )
+                issues.append(_issue("RULE_TARGET_INVALID", message, epath))
+                continue
+
+            if effect.effect == "hidden":
+                hidden_targets.add(effect.target)
+            if effect.effect == "required" and target_refs[effect.target] is FieldType.FORMULA:
+                issues.append(
+                    _issue(
+                        "RULE_REQUIRED_ON_COMPUTED",
+                        f"“{effect.target}”是公式字段，设为必填不会生效",
+                        epath,
+                        severity="warning",
+                    )
+                )
+
+            # target 依赖条件里引用到的顶层字段 -> 用于检测间接环
+            edges = graph.setdefault(effect.target, set())
+            edges.update(ref for ref in condition_refs if ref in target_refs)
+
+        if rule.clear_when_hidden and not hidden_targets:
+            issues.append(
+                _issue(
+                    "RULE_CLEAR_WITHOUT_HIDDEN",
+                    "开启了「隐藏时清值」，但规则没有 hidden 效果",
+                    path,
+                    severity="warning",
+                )
+            )
+
+    cycle = _find_cycle(graph)
+    if cycle is not None:
+        issues.append(
+            _issue(
+                "RULE_CYCLE",
+                "联动规则存在循环依赖：" + " → ".join(cycle),
+                "rules",
+            )
+        )
 
 
 def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
@@ -505,15 +909,55 @@ def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
             if field.type is FieldType.SUBTABLE:
                 subtable_by_key[field.key] = field
 
+    # 展示控件不是数据字段：公式不能引用它们
+    formula_fields = {
+        key: ftype for key, ftype in top_level.items() if ftype not in DISPLAY_FIELD_TYPES
+    }
+
     # 公式引用完整性（需要先收齐所有 key，故单独一轮）
     for s_idx, section in enumerate(schema.sections):
         for f_idx, field in enumerate(section.fields):
+            if field.type in DISPLAY_FIELD_TYPES:
+                continue
             _check_formula(
                 field,
                 f"sections[{s_idx}].fields[{f_idx}]",
                 issues,
-                top_level_keys=top_level,
+                top_level_keys=formula_fields,
                 subtable_by_key=subtable_by_key,
+            )
+
+    # 联动规则：条件可引用顶层字段与子表列；目标只允许顶层数据字段
+    data_refs: dict[str, FieldType] = {
+        key: ftype for key, ftype in top_level.items() if ftype not in DISPLAY_FIELD_TYPES
+    }
+    for sub in subtable_by_key.values():
+        for col in sub.columns:
+            if col.type not in DISPLAY_FIELD_TYPES:
+                data_refs[f"{sub.key}[].{col.key}"] = col.type
+    target_refs = {key: ftype for key, ftype in data_refs.items() if "[]." not in key}
+    _check_rules(schema.rules, data_refs=data_refs, target_refs=target_refs, issues=issues)
+
+    if schema.title_field:
+        title_type = data_refs.get(schema.title_field)
+        if title_type is None:
+            issues.append(
+                _issue(
+                    "TITLE_FIELD_MISSING",
+                    f"申请标题字段 “{schema.title_field}” 不存在，或不是可用的数据字段",
+                    "title_field",
+                )
+            )
+        elif "[]." in schema.title_field or title_type not in {
+            FieldType.TEXT,
+            FieldType.TEXTAREA,
+        }:
+            issues.append(
+                _issue(
+                    "TITLE_FIELD_TYPE",
+                    "申请标题字段必须是顶层的单行/多行文本控件",
+                    "title_field",
+                )
             )
 
     # 机制 B 的提示：非申请区的字段若 visible_at_start=true，
@@ -522,6 +966,8 @@ def validate_form_schema(schema: FormSchema) -> list[SchemaIssue]:
         if section.stage is SectionStage.APPLY:
             continue
         for f_idx, field in enumerate(section.fields):
+            if field.type in DISPLAY_FIELD_TYPES:
+                continue
             if field.visible_at_start:
                 issues.append(
                     _issue(

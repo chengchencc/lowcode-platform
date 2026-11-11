@@ -149,6 +149,43 @@ def test_update_template_metadata(client, designer_headers):
     assert resp.status_code == 200, resp.text
     assert resp.json()["name"] == "改过的名字"
     assert resp.json()["group_name"] == "财务"
+    # 不传 code 不应把已有编码清掉
+    assert resp.json()["code"] == "REIMBURSE"
+
+
+def test_update_can_fill_missing_code_once(client, designer_headers):
+    """复制/导入的模板没有编码，编辑时应能补录；设置后不可再改。"""
+    template = _make_template(client, designer_headers, code=None)
+    assert template["code"] is None
+
+    filled = client.put(
+        f"{BASE}/form-templates/{template['id']}",
+        headers=designer_headers,
+        json={"code": "FILLED_LATER"},
+    )
+    assert filled.status_code == 200, filled.text
+    assert filled.json()["code"] == "FILLED_LATER"
+
+    blocked = client.put(
+        f"{BASE}/form-templates/{template['id']}",
+        headers=designer_headers,
+        json={"code": "ANOTHER_CODE"},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["code"] == "FORM_CODE_IMMUTABLE"
+
+
+def test_filling_code_respects_uniqueness(client, designer_headers):
+    _make_template(client, designer_headers, code="TAKEN")
+    template = _make_template(client, designer_headers, name="无编码表单", code=None)
+
+    resp = client.put(
+        f"{BASE}/form-templates/{template['id']}",
+        headers=designer_headers,
+        json={"code": "TAKEN"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "FORM_CODE_EXISTS"
 
 
 def test_copy_template(client, designer_headers):

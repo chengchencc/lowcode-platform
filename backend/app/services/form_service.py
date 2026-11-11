@@ -218,6 +218,18 @@ def update_template(
 ) -> FormTemplate:
     if payload.name is not None:
         template.name = payload.name
+    if payload.code:
+        # 编码只允许「空 → 有」补录：副本/导入件建立时故意不带编码，
+        # 但没有别的入口能补，列表里会永远显示「—」。
+        # 已设置后保持不可变，避免外部按编码引用时目标漂移。
+        if template.code:
+            if payload.code != template.code:
+                raise ConflictError(
+                    "表单编码设置后不可修改", code="FORM_CODE_IMMUTABLE"
+                )
+        else:
+            _assert_code_available(db, payload.code, exclude_id=template.id)
+            template.code = payload.code
     if "group_name" in payload.model_fields_set:
         template.group_name = payload.group_name
     if "icon" in payload.model_fields_set:
@@ -232,6 +244,7 @@ def update_template(
         biz_id=template.id,
         action=AuditAction.UPDATE,
         summary=f"修改表单模板「{template.name}」",
+        detail={"name": template.name, "code": template.code},
         ip=ip,
     )
     db.commit()

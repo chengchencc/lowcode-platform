@@ -10,5 +10,6 @@ PyJWT>=2.10,<3
 bcrypt>=4.2,<5
 python-multipart>=0.0.20
 
-# MySQL 驱动（切库时用；SQLite 走标准库 sqlite3）
+# 数据库驱动：SQLite 走标准库 sqlite3，MySQL / PostgreSQL 各装一个
 PyMySQL>=1.1,<2
+psycopg[binary]>=3.2,<4

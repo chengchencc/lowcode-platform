@@ -21,38 +21,14 @@ export type AssigneeSourceType =
   | 'initiator_select'
   | 'prev_node_actors'
 
-export type Comparison =
-  | '=='
-  | '!='
-  | '>'
-  | '>='
-  | '<'
-  | '<='
-  | 'in'
-  | 'not_in'
-  | 'contains'
-  | 'is_empty'
-  | 'is_not_empty'
-
 export type RejectPolicy = 'reject_to_initiator' | 'reject_forbidden'
 
 // --------------------------------------------------------------------------- 条件
 
-export interface Condition {
-  field: string
-  cmp: Comparison
-  value?: unknown
-}
+import type { Comparison, ConditionGroup } from '@/types/conditions'
 
-export interface ConditionGroup {
-  op: 'and' | 'or'
-  conditions: Array<Condition | ConditionGroup>
-}
-
-/** 判断是否是嵌套组（有 op/conditions 字段）还是叶子条件（有 field） */
-export function isConditionGroup(item: Condition | ConditionGroup): item is ConditionGroup {
-  return 'conditions' in item
-}
+export type { Comparison, Condition, ConditionGroup } from '@/types/conditions'
+export { isConditionGroup } from '@/types/conditions'
 
 // --------------------------------------------------------------------------- 审批人
 
@@ -60,6 +36,7 @@ export interface AssigneeSource {
   type: AssigneeSourceType
   user_ids?: number[]
   role_ids?: number[]
+  dept_ids?: number[]
   dept_field?: string | null
   field?: string | null
   scope_role_ids?: number[]

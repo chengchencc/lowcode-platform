@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -18,7 +19,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.constants import AssignmentStatus, InstanceStatus, TaskStatus, TaskType
 from app.core.errors import NotFoundError, UnprocessableError
 from app.models import FlowInstance, FlowTemplate, Task, TaskAssignment, User
-from app.services import instance_service
+from app.services import file_service, instance_service
+
+logger = logging.getLogger(__name__)
 
 
 def get_assignment_or_404(db: Session, assignment_id: int) -> TaskAssignment:
@@ -272,7 +275,7 @@ def act(
     """统一动作入口 —— 直接转发给引擎，这里只做一层薄封装。"""
     from app.services.instance_service import engine_for
 
-    return engine_for(db).act(
+    result = engine_for(db).act(
         assignment_id=assignment_id,
         actor=actor,
         action=action,
@@ -283,6 +286,23 @@ def act(
         expected_version=expected_version,
         request_id=request_id,
     )
+
+    # 节点上新增的附件（表单字段 / 意见附件）同样绑定到实例
+    try:
+        assignment = get_assignment_or_404(db, assignment_id)
+        instance = instance_service.get_or_404(db, assignment.instance_id)
+        file_service.bind_instance_attachments(
+            db,
+            instance,
+            instance_service.form_schema_of(db, instance),
+            instance.current_data or {},
+            extra_ids=list(attachment_ids),
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001 - 附件绑定失败不应把已成功的审批动作回滚
+        db.rollback()
+        logger.exception("绑定审批节点附件失败 assignment=%s", assignment_id)
+    return result
 
 
 def return_targets_for(db: Session, assignment: TaskAssignment) -> list[dict[str, Any]]:

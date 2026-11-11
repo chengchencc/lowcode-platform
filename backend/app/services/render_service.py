@@ -31,6 +31,7 @@ from app.core.constants import (
 )
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import merge_ext_fields
+from app.engine.form_rules import apply_form_rules
 from app.engine.permissions import (
     ExtFieldView,
     FieldPermission,
@@ -91,10 +92,21 @@ def render_instance(
         viewing_snapshot = None
 
     # ---- 字段权限 ----
-    permissions = _resolve_permissions(
+    base_permissions = _resolve_permissions(
         db, instance, compiled=compiled, form_schema=form_schema,
         viewer=viewer, assignment=assignment, snapshot=snapshot_id is not None,
     )
+    # 历史快照与终态归档一律全量只读，不应用联动规则；运行中才按规则收紧。
+    # permissions 供旧调用方直接使用，base_permissions + form_rules 供前端随输入重算。
+    archived = snapshot_id is not None or instance.status in TERMINAL_STATUSES
+    form_rules = []
+    if not archived:
+        form_rules = [
+            rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
+        ]
+        permissions = apply_form_rules(base_permissions, form_schema, values)
+    else:
+        permissions = base_permissions
 
     # ---- 可执行动作 ----
     allowed_actions: list[str] = []
@@ -133,6 +145,8 @@ def render_instance(
         "schema_data": form_schema.model_dump(mode="json"),
         "values": values,
         "permissions": {k: v.to_dict() for k, v in permissions.items()},
+        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
+        "form_rules": form_rules,
         "progress": build_progress(db, instance, compiled),
         "actions": timeline_service.list_actions(db, instance),
         "allowed_actions": allowed_actions,
@@ -149,14 +163,22 @@ def render_instance(
 def _resolve_assignment(
     db: Session, instance: FlowInstance, viewer: User, assignment_id: int | None
 ) -> TaskAssignment | None:
-    """找查看者在本实例上的待办。优先用显式指定的那条。"""
+    """找查看者在本实例上的**待办**。
+
+    显式传入的 assignment 只在该条仍为 PENDING 时采用 —— 审批完成后 URL 上
+    还留着旧的 assignment_id，如果继续把它当作「当前处理人」，页面会保留
+    审批按钮与可编辑表单，点提交才报流程已流转。此时应回落到该用户的其他
+    待办（会签/退回可能还有），没有就返回 None。
+    """
     if assignment_id is not None:
         assignment = db.get(TaskAssignment, assignment_id)
-        if assignment is None or assignment.instance_id != instance.id:
-            return None
-        if assignment.user_id != viewer.id:
-            return None
-        return assignment
+        if (
+            assignment is not None
+            and assignment.instance_id == instance.id
+            and assignment.user_id == viewer.id
+            and assignment.status == AssignmentStatus.PENDING
+        ):
+            return assignment
 
     return db.scalar(
         select(TaskAssignment)

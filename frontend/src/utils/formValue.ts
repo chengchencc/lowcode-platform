@@ -8,7 +8,7 @@
 import dayjs from 'dayjs'
 
 import type { FieldDef, FieldOption, FormSchema, FieldState } from '@/types/form'
-import { OPTION_FIELD_TYPES } from '@/types/form'
+import { DISPLAY_FIELD_TYPES, OPTION_FIELD_TYPES } from '@/types/form'
 
 /** 多值控件（用数组存储）。与后端 MULTI_VALUE_FIELD_TYPES 一致。 */
 const MULTI_TYPES = new Set(['checkbox', 'user_multi', 'dept_multi', 'image'])
@@ -93,6 +93,7 @@ export function buildInitialValues(schema: FormSchema): Record<string, unknown> 
   const values: Record<string, unknown> = {}
   for (const section of schema.sections) {
     for (const field of section.fields) {
+      if (DISPLAY_FIELD_TYPES.includes(field.type)) continue
       const def = defaultValueOf(field)
       if (def !== undefined) values[field.key] = def
       if (field.type === 'subtable') {
@@ -215,6 +216,7 @@ export function validateValues(
 
   for (const section of schema.sections) {
     for (const field of section.fields) {
+      if (DISPLAY_FIELD_TYPES.includes(field.type)) continue
       checkField(field, values[field.key], field.key)
     }
   }

@@ -8,7 +8,12 @@
 import { computed } from 'vue'
 
 import type { FieldDef, FieldType, FormSchema } from '@/types/form'
-import { FIELD_TYPE_LABELS, OPTION_FIELD_TYPES, SUBTABLE_COLUMN_TYPES } from '@/types/form'
+import {
+  FIELD_TYPE_LABELS,
+  OPTION_FIELD_TYPES,
+  SUBTABLE_COLUMN_TYPES,
+  isDisplayField,
+} from '@/types/form'
 import { FORMULA_FUNCTIONS } from '@/utils/formula'
 import { normalizeField } from '@/utils/formSchemaEdit'
 
@@ -42,6 +47,14 @@ function notify(): void {
  */
 function onTypeChange(): void {
   normalizeField(field.value)
+  // 标题字段只能是顶层文本控件；切成别的类型时顺手清掉引用
+  if (
+    props.schema.title_field === field.value.key
+    && field.value.type !== 'text'
+    && field.value.type !== 'textarea'
+  ) {
+    props.schema.title_field = null
+  }
   notify()
 }
 
@@ -61,6 +74,64 @@ const isSubtable = computed(() => SUBTABLE_LIKE.includes(field.value.type))
 const needsOptions = computed(() => OPTION_FIELD_TYPES.includes(field.value.type))
 const isFormula = computed(() => field.value.type === 'formula')
 const isCascader = computed(() => field.value.type === 'cascader')
+const isDisplay = computed(() => isDisplayField(field.value))
+
+/** 发起时自动填充并锁定：顶层人员/部门/日期时间控件支持 */
+const autoFillOptions = computed(() => {
+  if (props.isColumn) return []
+  if (['user', 'user_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator', label: '当前发起人' }]
+  }
+  if (['dept', 'dept_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator_dept', label: '发起人所在部门' }]
+  }
+  if (field.value.type === 'datetime') {
+    return [{ value: 'start_time', label: '流程发起时间' }]
+  }
+  return []
+})
+
+/** 发起时带入、但允许发起人修改的默认值 */
+const defaultSourceOptions = computed(() => {
+  if (props.isColumn) return []
+  if (['user', 'user_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator', label: '当前发起人' }]
+  }
+  if (['dept', 'dept_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator_dept', label: '发起人所在部门' }]
+  }
+  return []
+})
+
+function onAutoFillChange(value: unknown): void {
+  if (value) field.value.default_source = null
+  notify()
+}
+
+function onDefaultSourceChange(value: unknown): void {
+  if (value) field.value.auto_fill = null
+  notify()
+}
+
+/** 自动编号只适用于顶层单行文本 */
+const canAutoNumber = computed(() => !props.isColumn && field.value.type === 'text')
+
+function onAutoNumberToggle(event: unknown): void {
+  if (event) {
+    field.value.auto_number = { prefix: 'NO', seq_length: 4 }
+    field.value.default_value = null
+  } else {
+    field.value.auto_number = null
+  }
+  notify()
+}
+
+const spanOptions = [
+  { value: 24, label: '整行' },
+  { value: 12, label: '1/2 行' },
+  { value: 8, label: '1/3 行' },
+  { value: 6, label: '1/4 行' },
+]
 
 const hasValidators = computed(
   () => isText.value || isNumber.value || isDate.value || isFile.value || isSubtable.value,
@@ -81,7 +152,7 @@ const referenceOptions = computed(() => {
   const out: Array<{ value: string; label: string }> = []
   for (const section of props.schema.sections) {
     for (const f of section.fields) {
-      if (f.key === field.value.key) continue
+      if (f.key === field.value.key || isDisplayField(f)) continue
       out.push({ value: f.key, label: `${f.label}（${f.key}）` })
     }
   }
@@ -115,7 +186,12 @@ const dateFieldOptions = computed(() =>
 const parentFieldOptions = computed(() =>
   props.schema.sections
     .flatMap((s) => s.fields)
-    .filter((f) => f.key !== field.value.key && ['select', 'radio', 'text'].includes(f.type))
+    .filter(
+      (f) =>
+        f.key !== field.value.key
+        && !isDisplayField(f)
+        && ['select', 'radio', 'text'].includes(f.type),
+    )
     .map((f) => ({ value: f.key, label: `${f.label}（${f.key}）` })),
 )
 
@@ -190,54 +266,172 @@ const defaultControl = computed(() => {
           <a-input v-model:value="field.key" class="text-mono" @change="notify" />
         </a-form-item>
 
-        <a-form-item label="占位提示">
-          <a-input v-model:value="field.placeholder" placeholder="输入框里的灰字提示" @change="notify" />
-        </a-form-item>
-
-        <a-form-item label="帮助说明" help="显示在控件下方的小字">
-          <a-input v-model:value="field.help" @change="notify" />
-        </a-form-item>
-
-        <a-form-item v-if="!isFormula" label="必填">
-          <a-switch v-model:checked="field.required" @change="notify" />
-        </a-form-item>
-
-        <a-form-item label="发起阶段可见">
-          <a-switch v-model:checked="field.visible_at_start" @change="notify" />
-          <template #extra>
-            <span class="text-muted">
-              关闭后该字段在发起页隐藏，由流程节点显式打开 —— 这就是「财务补充字段」的做法
-            </span>
-          </template>
-        </a-form-item>
-
-        <a-form-item label="默认值">
-          <a-switch
-            v-if="defaultControl === 'switch'"
-            v-model:checked="field.default_value as boolean"
-            @change="notify"
-          />
-          <a-input-number
-            v-else-if="defaultControl === 'number'"
-            v-model:value="field.default_value as number"
-            style="width: 100%"
-            @change="notify"
-          />
+        <a-form-item v-if="!isColumn" label="字段宽度" help="24 栅格制；留空则按分区列数自动分配">
           <a-select
-            v-else-if="defaultControl === 'select'"
-            v-model:value="field.default_value"
-            :options="(field.options ?? []).map((o) => ({ value: o.value, label: o.label }))"
+            v-model:value="field.span"
+            :options="spanOptions"
             allow-clear
+            placeholder="自动"
             @change="notify"
           />
-          <a-checkbox-group
-            v-else-if="defaultControl === 'checkbox'"
-            v-model:value="field.default_value as Array<string | number>"
-            :options="(field.options ?? []).map((o) => ({ value: o.value, label: o.label }))"
-            @change="notify"
-          />
-          <a-input v-else v-model:value="field.default_value as string" @change="notify" />
         </a-form-item>
+
+        <!-- 展示型控件：只配置展示内容 -->
+        <template v-if="isDisplay">
+          <a-form-item v-if="field.type === 'heading'" label="标题级别">
+            <a-select
+              v-model:value="field.display!.level"
+              :options="[
+                { value: 1, label: '一级标题' },
+                { value: 2, label: '二级标题' },
+                { value: 3, label: '三级标题' },
+              ]"
+              @change="notify"
+            />
+          </a-form-item>
+
+          <a-form-item
+            v-if="['heading', 'paragraph', 'divider'].includes(field.type)"
+            label="展示文字"
+            :help="field.type === 'divider' ? '可留空，只显示一条分割线' : undefined"
+          >
+            <a-input v-model:value="field.display!.text" @change="notify" />
+          </a-form-item>
+
+          <template v-if="field.type === 'image_view'">
+            <a-form-item label="图片地址" help="支持 http(s) 链接或站内 / 开头的路径">
+              <a-input v-model:value="field.display!.url" @change="notify" />
+            </a-form-item>
+            <a-form-item label="替代文字">
+              <a-input v-model:value="field.display!.alt" @change="notify" />
+            </a-form-item>
+          </template>
+
+          <a-form-item
+            v-if="field.type === 'rich_text'"
+            label="Markdown 内容"
+            help="支持标题、列表、粗体/斜体、链接、行内代码；不允许 HTML 标签"
+          >
+            <a-textarea v-model:value="field.display!.markdown" :rows="6" @change="notify" />
+          </a-form-item>
+        </template>
+
+        <!-- 数据字段：填写与校验配置 -->
+        <template v-else>
+          <a-form-item label="占位提示">
+            <a-input v-model:value="field.placeholder" placeholder="输入框里的灰字提示" @change="notify" />
+          </a-form-item>
+
+          <a-form-item label="帮助说明" help="显示在控件下方的小字">
+            <a-input v-model:value="field.help" @change="notify" />
+          </a-form-item>
+
+          <a-form-item v-if="!isFormula" label="必填">
+            <a-switch v-model:checked="field.required" @change="notify" />
+          </a-form-item>
+
+          <a-form-item v-if="canAutoNumber" label="自动生成编号">
+            <a-switch :checked="!!field.auto_number" @change="onAutoNumberToggle" />
+            <template #extra>
+              <span class="text-muted">
+                标识位 + 年月日 + 当日流水号，例如 REQ202611110001；发起时由服务端生成并锁定
+              </span>
+            </template>
+          </a-form-item>
+
+          <template v-if="field.auto_number">
+            <a-form-item label="编号标识位" help="如 REQ / BX / QJ，仅字母数字、下划线、短横线">
+              <a-input
+                v-model:value="field.auto_number.prefix"
+                placeholder="REQ"
+                class="text-mono"
+                @change="notify"
+              />
+            </a-form-item>
+            <a-form-item label="流水号位数" help="左侧补零，默认 4 位">
+              <a-input-number
+                v-model:value="field.auto_number.seq_length"
+                :min="1"
+                :max="8"
+                style="width: 100%"
+                @change="notify"
+              />
+            </a-form-item>
+          </template>
+
+          <a-form-item v-if="autoFillOptions.length" label="发起时自动填充">
+            <a-select
+              v-model:value="field.auto_fill"
+              :options="autoFillOptions"
+              allow-clear
+              placeholder="不自动填充"
+              @change="onAutoFillChange"
+            />
+            <template #extra>
+              <span class="text-muted">
+                发起时由系统带入并锁定；后续节点可按字段权限继续编辑
+              </span>
+            </template>
+          </a-form-item>
+
+          <a-form-item
+            v-if="defaultSourceOptions.length && !field.auto_fill"
+            label="发起时默认值"
+          >
+            <a-select
+              v-model:value="field.default_source"
+              :options="defaultSourceOptions"
+              allow-clear
+              placeholder="不设置默认值"
+              @change="onDefaultSourceChange"
+            />
+            <template #extra>
+              <span class="text-muted">
+                发起时带入、但发起人仍可修改（与「自动填充并锁定」二选一）
+              </span>
+            </template>
+          </a-form-item>
+
+          <a-form-item label="发起阶段可见">
+            <a-switch v-model:checked="field.visible_at_start" @change="notify" />
+            <template #extra>
+              <span class="text-muted">
+                关闭后该字段在发起页隐藏，由流程节点显式打开 —— 这就是「财务补充字段」的做法
+              </span>
+            </template>
+          </a-form-item>
+
+          <a-form-item
+            v-if="!field.auto_fill && !field.default_source && !field.auto_number"
+            label="默认值"
+          >
+            <a-switch
+              v-if="defaultControl === 'switch'"
+              v-model:checked="field.default_value as boolean"
+              @change="notify"
+            />
+            <a-input-number
+              v-else-if="defaultControl === 'number'"
+              v-model:value="field.default_value as number"
+              style="width: 100%"
+              @change="notify"
+            />
+            <a-select
+              v-else-if="defaultControl === 'select'"
+              v-model:value="field.default_value"
+              :options="(field.options ?? []).map((o) => ({ value: o.value, label: o.label }))"
+              allow-clear
+              @change="notify"
+            />
+            <a-checkbox-group
+              v-else-if="defaultControl === 'checkbox'"
+              v-model:value="field.default_value as Array<string | number>"
+              :options="(field.options ?? []).map((o) => ({ value: o.value, label: o.label }))"
+              @change="notify"
+            />
+            <a-input v-else v-model:value="field.default_value as string" @change="notify" />
+          </a-form-item>
+        </template>
       </a-tab-pane>
 
       <!-- ------------------------------------------------ 选项 -->

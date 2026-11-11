@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.constants import DISPLAY_FIELD_TYPES
 from app.engine.ext_fields import merge_ext_fields
 from app.models import Department, FlowInstance, FlowTemplate, FormVersion, User
 
@@ -96,6 +97,9 @@ def build_csv(db: Session, instances: Sequence[FlowInstance]) -> str:
         schema = _schema_of(db, instance)
         for section in schema.sections:
             for field in section.fields:
+                if field.type in DISPLAY_FIELD_TYPES:
+                    # 展示控件不是数据列
+                    continue
                 if field.key in seen:
                     continue
                 seen.add(field.key)

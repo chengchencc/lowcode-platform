@@ -5,14 +5,17 @@
 动态审批人、驳回重提、抄送，并按节点控制字段的可见/可编辑权限，
 让表单数据随审批逐节点丰富，全程留痕可审计。
 
-> **当前进度：M1–M6 已完成。** 组织管理、表单配置器、流程配置器与审批引擎、
+> **当前进度：M1–M6 已完成，二期 M7 已完成。** 组织管理、表单配置器、流程配置器与审批引擎、
 > 发起中心与工作台、实例详情（含驳回重提 / 快照对照 / 运行中追加字段）、
 > 示例流程库、归档检索与导出、操作审计全部可用；
 > **PRD §9 场景一（请假）与场景二（报销）都已端到端跑通**。
+> 二期 M7 增加了流程可视化画布（自动布局 + 轻编辑，与清单视图共用同一份 JSON）；
+> M8 表单布局/展示控件、M9 字段联动规则、M10 打印与移动端代码已完成，待统一验收。
 > 可交付内部试用 —— 部署看下面的「一键部署」，演示照着 `docs/DEMO.md` 走。
 >
 > - 需求：`docs/PRD-lowcode-form-approval.md`
 > - 设计：`docs/TECH-DESIGN.md`（含引擎设计、API 契约、里程碑排期、**已知陷阱**）
+> - **二期设计**：`docs/PHASE2-DESIGN.md`（范围、里程碑、M7–M10 技术边界）
 > - **引擎代码说明**：`docs/ENGINE.md`（模块地图、一次事件的调用链、改一处跑哪个测试）
 > - **演示脚本**：`docs/DEMO.md`（10 分钟走完请假与报销两条链路）
 > - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
@@ -51,6 +54,10 @@ bash scripts/setup.sh
 ```
 
 幂等，可重复执行。它会创建虚拟环境、装前后端依赖、生成 `.env`、跑数据库迁移。
+
+> macOS / Linux 上不要假定 `python` 就是 Python 3 —— 它可能是系统自带的
+> Python 2.7。脚本会自己按 `python3.12` → `python3.13` → `python3.14` → `python3`
+> → `python` 的顺序找可用的 3.12+，不需要手动激活什么。
 
 > **只想先看看效果？** 用 Docker 一条命令起完整形态（MySQL + 后端 + 前端），
 > 见下面的「一键部署」。它还会预置两套可直接发起的示例流程。
@@ -98,19 +105,42 @@ bash scripts/dev-frontend.sh
 ## 一键部署（Docker）
 
 ```bash
-bash scripts/docker-up.sh          # 首次会自动生成 .env（含随机 JWT_SECRET）
+bash scripts/docker-up.sh              # 默认：内置 MySQL 8
+bash scripts/docker-up.sh --postgres   # 内置 PostgreSQL 16
 ```
 
-起 MySQL 8 + 后端 + 前端（nginx），完成后输出访问地址与初始账号。
-重复执行 = 重建镜像并滚动更新，数据在卷里不会丢。
+起「数据库 + 后端 + 前端（nginx）」，完成后输出访问地址与初始账号。
+重复执行 = 重建镜像并滚动更新容器，数据在卷里不会丢。
 
-手工等价操作：
+| 形态 | 数据库 | 数据卷 |
+|---|---|---|
+| 默认 | MySQL 8 | `flowform-mysql-data` |
+| `--postgres` | PostgreSQL 16 | `flowform-postgres-data` |
+
+附件统一落在 `flowform-storage`。两种形态都只对外暴露 **8080**，数据库不映射到宿主机。
+
+`--postgres` 会把 `DB_MODE=postgres` 写进根目录 `.env`，以后直接
+`bash scripts/docker-up.sh` 也沿用；切回 MySQL 把 `.env` 里的 `DB_MODE` 清空即可。
+脚本会根据 `DB_MODE` 自动叠加 `docker-compose.postgres.yml`。
+
+手工等价操作（PostgreSQL 形态）：
 
 ```bash
-cp .env.example .env               # 至少改 JWT_SECRET 与 MYSQL 密码
-docker compose up -d --build       # → http://localhost:8080
-docker compose logs -f backend     # 看日志
-docker compose down                # 停止（加 -v 会连数据一起删）
+cp .env.example .env                 # 至少改 JWT_SECRET
+echo 'DB_MODE=postgres' >> .env
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f backend
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml down
+```
+
+MySQL 形态省掉 `DB_MODE` 和第二个 `-f`，直接 `docker compose up -d --build`。
+
+部署后验证：
+
+```bash
+docker compose ps                         # 三个容器均为 healthy
+curl -s localhost:8080/api/v1/readyz      # {"database":"postgresql"} 或 "mysql"
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
 ```
 
 要点：
@@ -118,8 +148,15 @@ docker compose down                # 停止（加 -v 会连数据一起删）
 - 浏览器只与 nginx 打交道：静态资源由它托管，`/api` 反代到后端容器 ——
   **同源部署，因此不需要 CORS**，也不用给前端打包时塞后端域名
 - 数据库迁移在后端容器**启动时**执行（`docker-entrypoint.sh`），首次启动即建好全部表
+- 切换 MySQL / PostgreSQL 不需要改代码：`DATABASE_URL` 由 compose 注入，镜像里两个驱动都装了
 - 附件落在独立卷 `flowform-storage`，容器重建不丢文件
-- MySQL 不想对外暴露时就不暴露（compose 里没写 `ports`）；要本机连库排查再临时加
+- 数据库刻意不对外暴露（compose 里没写 `ports`）；要本机连库排查再临时加
+- 用 `http://局域网IP:8080` 访问也能正常登录：请求幂等键不要直接调
+  `crypto.randomUUID()`，它只在 HTTPS / localhost 等安全上下文可用，在局域网
+  HTTP 下是 undefined 且会在请求发出前抛错（表现为「点了没反应、DevTools 无请求」）。
+  已封装在 `frontend/src/utils/requestId.ts`，生产环境仍建议上 HTTPS
+- 拉镜像慢时：Docker Desktop → Settings → Resources → Proxies 填本机代理
+  （如 `http://127.0.0.1:7890`）；本项目实测配置镜像加速器也可用
 - 上线前请：改 `ADMIN_PASSWORD`、关掉 `SEED_DEMO_ACCOUNTS`、给 `JWT_SECRET` 一个好密钥
 
 ---
@@ -131,7 +168,7 @@ docker compose down                # 停止（加 -v 会连数据一起删）
 | `scripts/setup.sh` | 首次搭建（幂等） |
 | `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
-| `scripts/docker-up.sh` | 一键起完整形态（MySQL + 后端 + nginx 前端） |
+| `scripts/docker-up.sh` | 一键起完整形态（MySQL 或 PostgreSQL + 后端 + nginx 前端） |
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
@@ -284,6 +321,13 @@ lowcode-platform/
 | M4 ✅ | 发起中心、待办工作台、实例详情页、站内通知 | 请假流程端到端跑通 |
 | M5 ✅ | 驳回重提与快照对照、运行中追加字段、值校验与级联下拉、消息中心 | 报销流程端到端跑通 |
 | M6 ✅ | 示例流程库、归档检索与导出、审计打磨、Docker 部署、文档与演示 | 可交付内部试用 |
+| M7 ✅ | 流程可视化画布：自动布局 + 轻编辑（节点增删、拖拽排序、分支/并行组） | 画布与清单共用流程 JSON |
+| M8 🚧 | 表单栅格、分区折叠、展示控件（标题/说明/分割线/图片/富文本） | 代码完成，待补测试与真机验收 |
+| M9 🚧 | 字段联动规则（显隐/只读/必填）与服务端兜底 | 代码完成，待补测试与真机验收 |
+| M10 🚧 | A4 打印文档、核心路径移动端适配 | 代码完成，待真机验收 |
 
+> 二期剩余里程碑（M8 表单布局/展示控件、M9 字段联动、M10 打印/移动端）见
+> `docs/PHASE2-DESIGN.md`。
+>
 > Docker 形态（`docker-compose.yml` + 两个 Dockerfile）**只写完、未在本机实测过**
 > —— 本机 Docker 守护进程当时没起来。首次部署请预留排查时间，欢迎反馈问题。

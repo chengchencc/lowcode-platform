@@ -156,6 +156,12 @@ class FieldType(StrEnum):
     # 增强
     FORMULA = "formula"
     CASCADER = "cascader"
+    # 展示（不绑定数据，M8）
+    HEADING = "heading"
+    PARAGRAPH = "paragraph"
+    DIVIDER = "divider"
+    IMAGE_VIEW = "image_view"
+    RICH_TEXT = "rich_text"
 
 
 #: 需要配置 options 的控件
@@ -181,6 +187,40 @@ SUBTABLE_COLUMN_TYPES: frozenset[str] = frozenset(
 
 #: 只读控件（由公式计算，用户不可编辑）—— 这些控件类型在权限矩阵里不可配为 editable
 COMPUTED_FIELD_TYPES: frozenset[str] = frozenset({FieldType.FORMULA})
+
+#: 展示型控件（M8）：只负责排版与说明，不绑定实例数据。
+#: 不进入 current_data / 快照 / CSV / 值校验 / 字段权限矩阵的编辑项。
+DISPLAY_FIELD_TYPES: frozenset[str] = frozenset(
+    {
+        FieldType.HEADING,
+        FieldType.PARAGRAPH,
+        FieldType.DIVIDER,
+        FieldType.IMAGE_VIEW,
+        FieldType.RICH_TEXT,
+    }
+)
+
+
+class AutoFillSource(StrEnum):
+    """发起时自动填充的系统值来源。"""
+
+    INITIATOR = "initiator"            # 当前发起人（user / user_multi）
+    INITIATOR_DEPT = "initiator_dept"  # 发起人所在部门（dept / dept_multi）
+    START_TIME = "start_time"          # 流程发起时间（datetime）
+
+
+#: 每种自动填充来源允许的控件类型
+AUTO_FILL_FIELD_TYPES: dict[str, frozenset[str]] = {
+    AutoFillSource.INITIATOR: frozenset({FieldType.USER, FieldType.USER_MULTI}),
+    AutoFillSource.INITIATOR_DEPT: frozenset({FieldType.DEPT, FieldType.DEPT_MULTI}),
+    AutoFillSource.START_TIME: frozenset({FieldType.DATETIME}),
+}
+
+#: 发起时可带入、但允许发起人修改的默认值来源
+DEFAULT_SOURCE_FIELD_TYPES: dict[str, frozenset[str]] = {
+    AutoFillSource.INITIATOR: frozenset({FieldType.USER, FieldType.USER_MULTI}),
+    AutoFillSource.INITIATOR_DEPT: frozenset({FieldType.DEPT, FieldType.DEPT_MULTI}),
+}
 
 
 class FormulaType(StrEnum):

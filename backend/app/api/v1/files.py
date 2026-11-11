@@ -15,8 +15,9 @@ from fastapi.responses import Response
 from app.core.deps import CurrentUser, DbSession
 from app.core.errors import ForbiddenError
 from app.core.policy import is_admin
+from app.models import FlowInstance
 from app.schemas.common import OkResp
-from app.services import file_service
+from app.services import file_service, instance_service
 
 router = APIRouter(prefix="/files", tags=["附件"])
 
@@ -39,15 +40,28 @@ def upload(
     return file_service.describe(attachment)
 
 
+def _assert_can_access(db, attachment, user) -> None:
+    """可见性：上传者、管理员，或能查看该附件所属实例的参与者。"""
+    if attachment.uploader_id == user.id or is_admin(user):
+        return
+    if attachment.instance_id is not None:
+        instance = db.get(FlowInstance, attachment.instance_id)
+        if instance is not None and instance_service.can_view(db, instance, user):
+            return
+    raise ForbiddenError("没有权限访问该附件", code="ATTACHMENT_FORBIDDEN")
+
+
+@router.get("/{attachment_id}", summary="附件元数据")
+def info(attachment_id: int, db: DbSession, user: CurrentUser) -> dict:
+    attachment = file_service.get_or_404(db, attachment_id)
+    _assert_can_access(db, attachment, user)
+    return file_service.describe(attachment)
+
+
 @router.get("/{attachment_id}/download", summary="下载附件")
 def download(attachment_id: int, db: DbSession, user: CurrentUser) -> Response:
     attachment = file_service.get_or_404(db, attachment_id)
-
-    # M2 的可见性：上传者本人或管理员。
-    # M4 起要叠加「该实例的可见参与者」判断（PRD §2 实例可见性）。
-    if attachment.uploader_id != user.id and not is_admin(user):
-        raise ForbiddenError("没有权限访问该附件", code="ATTACHMENT_FORBIDDEN")
-
+    _assert_can_access(db, attachment, user)
     content = file_service.read_content(db, attachment)
     # 中文文件名要用 RFC 5987 的 filename*，否则浏览器会拿到乱码
     encoded = quote(attachment.file_name)

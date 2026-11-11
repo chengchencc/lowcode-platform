@@ -326,6 +326,12 @@ vi.mock('@/api/modules/form', () => {
       upload: vi.fn(),
       remove: vi.fn(),
       downloadUrl: (id: number) => `/api/v1/files/${id}/download`,
+      downloadPath: (id: number) => `/files/${id}/download`,
+      info: vi.fn().mockResolvedValue({
+        id: 1, file_name: '附件.txt', mime_type: 'text/plain',
+        size_bytes: 0, is_image: false, uploader_id: 1,
+        created_at: '', url: '/api/v1/files/1/download',
+      }),
     },
   }
 })
@@ -549,6 +555,56 @@ describe('布局与 antd 上下文', () => {
 })
 
 
+describe('画布节点按钮（完整设计器集成）', () => {
+  it('条件分支内的节点可以选中并在右侧面板配置', async () => {
+    const wrapper = await mountView(FlowDesignerView, '/admin/flows/1/design')
+    await flushPromises()
+
+    await wrapper.find('[data-node-id="s2"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      wrapper.text(),
+      '点击分支内节点后，右侧属性面板应切换到该节点',
+    ).toContain('节点属性：财务补充')
+    wrapper.unmount()
+  })
+
+  it('审批节点的 + 与删除都能生效', async () => {
+    const { messages, restore } = watchUnresolved()
+    try {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+      const wrapper = await mountView(FlowDesignerView, '/admin/flows/1/design')
+      await flushPromises()
+
+      expect(wrapper.find('[data-node-id="s1"]').exists(), '应渲染审批节点 s1').toBe(true)
+      const before = wrapper.findAll('[data-node-id]').length
+
+      await wrapper.find('[data-node-id="s1"] [title="在后面插入节点"]').trigger('click')
+      await flushPromises()
+      const modalText = document.body.textContent?.replace(/\s+/g, '') ?? ''
+      expect(modalText, '点击 + 应打开插入弹窗').toContain('插入节点')
+
+      const option = Array.from(document.body.querySelectorAll('button'))
+        .find((button) => button.textContent?.replace(/\s+/g, '') === '审批节点')
+      expect(option, '弹窗里应有「审批节点」选项').toBeTruthy()
+      option!.click()
+      await flushPromises()
+      expect(wrapper.findAll('[data-node-id]').length, '插入后节点数应增加').toBe(before + 1)
+
+      await wrapper.find('[data-node-id="s1"] [title="删除节点"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-node-id="s1"]').exists(), '删除后节点应消失').toBe(false)
+
+      expect(messages, `未注册的组件/指令：\n${messages.join('\n')}`).toEqual([])
+      wrapper.unmount()
+    } finally {
+      restore()
+    }
+  })
+})
+
+
 describe('设计器的发布按钮可用性', () => {
   // 曾经的 bug：发布按钮的禁用条件写成 `readonly || !dirty`，
   // 而设计器有 1.5s 自动保存，保存后 dirty=false → 按钮立刻变灰，
@@ -610,7 +666,9 @@ describe('工作台路由可达性', () => {
     // 而 DefaultLayout 那边也有一份手维护的白名单，两边一起漏，点了没反应。
     // 现在菜单结构在 layouts/menu.ts，白名单由路由表推导，这里直接遍历菜单。
     const router = makeRealRouter()
-    const keys = leafKeys(buildMenuItems({ isAdmin: true, todoCount: 3, ccUnread: 1 }))
+    const keys = leafKeys(
+      buildMenuItems({ isAdmin: true, isDesigner: true, todoCount: 3, ccUnread: 1 }),
+    )
 
     expect(keys, '菜单里应能找到实例管理').toContain('instances')
     for (const name of keys) {
@@ -619,6 +677,34 @@ describe('工作台路由可达性', () => {
       // 路径里不应残留未填充的参数（如 /workbench/:type）
       expect(resolved.path, `${name} 的路径不应含未填充参数`).not.toMatch(/:[a-zA-Z]/)
     }
+  })
+})
+
+
+describe('菜单按角色显示', () => {
+  // 普通用户曾经也能看到「表单模板/流程模板」：这两条路由要 designer 角色，
+  // 点进去会被守卫弹回首页 —— 属于不该出现的死入口（PRD §5 也写明仅管理员/设计者）。
+  const keysFor = (isAdmin: boolean, isDesigner: boolean) =>
+    leafKeys(buildMenuItems({ isAdmin, isDesigner, todoCount: 0, ccUnread: 0 }))
+
+  it('普通用户看不到审批管理下的模板菜单', () => {
+    const keys = keysFor(false, false)
+    expect(keys).not.toContain('form-templates')
+    expect(keys).not.toContain('flow-templates')
+    expect(keys).not.toContain('instances')
+  })
+
+  it('设计者能看到表单/流程模板，但看不到实例管理', () => {
+    const keys = keysFor(false, true)
+    expect(keys).toEqual(expect.arrayContaining(['form-templates', 'flow-templates']))
+    expect(keys).not.toContain('instances')
+  })
+
+  it('管理员能看到全部审批管理菜单', () => {
+    const keys = keysFor(true, false)
+    expect(keys).toEqual(
+      expect.arrayContaining(['form-templates', 'flow-templates', 'instances']),
+    )
   })
 })
 
@@ -669,7 +755,9 @@ describe('菜单点击能真正跳转', () => {
     // 这里逐个点一遍 —— 任何一项跳不动都会红。
     const { router, wrapper } = await mountLayout()
     const menu = wrapper.findComponent(Menu)
-    const keys = leafKeys(buildMenuItems({ isAdmin: true, todoCount: 0, ccUnread: 0 }))
+    const keys = leafKeys(
+      buildMenuItems({ isAdmin: true, isDesigner: true, todoCount: 0, ccUnread: 0 }),
+    )
 
     for (const key of keys) {
       await router.push('/')

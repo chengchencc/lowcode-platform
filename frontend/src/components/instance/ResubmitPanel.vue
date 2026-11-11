@@ -40,11 +40,16 @@ const rejection = computed(() => {
 
 const permissions = computed<Record<string, FieldState>>(() => {
   const out: Record<string, FieldState> = {}
-  for (const [key, perm] of Object.entries(props.data.permissions ?? {})) {
+  const source = props.data.base_permissions ?? props.data.permissions ?? {}
+  for (const [key, perm] of Object.entries(source)) {
     out[key] = { visible: perm.visible, editable: perm.editable, required: perm.required }
   }
   return out
 })
+
+const formRules = computed(
+  () => props.data.form_rules ?? props.data.schema_data.rules ?? [],
+)
 
 const changedCount = computed(() => Object.keys(changedPatch.value).length)
 
@@ -118,6 +123,7 @@ async function submit(): Promise<void> {
       :schema="data.schema_data"
       :model-value="values"
       :permissions="permissions"
+      :rules="formRules"
       mode="edit"
       @update:model-value="values = $event"
     />

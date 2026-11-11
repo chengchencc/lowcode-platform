@@ -6,8 +6,8 @@
  *   标题栏  单号/状态/发起人 + **处理按钮**（同意/驳回/退回，仅当前处理人可见）
  *           + 实例级操作（撤回/撤销/终止）
  *   表单    按**服务端下发的权限**渲染的分区表单（hidden 不渲染 / readonly 只读 / editable 可改）
- *   进度    并行组并列、条件分支标出实际走向（参考信息，放表单之后）
- *   时间线  处理历史，可回放快照
+ *   进度/历史  左右两栏：左边进度（并行组并列、条件分支标出实际走向），
+ *              右边处理历史（可回放快照）。窄屏自动退化为上下排列。
  *
  * 数据一次取全（`GET /instances/{id}/render`），避免分多次请求拼装导致的撕裂状态。
  */
@@ -24,14 +24,17 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/http'
 import { instanceApi } from '@/api/modules/instance'
+import { userApi } from '@/api/modules/user'
 import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
 import ExtFieldManager from '@/components/instance/ExtFieldManager.vue'
+import PrintDocument from '@/components/instance/PrintDocument.vue'
 import ProgressBar from '@/components/instance/ProgressBar.vue'
 import ResubmitPanel from '@/components/instance/ResubmitPanel.vue'
 import SnapshotDiff from '@/components/instance/SnapshotDiff.vue'
 import TimelineList from '@/components/instance/TimelineList.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useOrgStore } from '@/stores/org'
 import type { FieldState } from '@/types/form'
 import type { InstanceRender } from '@/types/instance'
 import { INSTANCE_STATUS_META, MY_ROLE_LABELS } from '@/types/instance'
@@ -42,6 +45,7 @@ import { feedback } from '@/utils/feedback'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const org = useOrgStore()
 
 const instanceId = computed(() => Number(route.params.id))
 const assignmentId = computed(() => {
@@ -62,15 +66,17 @@ const formValues = computed<Record<string, unknown>>(() => ({
   ...fieldPatch.value,
 }))
 
-/** 只有「可编辑」的字段允许改；其余保持服务端下发 */
+/** 节点权限矩阵（不含表单联动规则）；规则交给 FormRenderer 随输入重算 */
 const permissions = computed<Record<string, FieldState>>(() => {
-  const raw = data.value?.permissions ?? {}
+  const raw = data.value?.base_permissions ?? data.value?.permissions ?? {}
   const out: Record<string, FieldState> = {}
   for (const [key, perm] of Object.entries(raw)) {
     out[key] = { visible: perm.visible, editable: perm.editable, required: perm.required }
   }
   return out
 })
+
+const formRules = computed(() => data.value?.form_rules ?? data.value?.schema_data.rules ?? [])
 
 const canEditForm = computed(() => data.value?.my_role === 'CURRENT_HANDLER')
 
@@ -86,6 +92,25 @@ async function load(): Promise<void> {
       assignment_id: assignmentId.value,
       snapshot_id: activeSnapshotId.value ?? undefined,
     })
+    // 只读的人员控件靠 org 缓存换名字；发起人至少先塞进去，
+    // 否则「发起人」自动填充字段在详情页会显示成 #id
+    if (data.value.instance.initiator_name) {
+      org.rememberUsers([
+        {
+          id: data.value.instance.initiator_id,
+          username: '',
+          real_name: data.value.instance.initiator_name,
+          dept_name: data.value.instance.initiator_dept_name,
+        },
+      ])
+    }
+    // 只读表单与打印文档靠 org 缓存把人员 id 换成人名；预取一页人员足够覆盖常见表单
+    try {
+      const users = await userApi.options({ limit: 200 })
+      org.rememberUsers(users)
+    } catch {
+      // 名字缓存失败不影响单据主数据
+    }
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
       feedback.error('你没有权限查看该单据')
@@ -98,6 +123,25 @@ async function load(): Promise<void> {
 
 onMounted(load)
 watch([instanceId, activeSnapshotId], () => void load())
+
+/** 处理完任务后清掉 URL 上的 assignment，避免刷新/回退时又按旧待办渲染 */
+async function onActed(): Promise<void> {
+  // 先本地摘掉待办状态：不等 reload 完成，按钮/可编辑态就立即消失
+  if (data.value) {
+    data.value.assignment = null
+    data.value.allowed_actions = []
+    data.value.current_node = null
+    if (data.value.my_role === 'CURRENT_HANDLER') {
+      data.value.my_role = auth.user?.id === data.value.instance.initiator_id
+        ? 'INITIATOR'
+        : 'PARTICIPANT'
+    }
+  }
+  if (route.query.assignment) {
+    await router.replace({ query: { ...route.query, assignment: undefined } })
+  }
+  await load()
+}
 
 function onFormChange(values: Record<string, unknown>): void {
   // 只记录与已保存值不同的字段，避免把整表单都提交上去
@@ -288,7 +332,7 @@ async function doExport(): Promise<void> {
                 v-if="showHeaderActions"
                 :data="data"
                 :field-patch="fieldPatch"
-                @acted="load"
+                @acted="onActed"
                 @clear-patch="clearPatch"
               />
 
@@ -359,6 +403,7 @@ async function doExport(): Promise<void> {
             :schema="data.schema_data"
             :model-value="formValues"
             :permissions="permissions"
+            :rules="formRules"
             :mode="formMode"
             @update:model-value="onFormChange"
           />
@@ -373,22 +418,23 @@ async function doExport(): Promise<void> {
           :schema="data.schema_data"
         />
 
-        <!-- ------------------------------------------------ 进度 -->
-        <Card title="审批进度" :bordered="false" class="block">
-          <ProgressBar
-            :nodes="data.progress"
-            :active-node-id="data.current_node?.node_id ?? null"
-          />
-        </Card>
+        <!-- ------------------------------------------------ 进度 + 处理历史 -->
+        <div class="progress-history">
+          <Card title="审批进度" :bordered="false" class="block">
+            <ProgressBar
+              :nodes="data.progress"
+              :active-node-id="data.current_node?.node_id ?? null"
+            />
+          </Card>
 
-        <!-- ------------------------------------------------ 时间线 -->
-        <Card title="处理历史" :bordered="false" class="block">
-          <TimelineList
-            :actions="data.actions"
-            :active-snapshot-id="activeSnapshotId"
-            @view-snapshot="viewSnapshot"
-          />
-        </Card>
+          <Card title="处理历史" :bordered="false" class="block">
+            <TimelineList
+              :actions="data.actions"
+              :active-snapshot-id="activeSnapshotId"
+              @view-snapshot="viewSnapshot"
+            />
+          </Card>
+        </div>
       </template>
     </a-spin>
 
@@ -415,6 +461,15 @@ async function doExport(): Promise<void> {
         />
       </a-form-item>
     </Modal>
+
+    <!-- 屏幕隐藏，window.print() 时由全局打印样式显示 -->
+    <PrintDocument
+      v-if="data"
+      :data="data"
+      :values="formValues"
+      :permissions="permissions"
+      :rules="formRules"
+    />
   </div>
 </template>
 
@@ -482,6 +537,26 @@ async function doExport(): Promise<void> {
   margin-bottom: 12px;
 }
 
+/* 进度与历史并排：各自独占一行时右侧大片留白，显得松散 */
+.progress-history {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+
+  .block {
+    margin-bottom: 0;
+  }
+}
+
+/* 窄屏放不下两栏时退回上下排列（与原有窄屏样式一致） */
+@media (max-width: 992px) {
+  .progress-history {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .title-tag {
   margin-left: 8px;
   font-size: 11px;
@@ -493,5 +568,25 @@ async function doExport(): Promise<void> {
 
 .mb {
   margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-ops {
+    flex-wrap: wrap;
+  }
+
+  .header-card :deep(.ant-card-body),
+  .block :deep(.ant-card-body) {
+    padding: 12px;
+  }
+
+  .title {
+    font-size: 15px;
+  }
 }
 </style>

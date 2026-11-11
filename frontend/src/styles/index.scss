@@ -18,6 +18,12 @@ body {
   padding: 16px;
 }
 
+@media (max-width: 768px) {
+  .page-container {
+    padding: 8px;
+  }
+}
+
 .page-card {
   background: #fff;
   border-radius: 8px;
@@ -39,4 +45,142 @@ body {
 
 .text-mono {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* ------------------------------------------------------------------ 打印（M10）
+ * 屏幕上隐藏打印文档；window.print() 时只显示它。
+ * 顶部实例详情的导航、按钮、进度条等一律不进入打印输出。
+ */
+.print-document {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    /* 12mm 比 16mm 更紧凑，同时仍留出装订边 */
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff;
+    margin: 0;
+  }
+
+  /* 打印文档 Teleport 到 body；把整个应用隐藏掉，避免隐藏内容继续占纸张、产生空白页 */
+  #app {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-document,
+  .print-document * {
+    visibility: visible;
+  }
+
+  .print-document {
+    display: block;
+    position: static;
+    width: 100%;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  /* 分区可以跨页。整块 avoid 会把超高分区整体推到下一页，首页只剩页头。 */
+  .print-document .section-block {
+    break-inside: auto;
+    margin-bottom: 8px !important;
+  }
+
+  .print-document .stage-tag,
+  .print-document .collapse-btn {
+    display: none !important;
+  }
+
+  .print-document .ant-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+
+  .print-document .ant-card-head {
+    min-height: auto !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+  }
+
+  .print-document .ant-card-head-title {
+    padding: 0 !important;
+    font-size: 12px !important;
+  }
+
+  .print-document .ant-card-body {
+    padding: 6px 8px 2px !important;
+  }
+
+  .print-document .ant-form-item {
+    margin-bottom: 6px !important;
+    break-inside: avoid;
+  }
+
+  .print-document .ant-form-item-label {
+    padding-bottom: 0 !important;
+  }
+
+  .print-document .ant-form-item-label > label {
+    height: auto !important;
+    font-size: 10.5px !important;
+  }
+
+  .print-document .ant-form-item-control {
+    font-size: 11px !important;
+  }
+
+  .print-document .readonly-value {
+    min-height: 0 !important;
+    line-height: 1.45 !important;
+  }
+
+  .print-document .print-header {
+    margin-bottom: 10px !important;
+    padding-bottom: 6px !important;
+    border-bottom-width: 1px !important;
+  }
+
+  .print-document .print-header h1 {
+    margin: 0 0 6px !important;
+    font-size: 18px !important;
+  }
+
+  .print-document .print-meta {
+    gap: 3px 14px !important;
+    margin-top: 2px !important;
+    font-size: 10.5px !important;
+  }
+
+  .print-document .print-history {
+    margin-top: 10px !important;
+  }
+
+  .print-document .print-history h2 {
+    margin: 0 0 5px !important;
+    font-size: 13px !important;
+  }
+
+  .print-document .print-history th,
+  .print-document .print-history td {
+    padding: 3px 5px !important;
+    font-size: 10.5px !important;
+  }
+
+  .print-document table thead {
+    display: table-header-group;
+  }
+
+  .print-document tr,
+  .print-document .display-block {
+    break-inside: avoid;
+  }
 }

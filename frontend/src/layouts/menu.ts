@@ -27,6 +27,8 @@ import type { Router } from 'vue-router'
 
 export interface MenuContext {
   isAdmin: boolean
+  /** 设计者：可维护表单/流程模板。管理员天然拥有该能力（见后端 `policy.is_designer`）。 */
+  isDesigner: boolean
   /** 待办数（角标） */
   todoCount: number
   /** 抄送未读数（角标） */
@@ -57,7 +59,12 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
       label: h('span', { class: 'menu-label' }, ['工作台', badge(ctx.todoCount)]),
       icon: () => h(ScheduleOutlined),
     },
-    {
+  ]
+
+  // 审批管理（PRD §5：管理员/设计者）。普通用户看不到模板菜单 ——
+  // 那两条路由要 designer 角色，露出来就是「点了被弹回首页」的死入口。
+  if (ctx.isAdmin || ctx.isDesigner) {
+    items.push({
       key: 'design',
       label: '审批管理',
       icon: () => h(PartitionOutlined),
@@ -69,8 +76,8 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
           ? [{ key: 'instances', label: '实例管理', icon: () => h(FolderOpenOutlined) }]
           : []),
       ],
-    },
-  ]
+    })
+  }
 
   if (ctx.isAdmin) {
     items.push({
