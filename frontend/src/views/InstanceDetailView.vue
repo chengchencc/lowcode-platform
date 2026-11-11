@@ -6,8 +6,8 @@
  *   标题栏  单号/状态/发起人 + **处理按钮**（同意/驳回/退回，仅当前处理人可见）
  *           + 实例级操作（撤回/撤销/终止）
  *   表单    按**服务端下发的权限**渲染的分区表单（hidden 不渲染 / readonly 只读 / editable 可改）
- *   进度    并行组并列、条件分支标出实际走向（参考信息，放表单之后）
- *   时间线  处理历史，可回放快照
+ *   进度/历史  左右两栏：左边进度（并行组并列、条件分支标出实际走向），
+ *              右边处理历史（可回放快照）。窄屏自动退化为上下排列。
  *
  * 数据一次取全（`GET /instances/{id}/render`），避免分多次请求拼装导致的撕裂状态。
  */
@@ -418,22 +418,23 @@ async function doExport(): Promise<void> {
           :schema="data.schema_data"
         />
 
-        <!-- ------------------------------------------------ 进度 -->
-        <Card title="审批进度" :bordered="false" class="block">
-          <ProgressBar
-            :nodes="data.progress"
-            :active-node-id="data.current_node?.node_id ?? null"
-          />
-        </Card>
+        <!-- ------------------------------------------------ 进度 + 处理历史 -->
+        <div class="progress-history">
+          <Card title="审批进度" :bordered="false" class="block">
+            <ProgressBar
+              :nodes="data.progress"
+              :active-node-id="data.current_node?.node_id ?? null"
+            />
+          </Card>
 
-        <!-- ------------------------------------------------ 时间线 -->
-        <Card title="处理历史" :bordered="false" class="block">
-          <TimelineList
-            :actions="data.actions"
-            :active-snapshot-id="activeSnapshotId"
-            @view-snapshot="viewSnapshot"
-          />
-        </Card>
+          <Card title="处理历史" :bordered="false" class="block">
+            <TimelineList
+              :actions="data.actions"
+              :active-snapshot-id="activeSnapshotId"
+              @view-snapshot="viewSnapshot"
+            />
+          </Card>
+        </div>
       </template>
     </a-spin>
 
@@ -534,6 +535,26 @@ async function doExport(): Promise<void> {
 .block {
   border-radius: 8px;
   margin-bottom: 12px;
+}
+
+/* 进度与历史并排：各自独占一行时右侧大片留白，显得松散 */
+.progress-history {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+
+  .block {
+    margin-bottom: 0;
+  }
+}
+
+/* 窄屏放不下两栏时退回上下排列（与原有窄屏样式一致） */
+@media (max-width: 992px) {
+  .progress-history {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .title-tag {
