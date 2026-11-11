@@ -101,9 +101,17 @@ def get_sheet_or_404(db: Session, sheet_id: int, user: User | None = None) -> Wo
 # --------------------------------------------------------------------------- 表定义
 
 
+RESERVED_COLUMN_KEYS = {"id", "row_no", "version", "updated_at", "cells", "origin"}
+
+
 def _validate_columns(columns: list[WorkStatColumn]) -> list[dict[str, Any]]:
     keys = [c.key for c in columns]
     labels = [c.label for c in columns]
+    if any(key in RESERVED_COLUMN_KEYS for key in keys):
+        raise UnprocessableError(
+            "列 key 不能使用 id/row_no/version/updated_at/cells 等保留字",
+            code="WORK_STAT_COLUMN_RESERVED",
+        )
     if len(set(keys)) != len(keys):
         raise UnprocessableError("列 key 重复", code="WORK_STAT_COLUMN_DUPLICATE")
     if len(set(labels)) != len(labels):

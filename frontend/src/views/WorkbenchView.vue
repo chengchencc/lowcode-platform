@@ -9,11 +9,13 @@
  * （PRD F4.1「会签组待办合并展示、分别操作」）。
  */
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import { Button, Card, Input, Space, Table, Tag } from 'ant-design-vue'
+import { Button, Card, Input, Select, Space, Table, Tag } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { taskApi } from '@/api/modules/instance'
+import { instanceApi, taskApi } from '@/api/modules/instance'
+import InstanceFilterBuilder from '@/components/instance/InstanceFilterBuilder.vue'
+import type { FlowTemplate } from '@/types/flow'
 import type { InstanceItem, TaskRow } from '@/types/instance'
 import { INSTANCE_STATUS_META } from '@/types/instance'
 import { formatDateTime, formatRelative } from '@/utils/datetime'
@@ -37,6 +39,9 @@ const instanceRows = ref<InstanceItem[]>([])
 const loading = ref(false)
 const query = reactive({ keyword: '', unread_only: false })
 const paging = reactive({ page: 1, size: 20, total: 0 })
+const mineFlows = ref<FlowTemplate[]>([])
+const mineFlowId = ref<number | undefined>(undefined)
+const mineFilters = ref('')
 
 const isTaskList = computed(() => activeTab.value !== 'mine')
 
@@ -74,6 +79,12 @@ async function load(): Promise<void> {
       page: paging.page,
       size: paging.size,
       keyword: query.keyword || undefined,
+      ...(activeTab.value === 'mine'
+        ? {
+            flow_template_id: mineFlowId.value,
+            filters: mineFilters.value || undefined,
+          }
+        : {}),
     }
     if (activeTab.value === 'mine') {
       const data = await taskApi.mine(params)
@@ -97,7 +108,12 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void instanceApi.myFlowTemplates().then((flows) => {
+    mineFlows.value = flows
+  })
+})
 
 watch(activeTab, (next) => {
   paging.page = 1
@@ -115,6 +131,16 @@ watch(
 function search(): void {
   paging.page = 1
   void load()
+}
+
+function onMineFlowChange(): void {
+  mineFilters.value = ''
+  search()
+}
+
+function onMineFiltersChange(value: string): void {
+  mineFilters.value = value
+  search()
 }
 
 function onTableChange(pagination: { current?: number; pageSize?: number }): void {
@@ -154,6 +180,19 @@ function statusMeta(status?: string | null) {
         <a-tab-pane v-for="tab in TABS" :key="tab.key" :tab="tab.label" />
       </a-tabs>
 
+      <div v-if="activeTab === 'mine'" class="page-toolbar">
+        <Select
+          v-model:value="mineFlowId"
+          :options="mineFlows.map((flow) => ({ value: flow.id, label: flow.name }))"
+          placeholder="全部流程"
+          style="width: 220px"
+          allow-clear
+          show-search
+          option-filter-prop="label"
+          @change="onMineFlowChange"
+        />
+      </div>
+
       <div class="page-toolbar">
         <Space>
           <Input.Search
@@ -176,6 +215,14 @@ function statusMeta(status?: string | null) {
           刷新
         </Button>
       </div>
+
+      <InstanceFilterBuilder
+        v-if="activeTab === 'mine'"
+        :flow-template-id="mineFlowId"
+        scope="mine"
+        :model-value="mineFilters"
+        @update:model-value="onMineFiltersChange"
+      />
 
       <!-- ------------------------------------------------ 任务列表 -->
       <Table

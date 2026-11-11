@@ -122,6 +122,7 @@ def build_mine_query(
     user: User,
     status: str | None = None,
     keyword: str | None = None,
+    flow_template_id: int | None = None,
 ) -> Select:
     stmt = (
         select(FlowInstance)
@@ -130,6 +131,8 @@ def build_mine_query(
     )
     if status:
         stmt = stmt.where(FlowInstance.status == status)
+    if flow_template_id is not None:
+        stmt = stmt.where(FlowInstance.flow_template_id == flow_template_id)
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))

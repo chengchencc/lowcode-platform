@@ -193,6 +193,8 @@ vi.mock('@/api/modules/instance', () => {
   return {
     instanceApi: {
       availableFlows: vi.fn().mockResolvedValue([]),
+      searchFields: vi.fn().mockResolvedValue([]),
+      myFlowTemplates: vi.fn().mockResolvedValue([]),
       startOptions: vi.fn().mockResolvedValue({
         flow_template_id: 1, flow_template_name: '请假申请',
         flow_version_id: 1, flow_version_no: 1, form_version_id: 1, form_version_no: 1,
@@ -405,6 +407,8 @@ vi.mock('@/api/modules/form', () => {
       deleteVersion: vi.fn(),
       validateVersion: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
       publishVersion: vi.fn().mockResolvedValue(version),
+      searchFields: vi.fn().mockResolvedValue([]),
+      saveSearchFields: vi.fn().mockResolvedValue({ added: 0, removed: 0, needs_backfill: false }),
       previewVersion: vi.fn().mockResolvedValue({
         version_id: 1,
         template_id: 1,

@@ -19,6 +19,7 @@ import {
   LinkOutlined,
   PlusOutlined,
   SaveOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Card, Drawer, Empty, Space, Tag, Tooltip } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -28,6 +29,7 @@ import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
 import FieldPropertyPanel from '@/components/form-designer/FieldPropertyPanel.vue'
 import FormRulesPanel from '@/components/form-designer/FormRulesPanel.vue'
+import SearchFieldPanel from '@/components/form-designer/SearchFieldPanel.vue'
 import { FormRenderer, resolveFieldStates } from '@/components/form-renderer'
 import type {
   FieldDef,
@@ -333,6 +335,7 @@ async function publish(): Promise<void> {
 // --------------------------------------------------------------------------- 预览
 
 const rulesOpen = ref(false)
+const searchFieldsOpen = ref(false)
 const previewOpen = ref(false)
 const previewValues = ref<Record<string, unknown>>({})
 const previewMode = ref<'edit' | 'readonly'>('edit')
@@ -428,6 +431,10 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
           <Button @click="rulesOpen = true">
             <template #icon><LinkOutlined /></template>
             联动规则
+          </Button>
+          <Button @click="searchFieldsOpen = true">
+            <template #icon><SearchOutlined /></template>
+            检索字段
           </Button>
           <Button @click="openPreview">
             <template #icon><EyeOutlined /></template>
@@ -760,6 +767,12 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
     </Drawer>
 
     <!-- ------------------------------------------------ 联动规则 -->
+    <SearchFieldPanel
+      v-model:open="searchFieldsOpen"
+      :template-id="templateId"
+      :template-name="template?.name"
+    />
+
     <Drawer v-model:open="rulesOpen" title="字段联动规则" :width="780" placement="right">
       <FormRulesPanel
         :schema="schema"

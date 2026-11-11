@@ -7,6 +7,7 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
+  SearchOutlined,
   SettingOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
@@ -16,6 +17,7 @@ import { useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
+import SearchFieldPanel from '@/components/form-designer/SearchFieldPanel.vue'
 import type { FormStatus, FormTemplate } from '@/types/form'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
@@ -23,6 +25,8 @@ import { feedback } from '@/utils/feedback'
 const router = useRouter()
 
 const rows = ref<FormTemplate[]>([])
+const searchFieldsOpen = ref(false)
+const searchFieldsTemplate = ref<FormTemplate | null>(null)
 const groups = ref<string[]>([])
 const loading = ref(false)
 const query = reactive({
@@ -367,6 +371,16 @@ async function handleImportFile(file: File): Promise<boolean> {
                   复制
                 </Button>
               </Tooltip>
+              <Tooltip title="配置归档/我发起的列表可筛选的业务字段">
+                <Button
+                  type="link"
+                  size="small"
+                  @click="searchFieldsTemplate = record as FormTemplate; searchFieldsOpen = true"
+                >
+                  <template #icon><SearchOutlined /></template>
+                  检索字段
+                </Button>
+              </Tooltip>
               <Tooltip title="导出为 JSON 文件，可用于导入">
                 <Button type="link" size="small" @click="exportTemplate(record as FormTemplate)">
                   <template #icon><DownloadOutlined /></template>
@@ -454,6 +468,12 @@ async function handleImportFile(file: File): Promise<boolean> {
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <SearchFieldPanel
+      v-model:open="searchFieldsOpen"
+      :template-id="searchFieldsTemplate?.id ?? 0"
+      :template-name="searchFieldsTemplate?.name"
+    />
   </div>
 </template>
 

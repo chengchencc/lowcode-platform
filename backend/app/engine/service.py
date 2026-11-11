@@ -114,6 +114,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import parse_form_schema
+from app.services import search_service
 
 #: 字段 diff 的追溯信息上限，避免超大表单把 JSON 撑爆
 _MAX_CHANGED_FIELDS = 200
@@ -304,6 +305,10 @@ class EngineService:
         result.snapshot_id = snap.id
 
         self._persist_notifications(result.notifications)
+        # 索引与业务数据同一事务：失败则整笔动作回滚，不会出现「数据新、索引旧」
+        search_service.sync_instance_index(
+            self.db, instance=instance, form_schema=form_schema
+        )
         self.db.commit()
         self.db.refresh(instance)
         result.instance_status = instance.status
@@ -737,6 +742,9 @@ class EngineService:
         action_row.to_status = instance.status
 
         self._persist_notifications(result.notifications)
+        search_service.sync_instance_index(
+            self.db, instance=instance, form_schema=form_schema
+        )
         self.db.commit()
         self.db.refresh(instance)
         result.instance_status = instance.status

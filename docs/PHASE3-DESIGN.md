@@ -2,7 +2,7 @@
 
 > 配套：`PRD-lowcode-form-approval.md`、`TECH-DESIGN.md`、`PHASE2-DESIGN.md`。
 > 本文是三期的范围、模块边界与里程碑依据；具体实现随里程碑增量修订。
-> **当前状态：M11 已完成；M12–M16 待开发。**
+> **当前状态：M11–M13 已完成；M14–M16 待开发。**
 
 ---
 
@@ -269,6 +269,19 @@
 - 非授权用户看不到表格或只能只读；
 - 行修改历史能查到谁在何时改了哪些单元格。
 
+### 2.10 M12 实现状态
+
+已完成（提交在 `feat3` 分支）：
+
+- 后端：`work_stat_sheets / work_stat_rows / work_stat_row_logs` 三张表（迁移
+  `0005_m_work_stats`）；表定义、可见/可编辑范围、行级乐观锁、Excel 预览导入与
+  导出、行级修改历史；单表上限 2000 行。
+- 前端：统计表列表与新建/编辑弹窗（固定列、角色/部门/人员范围）、vxe-table
+  协作表格（复制粘贴、自动保存、5 秒增量刷新、冲突提示）、导入预览与导出。
+- 首页按权限显示统计表入口。
+- 测试：`backend/tests/test_work_stats.py` 6 项；前端列表/表格渲染 2 项。
+- 全量校验：435 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
+
 ---
 
 ## 3. M13：实例台账检索
@@ -317,6 +330,18 @@
 - 删除/停用可检索字段的配置后，列表不再提供该筛选项；
 - 存量实例重建脚本支持 `--dry-run`，重复执行幂等；
 - 非管理员请求归档筛选被拒绝，隐藏字段不能通过筛选推断。
+
+### 3.6 M13 实现状态
+
+已完成（提交在 `feat3` 分支）：
+
+- 后端：`form_search_fields` / `instance_field_values` 两张表（迁移
+  `0006_m_search_tables`）；可检索字段配置、发布时类型冲突阻断、复制模板带配置；
+  引擎在提交与审批的同一事务内重建索引；筛选 API 覆盖归档、我发起的与导出；
+  重建脚本 `python -m app.scripts.rebuild_search_index`。
+- 前端：表单设计器/模板列表的「检索字段」配置、归档与「我发起的」业务字段筛选器。
+- 测试：`backend/tests/test_search.py` 4 项，覆盖配置、筛选、类型冲突与复制。
+- 全量校验：439 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
 
 ---
 

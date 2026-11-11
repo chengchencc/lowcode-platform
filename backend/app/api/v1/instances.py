@@ -9,7 +9,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.deps import ClientIp, CurrentUser, DbSession
-from app.core.errors import ForbiddenError
+from app.core.errors import ForbiddenError, UnprocessableError
 from app.core.pagination import Page, PageParams, build_page, paginate
 from app.core.policy import is_admin
 from app.engine.ext_fields import ExtFieldSpec
@@ -24,7 +24,13 @@ from app.schemas.instance import (
     TerminateRequest,
     WithdrawRequest,
 )
-from app.services import export_service, instance_service, render_service, snapshot_service
+from app.services import (
+    export_service,
+    instance_service,
+    render_service,
+    search_service,
+    snapshot_service,
+)
 
 router = APIRouter(prefix="/instances", tags=["流程实例"])
 
@@ -219,6 +225,7 @@ def list_instances(
     instance_status: Annotated[str | None, Query(alias="status")] = None,
     flow_template_id: Annotated[int | None, Query()] = None,
     keyword: Annotated[str | None, Query(description="标题/编号模糊匹配")] = None,
+    filters: Annotated[str | None, Query(description="业务字段筛选 JSON（M13）")] = None,
 ) -> dict:
     stmt = instance_service.build_query(
         db,
@@ -228,10 +235,54 @@ def list_instances(
         flow_template_id=flow_template_id,
         keyword=keyword,
     )
+    if filters:
+        if flow_template_id is None:
+            raise UnprocessableError(
+                "按业务字段筛选时必须指定流程模板", code="FLOW_TEMPLATE_REQUIRED"
+            )
+        if scope != "mine" and not is_admin(user):
+            raise UnprocessableError(
+                "当前列表不支持业务字段筛选", code="FILTER_SCOPE_NOT_SUPPORTED"
+            )
+        configs = search_service.allowed_fields(
+            db, flow_template_id, start_only=not is_admin(user)
+        )
+        stmt = search_service.apply_filters(
+            stmt, search_service.parse_filters(filters, configs)
+        )
     rows, total = paginate(db, stmt, paging)
     return build_page(
         [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
     )
+
+
+@router.get("/search-fields", summary="可筛选字段元数据（M13）")
+def search_fields(
+    db: DbSession,
+    user: CurrentUser,
+    flow_template_id: Annotated[int, Query()],
+    scope: Annotated[str, Query(pattern="^(mine|archive)$")] = "mine",
+) -> list[dict]:
+    if scope == "archive" and not is_admin(user):
+        raise ForbiddenError("只有平台管理员可以筛选归档", code="ADMIN_REQUIRED")
+    configs = search_service.allowed_fields(
+        db, flow_template_id, start_only=scope == "mine" and not is_admin(user)
+    )
+    return [
+        {
+            "field_key": config.field_key,
+            "label": config.label,
+            "filter_kind": config.filter_kind,
+            "options": config.options or [],
+            "start_visible": config.start_visible,
+        }
+        for config in configs.values()
+    ]
+
+
+@router.get("/my-flow-templates", summary="我发起过的流程（普通用户可选）")
+def my_flow_templates(db: DbSession, user: CurrentUser) -> list[dict]:
+    return instance_service.list_available_flows(db, user)
 
 
 # --------------------------------------------------------------------------- 归档检索与导出（F8）
@@ -250,6 +301,7 @@ def list_archive(
     keyword: Annotated[str | None, Query(description="标题/编号模糊匹配")] = None,
     finished_from: Annotated[datetime | None, Query(description="完成时间起（含）")] = None,
     finished_to: Annotated[datetime | None, Query(description="完成时间止（含）")] = None,
+    filters: Annotated[str | None, Query(description="业务字段筛选 JSON（M13）")] = None,
 ) -> dict:
     """已归档实例的检索（PRD F8.1）。
 
@@ -259,19 +311,23 @@ def list_archive(
     if not is_admin(user):
         raise ForbiddenError("只有平台管理员可以检索全部归档", code="ADMIN_REQUIRED")
 
-    rows, total = paginate(
+    stmt = instance_service.build_archive_query(
         db,
-        instance_service.build_archive_query(
-            db,
-            statuses=_status_list(instance_status),
-            flow_template_id=flow_template_id,
-            initiator_id=initiator_id,
-            keyword=keyword,
-            finished_from=finished_from,
-            finished_to=finished_to,
-        ),
-        paging,
+        statuses=_status_list(instance_status),
+        flow_template_id=flow_template_id,
+        initiator_id=initiator_id,
+        keyword=keyword,
+        finished_from=finished_from,
+        finished_to=finished_to,
     )
+    if filters:
+        if flow_template_id is None:
+            raise UnprocessableError(
+                "按业务字段筛选时必须指定流程模板", code="FLOW_TEMPLATE_REQUIRED"
+            )
+        configs = search_service.allowed_fields(db, flow_template_id, start_only=False)
+        stmt = search_service.apply_filters(stmt, search_service.parse_filters(filters, configs))
+    rows, total = paginate(db, stmt, paging)
     return build_page(
         [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
     )
@@ -287,24 +343,29 @@ def export_archive(
     keyword: Annotated[str | None, Query()] = None,
     finished_from: Annotated[datetime | None, Query()] = None,
     finished_to: Annotated[datetime | None, Query()] = None,
+    filters: Annotated[str | None, Query(description="业务字段筛选 JSON（M13）")] = None,
 ) -> Response:
     """按同一组筛选条件导出 CSV（列 = 字段标签，含运行中追加的动态字段）。"""
     if not is_admin(user):
         raise ForbiddenError("只有平台管理员可以导出归档", code="ADMIN_REQUIRED")
 
-    rows = list(
-        db.scalars(
-            instance_service.build_archive_query(
-                db,
-                statuses=_status_list(instance_status),
-                flow_template_id=flow_template_id,
-                initiator_id=initiator_id,
-                keyword=keyword,
-                finished_from=finished_from,
-                finished_to=finished_to,
-            ).limit(export_service.MAX_EXPORT_ROWS)
-        ).all()
+    stmt = instance_service.build_archive_query(
+        db,
+        statuses=_status_list(instance_status),
+        flow_template_id=flow_template_id,
+        initiator_id=initiator_id,
+        keyword=keyword,
+        finished_from=finished_from,
+        finished_to=finished_to,
     )
+    if filters:
+        if flow_template_id is None:
+            raise UnprocessableError(
+                "按业务字段筛选时必须指定流程模板", code="FLOW_TEMPLATE_REQUIRED"
+            )
+        configs = search_service.allowed_fields(db, flow_template_id, start_only=False)
+        stmt = search_service.apply_filters(stmt, search_service.parse_filters(filters, configs))
+    rows = list(db.scalars(stmt.limit(export_service.MAX_EXPORT_ROWS)).all())
     return _csv_response(export_service.build_csv(db, rows), export_service.csv_filename())
 
 

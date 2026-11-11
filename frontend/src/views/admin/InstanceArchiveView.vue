@@ -18,6 +18,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { instanceApi } from '@/api/modules/instance'
+import InstanceFilterBuilder from '@/components/instance/InstanceFilterBuilder.vue'
 import { flowApi } from '@/api/modules/flow'
 import type { ArchiveQuery } from '@/api/modules/instance'
 import type { FlowTemplate } from '@/types/flow'
@@ -33,6 +34,7 @@ const rows = ref<InstanceItem[]>([])
 const flows = ref<FlowTemplate[]>([])
 const loading = ref(false)
 const exporting = ref(false)
+const filters = ref('')
 
 const query = reactive({
   keyword: '',
@@ -70,6 +72,7 @@ function params(): ArchiveQuery {
     flow_template_id: query.flow_template_id,
     finished_from: query.range?.[0] || undefined,
     finished_to: query.range?.[1] || undefined,
+    filters: filters.value || undefined,
   }
 }
 
@@ -100,6 +103,11 @@ onMounted(() => {
 function search(): void {
   paging.page = 1
   void load()
+}
+
+function onFiltersChange(value: string): void {
+  filters.value = value
+  search()
 }
 
 function onTableChange(pagination: { current?: number; pageSize?: number }): void {
@@ -174,6 +182,13 @@ function statusMeta(status: string) {
           导出 CSV
         </Button>
       </div>
+
+      <InstanceFilterBuilder
+        :flow-template-id="query.flow_template_id"
+        scope="archive"
+        :model-value="filters"
+        @update:model-value="onFiltersChange"
+      />
 
       <Table
         :columns="columns"

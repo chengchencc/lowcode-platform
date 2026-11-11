@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import FormStatus, FormVersionStatus
@@ -84,3 +84,36 @@ class FormVersion(Base, PkMixin, TimestampMixin):
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     template: Mapped[FormTemplate] = relationship("FormTemplate", back_populates="versions")
+
+
+class FormSearchField(Base, PkMixin, TimestampMixin):
+    """可检索字段配置（M13）。
+
+    刻意按 `(form_template_id, field_key)` 存在模板级，而不是写进
+    `form_versions.schema`：已发布 schema 冻结，写进版本会导致存量实例
+    必须重发流程才可检索；field key 是跨版本稳定标识。
+    """
+
+    __tablename__ = "form_search_fields"
+    __table_args__ = (
+        UniqueConstraint("form_template_id", "field_key", name="uk_fsf_template_field"),
+    )
+
+    form_template_id: Mapped[int] = mapped_column(
+        IntType, ForeignKey("form_templates.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    field_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: 配置时的控件类型快照
+    field_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: text/number/date/time/datetime/bool/option/multi_option/user/user_multi/dept/dept_multi
+    filter_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: 各版本选项并集
+    options: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    #: 「我发起的」是否允许非管理员筛选的保守标记
+    start_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: 最近一次全量回填时间；新增字段为 NULL（待回填）
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[int] = mapped_column(IntType, ForeignKey("users.id"), nullable=False)

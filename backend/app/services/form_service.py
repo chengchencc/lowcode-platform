@@ -33,7 +33,7 @@ from app.schemas.form_schema import (
     parse_form_schema,
     validate_form_schema,
 )
-from app.services import audit_service
+from app.services import audit_service, search_service
 
 
 #: 新建表单时的默认 schema —— 给一个可立即编辑的「申请信息」分区
@@ -358,6 +358,8 @@ def copy_template(
     )
     db.add(version)
     db.flush()
+    # 副本沿用源模板的可检索配置；索引由新实例提交时自然产生
+    search_service.copy_configs(db, template.id, copy.id, actor.id)
 
     audit_service.record(
         db,
@@ -572,6 +574,11 @@ def publish_version(
             code="FORM_SCHEMA_INVALID",
             extra={"errors": [i.model_dump() for i in issues if i.severity == "error"]},
         )
+
+    # 可检索字段跨版本类型冲突会破坏索引语义，发布前拦下
+    search_service.assert_publish_consistency(
+        db, version.template_id, parse_form_schema(version.schema)
+    )
 
     # 归档上一个已发布版本：历史实例仍按它自己的快照渲染，不受影响
     for previous in db.scalars(
