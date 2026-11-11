@@ -143,6 +143,38 @@ async function saveDraft(quiet = false): Promise<void> {
   }
 }
 
+/** 自动编号字段的 key（服务端在首次暂存时分配） */
+function autoNumberKeys(): string[] {
+  const keys: string[] = []
+  for (const section of options.value?.schema_data.sections ?? []) {
+    for (const field of section.fields) {
+      if (field.auto_number) keys.push(field.key)
+    }
+  }
+  return keys
+}
+
+/** 首次暂存后把服务端生成的编号带回到表单（只补空值，不覆盖用户改动） */
+async function mergeAutoNumbers(id: number): Promise<void> {
+  const keys = autoNumberKeys()
+  const empty = keys.filter((key) => {
+    const value = values.value[key]
+    return value === undefined || value === null || value === ''
+  })
+  if (!empty.length) return
+  try {
+    const full = await instanceApi.render(id)
+    const next = { ...values.value }
+    for (const key of keys) {
+      const value = full.values[key]
+      if (value !== undefined && value !== null && value !== '') next[key] = value
+    }
+    values.value = next
+  } catch {
+    // 编号已经落库，下次刷新/暂存还能取到；这里失败不打断填写
+  }
+}
+
 async function doSaveDraft(quiet: boolean): Promise<void> {
   saving.value = true
   try {
@@ -152,8 +184,10 @@ async function doSaveDraft(quiet: boolean): Promise<void> {
         data: values.value,
       })
       instanceId.value = created.id
+      await mergeAutoNumbers(created.id)
     } else {
       await instanceApi.updateDraft(instanceId.value, { data: values.value })
+      await mergeAutoNumbers(instanceId.value)
     }
     lastSavedAt.value = new Date()
     dirty.value = false

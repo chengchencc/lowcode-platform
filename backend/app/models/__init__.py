@@ -16,6 +16,7 @@ from app.models.audit import (
 from app.models.flow import FlowTemplate, FlowVersion
 from app.models.form import FormTemplate, FormVersion
 from app.models.instance import FlowInstance, InstanceExtField
+from app.models.number import GeneratedNumber
 from app.models.org import Department, Role, User, UserRole
 from app.models.task import Task, TaskAssignment
 
@@ -31,6 +32,7 @@ __all__ = [
     "FlowVersion",
     "FormTemplate",
     "FormVersion",
+    "GeneratedNumber",
     "InstanceAction",
     "InstanceExtField",
     "Notification",

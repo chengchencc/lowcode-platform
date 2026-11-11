@@ -98,6 +98,12 @@ export type AutoFillSource = 'initiator' | 'initiator_dept' | 'start_time'
 /** 发起时带入但允许修改的默认值来源 */
 export type DefaultSource = 'initiator' | 'initiator_dept'
 
+/** 自动编号配置：标识位 + YYYYMMDD + 当日流水号 */
+export interface AutoNumberConfig {
+  prefix: string
+  seq_length?: number
+}
+
 export interface FieldDef {
   key: string
   label: string
@@ -111,6 +117,8 @@ export interface FieldDef {
   auto_fill?: AutoFillSource | null
   /** 发起时带入但允许发起人修改的默认值（顶层人员/部门控件） */
   default_source?: DefaultSource | null
+  /** 自动编号（仅顶层单行文本）：标识位 + YYYYMMDD + 流水号 */
+  auto_number?: AutoNumberConfig | null
   options?: FieldOption[]
   validators?: FieldValidators
   /** true=发起阶段可编辑；false=发起阶段隐藏，由流程节点显式打开（F5.4） */

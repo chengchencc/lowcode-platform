@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 
 from sqlalchemy import func, select
@@ -44,6 +45,67 @@ def next_code(db: Session, *, prefix: str = DEFAULT_PREFIX, on_date: date | None
             # 历史脏数据（不符合编号格式）不该让新建流程失败
             seq = 1
     return f"{prefix}{day}-{seq:04d}"
+
+
+def next_auto_number(
+    db: Session,
+    *,
+    prefix: str,
+    seq_length: int = 4,
+    on_date: date | None = None,
+) -> str:
+    """生成表单字段的自动编号：标识位 + YYYYMMDD + 当日流水号。
+
+    与实例编号同一套并发策略：查当日最大流水 +1，靠 `generated_numbers.number`
+    的唯一约束重试；重试用 SAVEPOINT，不破坏调用方事务。
+    """
+    from app.models import GeneratedNumber
+
+    day = (on_date or date.today()).strftime(_DATE_FMT)
+    last_error: Exception | None = None
+    for _ in range(MAX_RETRY):
+        latest = db.scalar(
+            select(func.max(GeneratedNumber.seq)).where(
+                GeneratedNumber.prefix == prefix,
+                GeneratedNumber.seq_date == day,
+            )
+        )
+        seq = (latest or 0) + 1
+        number = f"{prefix}{day}{seq:0{seq_length}d}"
+        try:
+            with db.begin_nested():
+                db.add(GeneratedNumber(number=number, prefix=prefix, seq_date=day, seq=seq))
+                db.flush()
+            return number
+        except IntegrityError as exc:
+            last_error = exc
+            continue
+    raise ConflictError(
+        "生成表单编号失败，请重试", code="NUMBER_GENERATION_FAILED"
+    ) from last_error
+
+
+def auto_number_values(
+    db: Session,
+    form_schema,
+    existing: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """按 schema 的 `auto_number` 配置算出编号（已有编号保持不变）。"""
+    existing = existing or {}
+    out: dict[str, str] = {}
+    for section in form_schema.sections:
+        for field in section.fields:
+            config = getattr(field, "auto_number", None)
+            if config is None:
+                continue
+            current = existing.get(field.key)
+            if current not in (None, ""):
+                out[field.key] = str(current)
+            else:
+                out[field.key] = next_auto_number(
+                    db, prefix=config.prefix, seq_length=config.seq_length
+                )
+    return out
 
 
 def create_with_code(db: Session, factory, *, prefix: str = DEFAULT_PREFIX):

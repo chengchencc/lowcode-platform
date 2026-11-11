@@ -19,7 +19,7 @@ from app.core.constants import (
     InstanceStatus,
 )
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
-from app.core.idgen import create_with_code
+from app.core.idgen import auto_number_values, create_with_code
 from app.core.policy import is_admin, is_designer
 from app.engine.auto_fill import auto_fill_values, default_values
 from app.engine.compile import compile_definition
@@ -106,14 +106,20 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
     )
     # 发起时自动填充的字段由系统带入，发起阶段强制只读（值仍可被后续节点按权限使用）
     filled = auto_fill_values(form_schema, user_id=user.id, dept_id=user.dept_id)
-    for key in filled:
+    auto_number_keys = {
+        field.key
+        for section in form_schema.sections
+        for field in section.fields
+        if field.auto_number is not None
+    }
+    for key in [*filled, *auto_number_keys]:
         permission = base_permissions.get(key)
         if permission is not None:
             base_permissions[key] = FieldPermission(
                 visible=permission.visible,
                 editable=False,
                 required=False,
-                reason=f"{permission.reason} → 自动填充(只读)",
+                reason=f"{permission.reason} → 系统编号/自动填充(只读)",
             )
     # 默认值只带入、不锁定：发起人仍可改
     defaults = default_values(form_schema, user_id=user.id, dept_id=user.dept_id)
@@ -266,6 +272,8 @@ def create_draft(
         ).items():
             if values.get(key) in (None, "", []):
                 values[key] = value
+        # 自动编号由服务端生成，忽略客户端传值
+        values.update(auto_number_values(db, form_schema, existing={}))
     title_text = title or _title_from_form(form_schema, values) or template.name
 
     def factory(code: str) -> FlowInstance:
@@ -333,6 +341,8 @@ def update_draft(
     ).items():
         if values.get(key) in (None, "", []):
             values[key] = value
+    # 自动编号：已有编号保持不变，缺失时补生成
+    values.update(auto_number_values(db, form_schema, existing=instance.current_data or {}))
     instance.current_data = values
     derived = _title_from_form(form_schema, {**data, **filled})
     if title:

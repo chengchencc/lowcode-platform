@@ -263,6 +263,8 @@ class TestSubmit:
                      "auto_fill": "start_time"},
                     {"key": "owner", "label": "需求负责人", "type": "user",
                      "default_source": "initiator"},
+                    {"key": "code", "label": "编号", "type": "text",
+                     "auto_number": {"prefix": "TST", "seq_length": 4}},
                     {"key": "reason", "label": "事由", "type": "text"},
                 ],
             }],
@@ -289,6 +291,9 @@ class TestSubmit:
         # 发起时间由服务端写入本地时间字符串
         assert isinstance(instance.current_data["applyAt"], str)
         assert len(instance.current_data["applyAt"]) == 19
+        # 自动编号：TST + 8 位日期 + 4 位流水
+        code = instance.current_data["code"]
+        assert code.startswith("TST") and len(code) == 15 and code.endswith("0001")
 
     def test_submit_requires_required_fields(self, db):
         admin = _user(db)

@@ -64,6 +64,7 @@ export function normalizeField(field: FieldDef): FieldDef {
     field.default_value = null
     field.auto_fill = null
     field.default_source = null
+    field.auto_number = null
     field.display ??= defaultDisplay(field.type)
     return field
   }
@@ -90,6 +91,17 @@ export function normalizeField(field: FieldDef): FieldDef {
   }
   // 二者互斥：自动填充优先（旧数据里同时存在时以锁定值为准）
   if (field.auto_fill) field.default_source = null
+
+  // 自动编号只支持单行文本；旧数据补齐缺省配置
+  if (field.auto_number) {
+    if (field.type !== 'text') {
+      field.auto_number = null
+    } else {
+      field.auto_number.prefix ||= 'NO'
+      field.auto_number.seq_length ??= 4
+      field.default_value = null
+    }
+  }
 
   if (NEEDS_FORMULA.includes(field.type)) {
     field.formula ??= { type: 'arithmetic', expression: '' }

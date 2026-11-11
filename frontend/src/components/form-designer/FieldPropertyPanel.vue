@@ -113,6 +113,19 @@ function onDefaultSourceChange(value: unknown): void {
   notify()
 }
 
+/** 自动编号只适用于顶层单行文本 */
+const canAutoNumber = computed(() => !props.isColumn && field.value.type === 'text')
+
+function onAutoNumberToggle(event: unknown): void {
+  if (event) {
+    field.value.auto_number = { prefix: 'NO', seq_length: 4 }
+    field.value.default_value = null
+  } else {
+    field.value.auto_number = null
+  }
+  notify()
+}
+
 const spanOptions = [
   { value: 24, label: '整行' },
   { value: 12, label: '1/2 行' },
@@ -317,6 +330,35 @@ const defaultControl = computed(() => {
             <a-switch v-model:checked="field.required" @change="notify" />
           </a-form-item>
 
+          <a-form-item v-if="canAutoNumber" label="自动生成编号">
+            <a-switch :checked="!!field.auto_number" @change="onAutoNumberToggle" />
+            <template #extra>
+              <span class="text-muted">
+                标识位 + 年月日 + 当日流水号，例如 REQ202611110001；发起时由服务端生成并锁定
+              </span>
+            </template>
+          </a-form-item>
+
+          <template v-if="field.auto_number">
+            <a-form-item label="编号标识位" help="如 REQ / BX / QJ，仅字母数字、下划线、短横线">
+              <a-input
+                v-model:value="field.auto_number.prefix"
+                placeholder="REQ"
+                class="text-mono"
+                @change="notify"
+              />
+            </a-form-item>
+            <a-form-item label="流水号位数" help="左侧补零，默认 4 位">
+              <a-input-number
+                v-model:value="field.auto_number.seq_length"
+                :min="1"
+                :max="8"
+                style="width: 100%"
+                @change="notify"
+              />
+            </a-form-item>
+          </template>
+
           <a-form-item v-if="autoFillOptions.length" label="发起时自动填充">
             <a-select
               v-model:value="field.auto_fill"
@@ -359,7 +401,10 @@ const defaultControl = computed(() => {
             </template>
           </a-form-item>
 
-          <a-form-item v-if="!field.auto_fill && !field.default_source" label="默认值">
+          <a-form-item
+            v-if="!field.auto_fill && !field.default_source && !field.auto_number"
+            label="默认值"
+          >
             <a-switch
               v-if="defaultControl === 'switch'"
               v-model:checked="field.default_value as boolean"

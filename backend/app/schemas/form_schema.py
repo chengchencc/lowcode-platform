@@ -123,6 +123,15 @@ class FieldFormula(BaseModel):
     unit: Literal["days"] = "days"
 
 
+class AutoNumberConfig(BaseModel):
+    """表单字段自动编号：标识位 + YYYYMMDD + 当日流水号。"""
+
+    #: 标识位，如 REQ / BX / QJ
+    prefix: str = Field(min_length=1, max_length=16, pattern=r"^[A-Za-z0-9_-]+$")
+    #: 流水号位数（左侧补零）
+    seq_length: int = Field(default=4, ge=1, le=8)
+
+
 class FieldDef(BaseModel):
     """单个字段。
 
@@ -160,6 +169,9 @@ class FieldDef(BaseModel):
 
     #: 发起时带入但**允许发起人修改**的默认值来源（人员 / 部门）。
     default_source: Literal["initiator", "initiator_dept"] | None = None
+
+    #: 自动编号（仅顶层单行文本）：标识位 + YYYYMMDD + 当日流水号
+    auto_number: AutoNumberConfig | None = None
 
     #: 仅 type=subtable：行内列定义（不允许再嵌套 subtable）
     columns: list[FieldDef] = Field(default_factory=list)
@@ -460,6 +472,52 @@ def _check_auto_fill(
             )
 
 
+def _check_auto_number(
+    field: FieldDef,
+    path: str,
+    issues: list[SchemaIssue],
+    *,
+    in_subtable: bool,
+) -> None:
+    """自动编号只支持顶层单行文本，且不能与自动填充/默认值混用。"""
+    if field.auto_number is None:
+        return
+    if in_subtable:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_SUBTABLE",
+                f"子表列 “{field.label}” 不能配置自动编号",
+                f"{path}.auto_number",
+            )
+        )
+        return
+    if field.type is not FieldType.TEXT:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_TYPE",
+                f"“{field.label}”的自动编号只能用在单行文本控件上",
+                f"{path}.auto_number",
+            )
+        )
+    if field.auto_fill is not None or field.default_source is not None:
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_CONFLICT",
+                f"“{field.label}”不能同时配置自动编号与发起时自动填充/默认值",
+                path,
+            )
+        )
+    if field.default_value not in (None, ""):
+        issues.append(
+            _issue(
+                "AUTO_NUMBER_DEFAULT_IGNORED",
+                f"“{field.label}”已配置自动编号，静态默认值不会生效",
+                f"{path}.default_value",
+                severity="warning",
+            )
+        )
+
+
 def _check_formula(
     field: FieldDef,
     path: str,
@@ -602,6 +660,7 @@ def _walk_fields(
         _check_validators(field, path, issues)
         _check_options(field, path, issues)
         _check_auto_fill(field, path, issues, in_subtable=in_subtable)
+        _check_auto_number(field, path, issues, in_subtable=in_subtable)
 
         # 展示控件不参与数据字段的级联/子表/公式校验；配置错误已在 _check_display 中收集
         if _check_display(field, path, issues):

@@ -38,6 +38,7 @@ from app.core.errors import (
     NotFoundError,
     UnprocessableError,
 )
+from app.core.idgen import auto_number_values
 from app.engine import notify
 from app.engine import snapshot as snapshot_mod
 from app.engine.aggregate import (
@@ -677,6 +678,10 @@ class EngineService:
             form_schema,
             user_id=actor.id,
             dept_id=instance.initiator_dept_id or actor.dept_id,
+        )
+        # 自动编号：草稿里已有就沿用，没有则提交时补生成
+        forced.update(
+            auto_number_values(self.db, form_schema, existing=instance.current_data or {})
         )
         # 可修改的默认值只在用户没填时带入
         defaults = default_values(
