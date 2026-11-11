@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{BACKEND_DIR / 'flowform.db'}"
     sql_echo: bool = False
 
+    # ---- 展示时区 ----
+    #: 数据统一存 naive UTC；首页「今日/本周/本月」按该时区计算边界
+    app_timezone: str = "Asia/Shanghai"
+
     # ---- 认证 ----
     jwt_secret: str = "dev-only-secret-please-change-in-production"
     jwt_algorithm: str = "HS256"

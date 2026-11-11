@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     audit,
     auth,
+    dashboard,
     departments,
     files,
     flow_templates,
@@ -42,4 +43,5 @@ api_router.include_router(flow_versions.router)
 # M4 发起与工作台
 api_router.include_router(instances.router)
 api_router.include_router(tasks.router)
+api_router.include_router(dashboard.router)
 api_router.include_router(notifications.router)
