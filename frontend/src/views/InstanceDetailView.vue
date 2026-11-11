@@ -24,6 +24,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/http'
 import { instanceApi } from '@/api/modules/instance'
+import { userApi } from '@/api/modules/user'
 import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
 import ExtFieldManager from '@/components/instance/ExtFieldManager.vue'
@@ -102,6 +103,13 @@ async function load(): Promise<void> {
           dept_name: data.value.instance.initiator_dept_name,
         },
       ])
+    }
+    // 只读表单与打印文档靠 org 缓存把人员 id 换成人名；预取一页人员足够覆盖常见表单
+    try {
+      const users = await userApi.options({ limit: 200 })
+      org.rememberUsers(users)
+    } catch {
+      // 名字缓存失败不影响单据主数据
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {

@@ -28,55 +28,58 @@ const actions = computed(() => props.data.actions)
 </script>
 
 <template>
-  <div class="print-document">
-    <header class="print-header">
-      <h1>{{ data.instance.title }}</h1>
-      <div class="print-meta">
-        <span>单号：{{ data.instance.code }}</span>
-        <span>状态：{{ statusLabel }}</span>
-        <span>流程：{{ data.instance.flow_template_name }}</span>
-      </div>
-      <div class="print-meta">
-        <span>发起人：{{ data.instance.initiator_name }}</span>
-        <span>发起部门：{{ data.instance.initiator_dept_name || '—' }}</span>
-        <span>提交时间：{{ formatDateTime(data.instance.started_at) || '—' }}</span>
-        <span>完成时间：{{ formatDateTime(data.instance.finished_at) || '—' }}</span>
-      </div>
-    </header>
+  <!-- 打印时把 #app 整体 display:none，隐藏的页面内容就不会再产生空白页 -->
+  <Teleport to="body">
+    <div class="print-document">
+      <header class="print-header">
+        <h1>{{ data.instance.title }}</h1>
+        <div class="print-meta">
+          <span>单号：{{ data.instance.code }}</span>
+          <span>状态：{{ statusLabel }}</span>
+          <span>流程：{{ data.instance.flow_template_name }}</span>
+        </div>
+        <div class="print-meta">
+          <span>发起人：{{ data.instance.initiator_name }}</span>
+          <span>发起部门：{{ data.instance.initiator_dept_name || '—' }}</span>
+          <span>提交时间：{{ formatDateTime(data.instance.started_at) || '—' }}</span>
+          <span>完成时间：{{ formatDateTime(data.instance.finished_at) || '—' }}</span>
+        </div>
+      </header>
 
-    <FormRenderer
-      :schema="data.schema_data"
-      :model-value="values"
-      :permissions="permissions"
-      :rules="rules"
-      mode="readonly"
-    />
+      <FormRenderer
+        :schema="data.schema_data"
+        :model-value="values"
+        :permissions="permissions"
+        :rules="rules"
+        mode="readonly"
+      />
 
-    <section class="print-history">
-      <h2>处理历史</h2>
-      <table v-if="actions.length">
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>操作</th>
-            <th>节点</th>
-            <th>处理人</th>
-            <th>意见</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="action in actions" :key="action.action_id">
-            <td>{{ formatDateTime(action.created_at) }}</td>
-            <td>{{ action.action_label }}</td>
-            <td>{{ action.node_name || '—' }}</td>
-            <td>{{ action.actor_name }}</td>
-            <td>{{ action.opinion || '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="text-muted">暂无处理记录</p>
-    </section>
-  </div>
+      <section class="print-history">
+        <h2>处理历史</h2>
+        <table v-if="actions.length">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作</th>
+              <th>节点</th>
+              <th>处理人</th>
+              <th>意见</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="action in actions" :key="action.action_id">
+              <td>{{ formatDateTime(action.created_at) }}</td>
+              <td>{{ action.action_label }}</td>
+              <td>{{ action.node_name || '—' }}</td>
+              <td>{{ action.actor_name }}</td>
+              <td>{{ action.opinion || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="text-muted">暂无处理记录</p>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped lang="scss">
