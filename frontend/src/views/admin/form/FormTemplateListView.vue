@@ -4,11 +4,13 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   SettingOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Input, Select, Space, Table, Tag, Upload } from 'ant-design-vue'
+import { Button, Card, Input, Select, Space, Table, Tag, Tooltip, Upload } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -37,7 +39,8 @@ const columns = [
   { title: '当前版本', key: 'version', width: 130 },
   { title: '状态', key: 'status', width: 100 },
   { title: '更新时间', key: 'updated_at', width: 150 },
-  { title: '操作', key: 'action', width: 280, fixed: 'right' as const },
+  // 六个操作都带图标 + 文字，固定宽度按实测留足，避免换行
+  { title: '操作', key: 'action', width: 420, fixed: 'right' as const },
 ]
 
 const STATUS_META: Record<FormStatus, { text: string; color: string }> = {
@@ -285,7 +288,7 @@ async function handleImportFile(file: File): Promise<boolean> {
         :loading="loading"
         row-key="id"
         size="middle"
-        :scroll="{ x: 1300 }"
+        :scroll="{ x: 1400 }"
         :pagination="{ pageSize: 20, showTotal: (total: number) => `共 ${total} 个表单` }"
       >
         <template #bodyCell="{ column, record }">
@@ -331,41 +334,65 @@ async function handleImportFile(file: File): Promise<boolean> {
 
           <template v-else-if="column.key === 'action'">
             <Space :size="2">
-              <Button
-                type="link"
-                size="small"
-                @click="router.push({ name: 'form-designer', params: { id: record.id } })"
+              <Tooltip title="打开表单设计器">
+                <Button
+                  type="link"
+                  size="small"
+                  @click="router.push({ name: 'form-designer', params: { id: record.id } })"
+                >
+                  <template #icon><SettingOutlined /></template>
+                  设计
+                </Button>
+              </Tooltip>
+              <Tooltip title="修改名称、分组等基础信息">
+                <Button type="link" size="small" @click="openEdit(record as FormTemplate)">
+                  <template #icon><EditOutlined /></template>
+                  编辑
+                </Button>
+              </Tooltip>
+              <Tooltip title="以当前表单为模板新建一份">
+                <Button type="link" size="small" @click="copyTemplate(record as FormTemplate)">
+                  <template #icon><CopyOutlined /></template>
+                  复制
+                </Button>
+              </Tooltip>
+              <Tooltip title="导出为 JSON 文件，可用于导入">
+                <Button type="link" size="small" @click="exportTemplate(record as FormTemplate)">
+                  <template #icon><DownloadOutlined /></template>
+                  导出
+                </Button>
+              </Tooltip>
+              <Tooltip
+                :title="
+                  record.status === 'DISABLED'
+                    ? '恢复后可被新流程引用'
+                    : '停用后不能被新流程引用，已有实例不受影响'
+                "
               >
-                <template #icon><SettingOutlined /></template>
-                设计
-              </Button>
-              <Button type="link" size="small" @click="openEdit(record as FormTemplate)">
-                <template #icon><EditOutlined /></template>
-                编辑
-              </Button>
-              <Button type="link" size="small" @click="copyTemplate(record as FormTemplate)">
-                <template #icon><CopyOutlined /></template>
-                复制
-              </Button>
-              <Button type="link" size="small" @click="exportTemplate(record as FormTemplate)">
-                <template #icon><DownloadOutlined /></template>
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                :danger="record.status !== 'DISABLED'"
-                @click="toggleStatus(record as FormTemplate)"
-              >
-                {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
-              </Button>
-              <Button
-                type="link"
-                size="small"
-                danger
-                @click="removeTemplate(record as FormTemplate)"
-              >
-                <template #icon><DeleteOutlined /></template>
-              </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  :danger="record.status !== 'DISABLED'"
+                  @click="toggleStatus(record as FormTemplate)"
+                >
+                  <template #icon>
+                    <PlayCircleOutlined v-if="record.status === 'DISABLED'" />
+                    <PauseCircleOutlined v-else />
+                  </template>
+                  {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
+                </Button>
+              </Tooltip>
+              <Tooltip title="删除表单及全部版本，不可恢复">
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  @click="removeTemplate(record as FormTemplate)"
+                >
+                  <template #icon><DeleteOutlined /></template>
+                  删除
+                </Button>
+              </Tooltip>
             </Space>
           </template>
         </template>
