@@ -190,21 +190,19 @@ function statusMeta(status?: string | null) {
         <a-tab-pane v-for="tab in TABS" :key="tab.key" :tab="tab.label" />
       </a-tabs>
 
-      <div v-if="activeTab === 'mine'" class="page-toolbar">
-        <Select
-          v-model:value="mineFlowId"
-          :options="mineFlows.map((flow) => ({ value: flow.id, label: flow.name }))"
-          placeholder="全部流程"
-          style="width: 220px"
-          allow-clear
-          show-search
-          option-filter-prop="label"
-          @change="onMineFlowChange"
-        />
-      </div>
-
       <div class="page-toolbar">
-        <Space>
+        <Space wrap>
+          <Select
+            v-if="activeTab === 'mine'"
+            v-model:value="mineFlowId"
+            :options="mineFlows.map((flow) => ({ value: flow.id, label: flow.name }))"
+            placeholder="全部流程"
+            style="width: 220px"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            @change="onMineFlowChange"
+          />
           <Input.Search
             v-model:value="query.keyword"
             placeholder="标题或编号"
