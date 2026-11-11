@@ -6,7 +6,6 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from app import __version__
-from app.core.config import settings
 from app.core.deps import DbSession
 
 router = APIRouter(tags=["健康检查"])
@@ -23,5 +22,7 @@ def readyz(db: DbSession) -> dict:
     return {
         "status": "ok",
         "version": __version__,
-        "database": "sqlite" if settings.is_sqlite else "mysql",
+        # 直接从实际连接取方言名（sqlite / mysql / postgresql），
+        # 免得再接一种库就要回来改这里
+        "database": db.get_bind().dialect.name,
     }
