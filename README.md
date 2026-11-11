@@ -55,6 +55,10 @@ bash scripts/setup.sh
 
 幂等，可重复执行。它会创建虚拟环境、装前后端依赖、生成 `.env`、跑数据库迁移。
 
+> macOS / Linux 上不要假定 `python` 就是 Python 3 —— 它可能是系统自带的
+> Python 2.7。脚本会自己按 `python3.12` → `python3.13` → `python3.14` → `python3`
+> → `python` 的顺序找可用的 3.12+，不需要手动激活什么。
+
 > **只想先看看效果？** 用 Docker 一条命令起完整形态（MySQL + 后端 + 前端），
 > 见下面的「一键部署」。它还会预置两套可直接发起的示例流程。
 
