@@ -111,6 +111,8 @@ const fieldOptions = computed(() =>
   fields.value.map((field) => ({ value: field.field_key, label: field.label })),
 )
 
+const hasCodeField = computed(() => fields.value.some((field) => field.field_key === 'code'))
+
 async function load(): Promise<void> {
   conditions.value = []
   emit('update:modelValue', '')
@@ -225,6 +227,14 @@ function onValueChange(): void {
     </div>
     <div v-else-if="!loading && !fields.length" class="text-muted builder-hint">
       该流程的表单还没有配置可检索字段
+    </div>
+    <div v-if="fields.length" class="text-muted builder-hint">
+      <template v-if="hasCodeField">
+        「编号」指表单内编号；列表里的单号请用上方关键词搜索。
+      </template>
+      <template v-if="scope === 'archive'">
+        归档默认只查已通过，运行中/已终止的单据请先切换状态。
+      </template>
     </div>
 
     <div v-for="(condition, index) in conditions" :key="index" class="condition-row">
