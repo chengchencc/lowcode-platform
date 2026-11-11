@@ -56,7 +56,7 @@ const objectUrls = ref(new Map<number, string>())
 async function ensureObjectUrl(id: number): Promise<void> {
   if (objectUrls.value.has(id)) return
   try {
-    const url = await fetchObjectUrl(fileApi.downloadUrl(id))
+    const url = await fetchObjectUrl(fileApi.downloadPath(id))
     const next = new Map(objectUrls.value)
     next.set(id, url)
     objectUrls.value = next
@@ -65,10 +65,22 @@ async function ensureObjectUrl(id: number): Promise<void> {
   }
 }
 
+async function ensureMeta(id: number): Promise<void> {
+  if (meta.value.has(id)) return
+  try {
+    remember(await fileApi.info(id))
+  } catch {
+    // 无权限/已删除：保留 `附件 #id` 占位，不打断页面
+  }
+}
+
 watch(
-  () => (isImage.value ? ids.value : []),
+  ids,
   (current) => {
-    for (const id of current) void ensureObjectUrl(id)
+    for (const id of current) {
+      void ensureMeta(id)
+      if (isImage.value) void ensureObjectUrl(id)
+    }
   },
   { immediate: true },
 )
@@ -79,7 +91,7 @@ onUnmounted(() => {
 
 async function open(item: { id: number; name: string }): Promise<void> {
   try {
-    await downloadFile(fileApi.downloadUrl(item.id), item.name)
+    await downloadFile(fileApi.downloadPath(item.id), item.name)
   } catch {
     feedback.error('附件打不开（可能没有权限）')
   }

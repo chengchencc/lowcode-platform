@@ -52,6 +52,8 @@ export interface RequestConfig extends AxiosRequestConfig {
   silent?: boolean
   /** 内部使用：标记这是刷新 token 后的一次重试，避免无限循环。 */
   _retried?: boolean
+  /** 返回完整 AxiosResponse（下载 blob 时需要读 headers），不做 data 解包。 */
+  raw?: boolean
 }
 
 const http = axios.create({
@@ -147,7 +149,8 @@ function toApiError(error: AxiosError): ApiError {
 }
 
 http.interceptors.response.use(
-  (response) => response.data,
+  (response) =>
+    (response.config as RequestConfig).raw ? response : response.data,
   async (error: AxiosError) => {
     const config = error.config as RequestConfig | undefined
     const apiError = toApiError(error)

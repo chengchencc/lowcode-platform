@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.constants import AttachmentStatus, AuditAction, AuditBizType
+from app.core.constants import AttachmentStatus, AuditAction, AuditBizType, FieldType
 from app.core.errors import BadRequestError, NotFoundError, UnprocessableError
 from app.models import Attachment, User
 from app.services import audit_service
@@ -163,6 +163,64 @@ def attach_to(
 
     db.flush()
     return rows
+
+
+def _attachment_ids(value: object) -> list[int]:
+    if value is None or value == "":
+        return []
+    items = value if isinstance(value, (list, tuple, set)) else [value]
+    out: list[int] = []
+    for item in items:
+        try:
+            out.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def collect_attachment_ids(form_schema, values: dict) -> list[int]:
+    """收集表单值里所有附件/图片 id（含子表行内）。"""
+    found: set[int] = set()
+    for section in form_schema.sections:
+        for field in section.fields:
+            if field.type in {FieldType.ATTACHMENT, FieldType.IMAGE}:
+                found.update(_attachment_ids(values.get(field.key)))
+            if field.type is FieldType.SUBTABLE:
+                rows = values.get(field.key)
+                if not isinstance(rows, list):
+                    continue
+                file_cols = [
+                    col.key for col in (field.columns or [])
+                    if col.type in {FieldType.ATTACHMENT, FieldType.IMAGE}
+                ]
+                for row in rows:
+                    if isinstance(row, dict):
+                        for key in file_cols:
+                            found.update(_attachment_ids(row.get(key)))
+    return list(found)
+
+
+def bind_instance_attachments(
+    db: Session,
+    instance,
+    form_schema,
+    values: dict,
+    *,
+    extra_ids: list[int] | None = None,
+) -> None:
+    """把表单/意见里的 TEMP 附件绑定到实例，供发起人与审批参与者下载。"""
+    ids = collect_attachment_ids(form_schema, values)
+    if extra_ids:
+        ids.extend(extra_ids)
+    if not ids:
+        return
+    attach_to(
+        db,
+        list(dict.fromkeys(ids)),
+        biz_type="INSTANCE",
+        biz_id=instance.id,
+        instance_id=instance.id,
+    )
 
 
 def describe(attachment: Attachment) -> dict:

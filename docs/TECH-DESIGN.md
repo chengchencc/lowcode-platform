@@ -478,6 +478,10 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
 4. **附件下载只能走 blob**：下载接口只认 `Authorization` 头，
    所以 `<a href>` / `<img src>` 一律 401 —— 这是 M4 就存在的真 bug，
    M6 补 `utils/download.ts` 统一处理（取回 blob → 保存或转 object URL）。
+   两个容易踩的坑：axios 响应拦截器默认只返回 `data`，下载必须 `raw=true`
+   才能读到 `Content-Disposition`；URL 要用相对路径 `/files/{id}/download`
+   （baseURL 会补 `/api/v1`）。下载权限 = 上传者 / 管理员 / 所属实例参与者；
+   提交与审批动作会把 TEMP 附件绑定到实例（`instance_id`），否则审批人无权查看。
 5. **Docker 形态仅写完、未在本机验证**：本机 Docker 守护进程没起来，
    容器配置（Dockerfile / compose / nginx）是按文档与实际启动顺序写的，
    但「build 得出来、起得来」这件事没有被实际执行过 —— 首次部署请预留排查时间。

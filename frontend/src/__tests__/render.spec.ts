@@ -326,6 +326,12 @@ vi.mock('@/api/modules/form', () => {
       upload: vi.fn(),
       remove: vi.fn(),
       downloadUrl: (id: number) => `/api/v1/files/${id}/download`,
+      downloadPath: (id: number) => `/files/${id}/download`,
+      info: vi.fn().mockResolvedValue({
+        id: 1, file_name: '附件.txt', mime_type: 'text/plain',
+        size_bytes: 0, is_image: false, uploader_id: 1,
+        created_at: '', url: '/api/v1/files/1/download',
+      }),
     },
   }
 })

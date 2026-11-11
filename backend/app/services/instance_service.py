@@ -40,7 +40,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import FormSchema, parse_form_schema
-from app.services import flow_service, form_service
+from app.services import file_service, flow_service, form_service
 from app.services.approver_provider import DbApproverProvider
 
 
@@ -411,6 +411,14 @@ def submit(
         template = db.get(FlowTemplate, instance.flow_template_id)
         if template is not None:
             instance.title = template.name[:255]
+
+    # 提交前把表单里的临时附件绑定到实例，审批参与者才能下载
+    file_service.bind_instance_attachments(
+        db,
+        instance,
+        form_schema,
+        {**(instance.current_data or {}), **dict(data)},
+    )
 
     engine = engine_for(db)
     if resubmit:

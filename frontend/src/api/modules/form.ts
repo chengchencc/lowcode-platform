@@ -120,4 +120,14 @@ export const fileApi = {
   downloadUrl(id: number) {
     return `/api/v1/files/${id}/download`
   },
+
+  /** 走 axios 时用的**相对路径**（实例的 baseURL 会补 /api/v1） */
+  downloadPath(id: number) {
+    return `/files/${id}/download`
+  },
+
+  /** 附件元数据（只读表单/打印里显示文件名） */
+  info(id: number) {
+    return request.get<AttachmentInfo>(`/files/${id}`)
+  },
 }

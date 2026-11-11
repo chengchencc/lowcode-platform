@@ -43,6 +43,10 @@ const org = useOrgStore()
 
 const editable = computed(() => props.state.editable && props.mode === 'edit')
 const label = computed(() => props.field.label)
+/** 附件/图片即使只读也要由专门控件渲染，才能点开下载和显示缩略图 */
+const isFileField = computed(() =>
+  ['attachment', 'image'].includes(props.field.type),
+)
 
 onMounted(() => {
   // 只读态不经过 OrgPickerControl（它在可编辑时才挂载），部门 id 换名字要先有部门树
@@ -100,7 +104,7 @@ const options = computed(() =>
   <template v-if="!state.visible"></template>
 
   <!-- 只读 / 预览 -->
-  <span v-else-if="!editable" class="readonly-value">{{ readonlyText }}</span>
+  <span v-else-if="!editable && !isFileField" class="readonly-value">{{ readonlyText }}</span>
 
   <!-- 单行文本 -->
   <a-input
