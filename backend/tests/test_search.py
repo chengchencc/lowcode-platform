@@ -123,7 +123,7 @@ def test_config_and_filter(client, db, admin_headers, normal_headers, normal_use
 
 def test_filter_validation(client, db, admin_headers, normal_headers, normal_user):
     form, flow = _setup(db, normal_user)
-    _save_fields(client, admin_headers, form.template_id, ["reason"])
+    _save_fields(client, admin_headers, form.template_id, ["reason", "tags"])
 
     missing_template = client.get(
         f"{BASE}/instances", headers=normal_headers,
@@ -144,6 +144,17 @@ def test_filter_validation(client, db, admin_headers, normal_headers, normal_use
     )
     assert unknown.status_code == 422
     assert unknown.json()["detail"]["code"] == "FILTER_FIELD_NOT_ALLOWED"
+
+    empty_value = client.get(
+        f"{BASE}/instances", headers=normal_headers,
+        params={
+            "scope": "mine",
+            "flow_template_id": flow.template_id,
+            "filters": json.dumps([{"field": "tags", "op": "has_any", "value": [None]}]),
+        },
+    )
+    assert empty_value.status_code == 422
+    assert empty_value.json()["detail"]["code"] == "FILTER_VALUE_INVALID"
 
 
 def test_publish_blocks_type_conflict(client, db, admin_headers, normal_user):
@@ -190,3 +201,57 @@ def test_copy_carries_search_config(client, db, admin_headers, normal_user):
         ).all()
     }
     assert keys == {"reason", "days"}
+
+
+def test_rebuild_endpoint(client, db, admin_headers, normal_headers, normal_user):
+    form, flow = _setup(db, normal_user)
+    _save_fields(client, admin_headers, form.template_id, ["reason"])
+    instance = _instance(
+        db, flow, form, normal_user, {"reason": "重建测试", "days": 1}
+    )
+    db.commit()
+
+    denied = client.post(
+        f"{BASE}/form-templates/{form.template_id}/search-fields/rebuild",
+        headers=normal_headers,
+    )
+    assert denied.status_code == 403
+
+    resp = client.post(
+        f"{BASE}/form-templates/{form.template_id}/search-fields/rebuild",
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["processed"] >= 1
+
+    from app.models import InstanceFieldValue
+
+    rows = list(
+        db.scalars(
+            select(InstanceFieldValue).where(
+                InstanceFieldValue.instance_id == instance.id,
+                InstanceFieldValue.field_key == "reason",
+            )
+        ).all()
+    )
+    assert rows and rows[0].value_text == "重建测试"
+
+
+def test_search_fields_resolves_form_from_flow(
+    client, db, admin_headers, normal_headers, normal_user
+):
+    # 先建一个无关表单，让后续表单模板 id 与流程模板 id 错开，
+    # 防止再出现「恰好相等才查得到」的测试盲区。
+    _published_form(db, _user(db))
+    form, flow = _setup(db, normal_user)
+    assert form.template_id != flow.template_id
+    _save_fields(client, admin_headers, form.template_id, ["reason", "days"])
+
+    resp = client.get(
+        f"{BASE}/instances/search-fields",
+        headers=normal_headers,
+        params={"flow_template_id": flow.template_id, "scope": "mine"},
+    )
+    assert resp.status_code == 200, resp.text
+    keys = {item["field_key"] for item in resp.json()}
+    assert {"reason", "days"} <= keys

@@ -25,6 +25,7 @@ from app.core.constants import (
 from app.core.errors import NotFoundError, UnprocessableError
 from app.models import (
     FlowInstance,
+    FlowTemplate,
     FormSearchField,
     FormTemplate,
     FormVersion,
@@ -386,9 +387,17 @@ def sync_instance_index(
 
 
 def allowed_fields(
-    db: Session, template_id: int, *, start_only: bool
+    db: Session, flow_template_id: int, *, start_only: bool
 ) -> dict[str, FormSearchField]:
-    configs = _load_configs(db, template_id)
+    """按**流程模板 id** 取可筛选字段。
+
+    前端列表选的是流程模板，而配置存在它的 form_template_id 上；
+    两者通常不相等，必须在这里解析一次。
+    """
+    flow = db.get(FlowTemplate, flow_template_id)
+    if flow is None:
+        raise NotFoundError("流程模板不存在", code="FLOW_TEMPLATE_NOT_FOUND")
+    configs = _load_configs(db, flow.form_template_id)
     if start_only:
         configs = [config for config in configs if config.start_visible]
     return {config.field_key: config for config in configs}
@@ -446,17 +455,38 @@ def _assert_filter(kind: str, op: str, value: Any) -> None:
         raise UnprocessableError(f"操作符 {op} 不适用于该字段", code="FILTER_OP_INVALID")
     if op in {"is_empty", "is_not_empty"}:
         return
+    numeric_kinds = {"number", "user", "dept", "user_multi", "dept_multi"}
     if op == "between":
         if not isinstance(value, list) or len(value) != 2:
             raise UnprocessableError("between 需要两个值", code="FILTER_VALUE_INVALID")
+        if any(item is None or item == "" for item in value):
+            raise UnprocessableError("区间两端都不能为空", code="FILTER_VALUE_INVALID")
+        if kind in numeric_kinds:
+            for item in value:
+                try:
+                    float(item)
+                except (TypeError, ValueError) as exc:
+                    raise UnprocessableError(
+                        "区间值必须是数字", code="FILTER_VALUE_INVALID"
+                    ) from exc
         return
     if op in {"in", "has_any", "has_all"}:
         if not isinstance(value, list) or not value:
             raise UnprocessableError("该操作符需要一个非空数组", code="FILTER_VALUE_INVALID")
         if len(value) > 50:
             raise UnprocessableError("筛选值过多", code="FILTER_VALUE_INVALID")
+        if any(item is None for item in value):
+            raise UnprocessableError("筛选值不能为空", code="FILTER_VALUE_INVALID")
+        if kind in numeric_kinds:
+            for item in value:
+                try:
+                    float(item)
+                except (TypeError, ValueError) as exc:
+                    raise UnprocessableError(
+                        "筛选值必须是数字", code="FILTER_VALUE_INVALID"
+                    ) from exc
         return
-    if value is None:
+    if value is None or value == "":
         raise UnprocessableError("筛选值不能为空", code="FILTER_VALUE_INVALID")
 
 
@@ -538,3 +568,34 @@ def mark_backfilled(db: Session, template_id: int) -> None:
     for config in _load_configs(db, template_id):
         config.indexed_at = now
     db.commit()
+
+
+def rebuild_template_index(
+    db: Session, template_id: int, *, batch_size: int = 500
+) -> dict[str, int]:
+    """重建某个表单模板下全部已提交实例的检索索引（页面按钮 / CLI 共用）。"""
+    configs = _load_configs(db, template_id)
+    if not configs:
+        return {"total": 0, "processed": 0}
+
+    instance_ids = select(FlowTemplate.id).where(FlowTemplate.form_template_id == template_id)
+    base = select(FlowInstance).where(
+        FlowInstance.flow_template_id.in_(instance_ids),
+        FlowInstance.status != InstanceStatus.DRAFT,
+    )
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    processed = 0
+    while processed < total:
+        batch = list(
+            db.scalars(
+                base.order_by(FlowInstance.id).limit(batch_size).offset(processed)
+            ).all()
+        )
+        if not batch:
+            break
+        for instance in batch:
+            sync_instance_index(db, instance=instance, configs=configs)
+        db.commit()
+        processed += len(batch)
+    mark_backfilled(db, template_id)
+    return {"total": total, "processed": processed}

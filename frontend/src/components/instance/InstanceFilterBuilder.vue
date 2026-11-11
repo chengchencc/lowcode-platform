@@ -154,9 +154,23 @@ function optionList(condition: Condition) {
   }))
 }
 
+function hasUsableValue(condition: Condition): boolean {
+  if (isNoValue(condition.op)) return true
+  if (isRange(condition.op)) {
+    return (
+      condition.value !== '' && condition.value != null
+      && condition.valueTo !== '' && condition.valueTo != null
+    )
+  }
+  if (isMultiValue(condition.op)) {
+    return String(condition.value ?? '').trim() !== ''
+  }
+  return condition.value !== '' && condition.value != null
+}
+
 function emitFilters(): void {
   const items = conditions.value
-    .filter((condition) => condition.field && condition.op)
+    .filter((condition) => condition.field && condition.op && hasUsableValue(condition))
     .map((condition) => {
       const field = fieldOf(condition.field)
       const kind = field?.filter_kind
@@ -169,7 +183,7 @@ function emitFilters(): void {
         return { field: condition.field, op: condition.op, value: [low, high] }
       }
       if (isMultiValue(condition.op)) {
-        const raw = String(condition.value ?? '')
+        const raw = String(condition.value ?? '').trim()
         const parts = raw.split(',').map((part) => part.trim()).filter(Boolean)
         const value = isNumberKind(kind) ? parts.map(Number) : parts
         return { field: condition.field, op: condition.op, value }
@@ -179,7 +193,13 @@ function emitFilters(): void {
       else if (kind === 'bool') value = value === true || value === 'true'
       return { field: condition.field, op: condition.op, value }
     })
-    .filter((item) => item.op && ('value' in item ? item.value !== '' : true))
+    .filter((item) => {
+      if (!('value' in item)) return true
+      if (Array.isArray(item.value)) {
+        return item.value.length > 0 && item.value.every((value) => value !== null && value !== '')
+      }
+      return item.value !== '' && item.value != null
+    })
 
   emit('update:modelValue', items.length ? JSON.stringify(items) : '')
 }

@@ -26,3 +26,8 @@ class SearchFieldSaveResult(BaseModel):
     added: int = 0
     removed: int = 0
     needs_backfill: bool = False
+
+
+class SearchRebuildResult(BaseModel):
+    total: int = 0
+    processed: int = 0

@@ -107,6 +107,15 @@ export const formApi = {
       { field_keys: fieldKeys },
     )
   },
+
+  /** 为存量实例重建检索索引（用当前已保存的字段配置） */
+  rebuildSearchIndex(id: number) {
+    return request.post<{ total: number; processed: number }>(
+      `/form-templates/${id}/search-fields/rebuild`,
+      undefined,
+      { timeout: 120000 },
+    )
+  },
 }
 
 export const fileApi = {

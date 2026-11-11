@@ -306,10 +306,13 @@ sheet，自由编辑单元格、公式、格式、合并单元格。
 - 后端：`form_search_fields` / `instance_field_values` 两张表（迁移
   `0006_m_search_tables`）；可检索字段配置、发布时类型冲突阻断、复制模板带配置；
   引擎在提交与审批的同一事务内重建索引；筛选 API 覆盖归档、我发起的与导出；
-  重建脚本 `python -m app.scripts.rebuild_search_index`。
+  重建脚本 `python -m app.scripts.rebuild_search_index`，页面「检索字段」弹窗也提供
+  「重建索引」按钮（先保存配置，再重建该表单下全部已提交实例）。
 - 前端：表单设计器/模板列表的「检索字段」配置、归档与「我发起的」业务字段筛选器。
-- 测试：`backend/tests/test_search.py` 4 项，覆盖配置、筛选、类型冲突与复制。
-- 全量校验：439 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
+- 修复：筛选接口按**流程模板 id** 解析对应的表单模板后再取配置（两者 id 通常不相等）。
+- 测试：`backend/tests/test_search.py` 6 项，覆盖配置、筛选、类型冲突、复制、
+  重建接口与流程/表单 id 不相等的情况。
+- 全量校验：452 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
 
 ---
 

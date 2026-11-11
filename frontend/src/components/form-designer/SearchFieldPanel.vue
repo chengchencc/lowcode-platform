@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Alert, Checkbox, Empty, Modal, Spin, Tag } from 'ant-design-vue'
+import { Alert, Button, Checkbox, Empty, Modal, Space, Spin, Tag } from 'ant-design-vue'
 import { computed, ref, watch } from 'vue'
 
 import { formApi } from '@/api/modules/form'
@@ -11,6 +11,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean]; saved: [] }>()
 
 const loading = ref(false)
 const saving = ref(false)
+const rebuilding = ref(false)
 const fields = ref<SearchFieldConfig[]>([])
 const selected = ref<string[]>([])
 
@@ -41,6 +42,28 @@ function toggle(key: string, event: { target?: { checked?: boolean } }): void {
     : selected.value.filter((item) => item !== key)
 }
 
+async function rebuild(): Promise<void> {
+  if (!selected.value.length) {
+    feedback.error('请先勾选至少一个可检索字段')
+    return
+  }
+  const ok = await feedback.confirm({
+    title: '重建检索索引？',
+    content: '将为该表单下所有已提交实例重建索引，实例多时可能需要几十秒。',
+  })
+  if (!ok) return
+  rebuilding.value = true
+  try {
+    // 重建必须使用已保存的配置；先把当前勾选落库
+    await formApi.saveSearchFields(props.templateId, selected.value)
+    const result = await formApi.rebuildSearchIndex(props.templateId)
+    feedback.success(`已重建 ${result.processed} 条实例的索引`)
+    await load()
+  } finally {
+    rebuilding.value = false
+  }
+}
+
 async function save(): Promise<void> {
   saving.value = true
   try {
@@ -62,11 +85,7 @@ async function save(): Promise<void> {
   <Modal
     :open="open"
     :title="`可检索字段${templateName ? ` · ${templateName}` : ''}`"
-    :confirm-loading="saving"
-    ok-text="保存"
-    cancel-text="取消"
     width="720px"
-    @ok="save"
     @update:open="emit('update:open', $event)"
   >
     <Alert
@@ -95,6 +114,18 @@ async function save(): Promise<void> {
     </Spin>
 
     <div class="panel-footer text-muted">已选 {{ selectedCount }} / 20</div>
+
+    <template #footer>
+      <div class="modal-footer">
+        <Button :loading="rebuilding" :disabled="!selected.length" @click="rebuild">
+          重建索引
+        </Button>
+        <Space>
+          <Button @click="emit('update:open', false)">取消</Button>
+          <Button type="primary" :loading="saving" @click="save">保存</Button>
+        </Space>
+      </div>
+    </template>
   </Modal>
 </template>
 
@@ -140,5 +171,11 @@ async function save(): Promise<void> {
 .panel-footer {
   margin-top: 8px;
   font-size: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 </style>
