@@ -8,16 +8,30 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 # ---- 后端 ----
-if ! command -v python >/dev/null 2>&1; then
-  fail "未找到 python，请先安装 Python 3.12"
+# 不假定命令叫 `python`：macOS 上它可能是系统自带的 Python 2.7（没有 venv），
+# Windows 上才是 Python 3。见 _common.sh 的 find_python。
+find_python
+if [ -z "$SYSTEM_PY" ]; then
+  fail "未找到 Python 3.12 或更高版本"
+  printf '  安装：https://www.python.org/downloads/ （或 brew install python@3.12）\n' >&2
+  printf '  已安装但没被找到？在终端执行 python3 --version 自查。\n' >&2
   exit 1
 fi
+# 变量后面紧跟全角标点时必须加花括号：macOS 自带的 bash 3.2 会把多字节字符
+# 当成变量名的一部分，报 "SYSTEM_PY<乱码>: unbound variable"。
+info "使用 $("$SYSTEM_PY" --version 2>&1)（${SYSTEM_PY}）"
 
 info "后端：创建虚拟环境"
-if [ -d "$BACKEND/.venv" ]; then
+if [ -d "$BACKEND/.venv" ] && resolve_venv_py; then
   ok "已存在，跳过"
 else
-  python -m venv "$BACKEND/.venv"
+  if [ -d "$BACKEND/.venv" ]; then
+    # 从别的操作系统拷过来的 .venv 里是 Scripts\python.exe 或另一套路径，
+    # 本机无法执行。虚拟环境可重建，直接删掉重来。
+    warn "现有 .venv 无法在本机使用（可能来自其他操作系统），正在重建"
+    rm -rf "$BACKEND/.venv"
+  fi
+  "$SYSTEM_PY" -m venv "$BACKEND/.venv"
   ok "已创建 $BACKEND/.venv"
 fi
 
