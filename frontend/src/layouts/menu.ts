@@ -19,6 +19,7 @@ import {
   PartitionOutlined,
   RocketOutlined,
   ScheduleOutlined,
+  TableOutlined,
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
@@ -59,6 +60,7 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
       label: h('span', { class: 'menu-label' }, ['工作台', badge(ctx.todoCount)]),
       icon: () => h(ScheduleOutlined),
     },
+    { key: 'work-stats', label: '工作量统计', icon: () => h(TableOutlined) },
   ]
 
   // 审批管理（PRD §5：管理员/设计者）。普通用户看不到模板菜单 ——

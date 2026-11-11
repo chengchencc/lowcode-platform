@@ -260,7 +260,9 @@ vi.mock('@/api/modules/dashboard', () => {
       },
     ],
     quick_flows: [{ flow_template_id: 3, name: '请假申请', icon: null }],
-    work_stats: [],
+    work_stats: [
+      { sheet_id: 1, name: '部门月度工作量', updated_at: '2026-11-11T09:00:00' },
+    ],
     admin: {
       running: 4,
       submitted_today: 2,
@@ -272,6 +274,55 @@ vi.mock('@/api/modules/dashboard', () => {
   return {
     dashboardApi: {
       overview: vi.fn().mockResolvedValue(overview),
+    },
+  }
+})
+
+/** 工作量统计（M12）：列表与表格页。 */
+vi.mock('@/api/modules/workStat', () => {
+  const sheet = {
+    id: 1,
+    name: '部门月度工作量',
+    description: '测试表',
+    columns: [
+      { key: 'c_name', label: '姓名', type: 'text', width: 120, required: true, options: [] },
+      { key: 'c_hours', label: '工时', type: 'number', width: 100, required: false, options: [] },
+    ],
+    viewer_scope: null,
+    editor_scope: null,
+    sort: 0,
+    status: 'ACTIVE',
+    can_edit: true,
+    created_by: 1,
+    created_at: null,
+    updated_at: null,
+  }
+  const row = {
+    id: 1,
+    row_no: 1,
+    cells: { c_name: '张三', c_hours: 8 },
+    version: 0,
+    updated_by: 1,
+    updated_at: '2026-11-11T09:00:00',
+  }
+  return {
+    workStatApi: {
+      listSheets: vi.fn().mockResolvedValue([sheet]),
+      getSheet: vi.fn().mockResolvedValue(sheet),
+      createSheet: vi.fn().mockResolvedValue(sheet),
+      updateSheet: vi.fn().mockResolvedValue(sheet),
+      deleteSheet: vi.fn().mockResolvedValue({ ok: true }),
+      rows: vi.fn().mockResolvedValue([row]),
+      createRow: vi.fn().mockResolvedValue(row),
+      updateRow: vi.fn().mockResolvedValue(row),
+      deleteRow: vi.fn().mockResolvedValue({ ok: true }),
+      rowLogs: vi.fn().mockResolvedValue([]),
+      importPreview: vi.fn().mockResolvedValue({
+        headers: ['姓名', '工时'], preview_rows: [row.cells],
+        warnings: [], total_rows: 1,
+      }),
+      importFile: vi.fn().mockResolvedValue({ imported: 1 }),
+      exportFile: vi.fn().mockResolvedValue({ data: new Blob() }),
     },
   }
 })
@@ -391,6 +442,8 @@ import DeptView from '@/views/admin/org/DeptView.vue'
 import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import WorkStatsView from '@/views/WorkStatsView.vue'
+import WorkStatSheetView from '@/views/WorkStatSheetView.vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { MENU_DEFAULT_PARAMS, buildMenuItems, leafKeys } from '@/layouts/menu'
 import LoginView from '@/views/LoginView.vue'
@@ -474,6 +527,8 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['InstanceDetailView', InstanceDetailView, '/instance/1'],
   ['NotificationCenterView', NotificationCenterView],
   ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
+  ['WorkStatsView', WorkStatsView, '/work-stats'],
+  ['WorkStatSheetView', WorkStatSheetView, '/work-stats/1'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
@@ -1074,6 +1129,7 @@ describe('首页按角色展示', () => {
     expect(wrapper.text()).toContain('我的待办')
     expect(wrapper.text()).toContain('出差申请')
     expect(wrapper.text()).toContain('常用流程')
+    expect(wrapper.text()).toContain('部门月度工作量')
     expect(wrapper.text()).not.toContain('全局概览')
 
     wrapper.unmount()
@@ -1085,6 +1141,30 @@ describe('首页按角色展示', () => {
     expect(wrapper.text()).toContain('全局概览')
     expect(wrapper.text()).toContain('待办积压')
     expect(wrapper.text()).toContain('运行中流程 Top 5')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('工作量统计页', () => {
+  it('列表页显示统计表', async () => {
+    const wrapper = await mountView(WorkStatsView, '/work-stats')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('部门月度工作量')
+    expect(wrapper.text()).toContain('测试表')
+
+    wrapper.unmount()
+  })
+
+  it('表格页显示已有行数据', async () => {
+    const wrapper = await mountView(WorkStatSheetView, '/work-stats/1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('部门月度工作量')
+    expect(wrapper.text()).toContain('张三')
+    expect(wrapper.text()).toContain('工时')
 
     wrapper.unmount()
   })

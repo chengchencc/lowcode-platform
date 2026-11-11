@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.constants import AssignmentStatus, InstanceStatus, TaskType
 from app.core.policy import is_designer
 from app.models import FlowInstance, FlowTemplate, Task, TaskAssignment, User
-from app.services import instance_service, task_service
+from app.services import instance_service, task_service, work_stat_service
 
 
 def local_bounds(now: datetime | None = None) -> tuple[datetime, datetime, datetime]:
@@ -146,11 +146,20 @@ def overview(db: Session, user: User, *, now: datetime | None = None) -> dict:
             ],
         }
 
+    work_stats = [
+        {
+            "sheet_id": item["id"],
+            "name": item["name"],
+            "updated_at": item["updated_at"],
+        }
+        for item in work_stat_service.list_sheets(db, user)
+    ]
+
     return {
         "personal": {**counts, "mine_finished_this_month": mine_finished},
         "todos": todos,
         "my_instances": my_instances,
         "quick_flows": quick_flows,
-        "work_stats": [],
+        "work_stats": work_stats,
         "admin": admin,
     }

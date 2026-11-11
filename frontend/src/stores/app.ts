@@ -24,6 +24,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ADD_EXT_FIELD: '追加字段',
   COPY: '复制',
   UPLOAD: '上传',
+  EXPORT: '导出',
 }
 
 export const AUDIT_BIZ_LABELS: Record<string, string> = {
@@ -33,6 +34,7 @@ export const AUDIT_BIZ_LABELS: Record<string, string> = {
   FORM_TEMPLATE: '表单模板',
   FLOW_TEMPLATE: '流程模板',
   INSTANCE: '流程实例',
+  WORK_STAT_SHEET: '工作量统计',
 }
 
 export const useAppStore = defineStore('app', () => {

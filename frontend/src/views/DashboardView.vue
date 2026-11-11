@@ -8,6 +8,7 @@ import InstancePreviewList from '@/components/dashboard/InstancePreviewList.vue'
 import QuickFlowGrid from '@/components/dashboard/QuickFlowGrid.vue'
 import StatTiles from '@/components/dashboard/StatTiles.vue'
 import TodoPreviewList from '@/components/dashboard/TodoPreviewList.vue'
+import WorkStatsEntry from '@/components/dashboard/WorkStatsEntry.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { DashboardOverview } from '@/types/dashboard'
 
@@ -64,6 +65,11 @@ onBeforeUnmount(() => {
           </Col>
           <Col :xs="24" :lg="10">
             <QuickFlowGrid :flows="data.quick_flows" />
+            <WorkStatsEntry
+              v-if="data.work_stats.length"
+              :sheets="data.work_stats"
+              class="dashboard-subblock"
+            />
           </Col>
         </Row>
 
@@ -104,6 +110,10 @@ onBeforeUnmount(() => {
 }
 
 .dashboard-row {
+  margin-top: 12px;
+}
+
+.dashboard-subblock {
   margin-top: 12px;
 }
 
