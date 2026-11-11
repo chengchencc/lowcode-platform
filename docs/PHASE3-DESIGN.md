@@ -2,7 +2,7 @@
 
 > 配套：`PRD-lowcode-form-approval.md`、`TECH-DESIGN.md`、`PHASE2-DESIGN.md`。
 > 本文是三期的范围、模块边界与里程碑依据；具体实现随里程碑增量修订。
-> **当前状态：M11–M13 已完成；M14–M16 待开发。**
+> **当前状态：M11–M14 已完成；M15–M16 待开发。**
 
 ---
 

@@ -549,7 +549,9 @@ def build_query(
         stmt = stmt.where(FlowInstance.initiator_id == user.id)
     elif not is_admin(user):
         # 非管理员请求 all 时退化成「与我相关的」（发起 + 参与 + 被抄送）
-        sub = select(TaskAssignment.instance_id).where(TaskAssignment.user_id == user.id)
+        sub = select(TaskAssignment.instance_id).where(
+            or_(TaskAssignment.user_id == user.id, TaskAssignment.origin_user_id == user.id)
+        )
         stmt = stmt.where(
             or_(FlowInstance.initiator_id == user.id, FlowInstance.id.in_(sub))
         )

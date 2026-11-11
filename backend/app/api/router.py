@@ -8,6 +8,7 @@ from app.api.v1 import (
     audit,
     auth,
     dashboard,
+    delegations,
     departments,
     files,
     flow_templates,
@@ -49,3 +50,4 @@ api_router.include_router(notifications.router)
 
 # M12 工作量统计
 api_router.include_router(work_stats.router)
+api_router.include_router(delegations.router)

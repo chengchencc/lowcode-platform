@@ -347,12 +347,18 @@ class AggregateMode(StrEnum):
 
 class CancelReason(StrEnum):
     ANY_SIGN_DONE = "ANY_SIGN_DONE"    # 或签他人已处理
+    TRANSFERRED = "TRANSFERRED"        # 转办（M14）
     REJECTED = "REJECTED"
     RETURNED = "RETURNED"
     WITHDRAWN = "WITHDRAWN"
     TERMINATED = "TERMINATED"
     RESUBMITTED = "RESUBMITTED"
     GROUP_FAILED = "GROUP_FAILED"
+
+
+class DelegationStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    CANCELLED = "CANCELLED"
 
 
 class SnapshotKind(StrEnum):
@@ -376,3 +382,5 @@ class NotifType(StrEnum):
     CC_RECEIVED = "CC_RECEIVED"
     ABNORMAL_ASSIGN = "ABNORMAL_ASSIGN"
     EXT_FIELD_ADDED = "EXT_FIELD_ADDED"
+    TASK_TRANSFERRED = "TASK_TRANSFERRED"
+    TASK_DELEGATED = "TASK_DELEGATED"

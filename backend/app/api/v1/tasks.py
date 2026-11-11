@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from app.core.deps import CurrentUser, DbSession
 from app.core.pagination import Page, PageParams, build_page, paginate
 from app.schemas.common import OkResp
+from app.schemas.delegation import TransferRequest
 from app.schemas.instance import AssignmentActRequest, InstanceOut, TaskRow, TodoSummary
 from app.services import instance_service, search_service, task_service
 
@@ -129,6 +130,33 @@ def return_targets(assignment_id: int, db: DbSession, user: CurrentUser) -> list
     if assignment.user_id != user.id:
         raise ForbiddenError("这不是分配给你的任务", code="NOT_ASSIGNEE")
     return task_service.return_targets_for(db, assignment)
+
+
+@router.post(
+    "/assignments/{assignment_id}/transfer",
+    response_model=InstanceOut,
+    summary="转办任务（M14）",
+)
+def transfer(
+    assignment_id: int,
+    payload: TransferRequest,
+    db: DbSession,
+    user: CurrentUser,
+    x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+) -> dict:
+    task_service.transfer(
+        db,
+        assignment_id=assignment_id,
+        actor=user,
+        to_user_id=payload.to_user_id,
+        reason=payload.reason,
+        request_id=x_request_id,
+    )
+    from app.services import instance_service
+
+    assignment = task_service.get_assignment_or_404(db, assignment_id)
+    instance = instance_service.get_or_404(db, assignment.instance_id)
+    return instance_service.to_out(db, instance, viewer=user)
 
 
 @router.post(

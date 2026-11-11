@@ -13,6 +13,7 @@ from app.models.audit import (
     InstanceAction,
     Notification,
 )
+from app.models.delegation import Delegation
 from app.models.flow import FlowTemplate, FlowVersion
 from app.models.form import FormSearchField, FormTemplate, FormVersion
 from app.models.instance import FlowInstance, InstanceExtField, InstanceFieldValue
@@ -26,6 +27,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "DataSnapshot",
+    "Delegation",
     "Department",
     "EngineEventRecord",
     "FlowInstance",

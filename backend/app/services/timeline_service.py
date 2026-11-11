@@ -27,6 +27,7 @@ ACTION_LABELS: dict[str, str] = {
     "CC_READ": "已读抄送",
     "ADD_EXT_FIELD": "追加字段",
     "DISABLE_EXT_FIELD": "停用字段",
+    "TRANSFER": "转办",
 }
 
 

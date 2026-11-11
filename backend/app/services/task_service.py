@@ -262,6 +262,27 @@ def todo_summary(db: Session, user: User) -> dict[str, int]:
 # --------------------------------------------------------------------------- 动作
 
 
+def transfer(
+    db: Session,
+    *,
+    assignment_id: int,
+    actor: User,
+    to_user_id: int,
+    reason: str,
+    request_id: str | None = None,
+):
+    """转办 —— 直接转发给引擎。"""
+    from app.services.instance_service import engine_for
+
+    return engine_for(db).transfer(
+        assignment_id=assignment_id,
+        actor=actor,
+        to_user_id=to_user_id,
+        reason=reason,
+        request_id=request_id,
+    )
+
+
 def act(
     db: Session,
     *,

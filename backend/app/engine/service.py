@@ -31,6 +31,7 @@ from app.core.constants import (
     SnapshotKind,
     TaskStatus,
     TaskType,
+    UserStatus,
 )
 from app.core.errors import (
     ConflictError,
@@ -39,6 +40,7 @@ from app.core.errors import (
     UnprocessableError,
 )
 from app.core.idgen import auto_number_values
+from app.core.policy import is_admin
 from app.engine import notify
 from app.engine import snapshot as snapshot_mod
 from app.engine.aggregate import (
@@ -114,7 +116,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import parse_form_schema
-from app.services import search_service
+from app.services import delegation_service, search_service
 
 #: 字段 diff 的追溯信息上限，避免超大表单把 JSON 撑爆
 _MAX_CHANGED_FIELDS = 200
@@ -312,6 +314,89 @@ class EngineService:
         self.db.commit()
         self.db.refresh(instance)
         result.instance_status = instance.status
+        return result
+
+    def transfer(
+        self,
+        *,
+        assignment_id: int,
+        actor: User,
+        to_user_id: int,
+        reason: str,
+        request_id: str | None = None,
+    ) -> EngineResult:
+        """转办：取消原指派，给目标人新建同 task/seq 的待办（M14）。"""
+        assignment = self.db.get(TaskAssignment, assignment_id)
+        if assignment is None:
+            raise NotFoundError("任务不存在", code="ASSIGNMENT_NOT_FOUND")
+        instance = self._lock(assignment.instance_id)
+        task = self.db.get(Task, assignment.task_id)
+        if task is None:
+            raise NotFoundError("任务不存在", code="TASK_NOT_FOUND")
+
+        if assignment.status != AssignmentStatus.PENDING:
+            raise UnprocessableError("只有待处理任务可以转办", code="TRANSFER_NOT_PENDING")
+        if assignment.user_id != actor.id and not is_admin(actor):
+            raise ForbiddenError("只能转办自己的待办", code="TRANSFER_FORBIDDEN")
+        target = self.db.get(User, to_user_id)
+        if target is None or target.status != UserStatus.ACTIVE:
+            raise UnprocessableError("目标用户不存在或已停用", code="TRANSFER_TARGET_INVALID")
+        if target.id == assignment.user_id:
+            raise UnprocessableError("不能转办给自己", code="TRANSFER_SELF")
+        occupied = self.db.scalar(
+            select(TaskAssignment.id).where(
+                TaskAssignment.task_id == assignment.task_id,
+                TaskAssignment.user_id == target.id,
+                TaskAssignment.seq == assignment.seq,
+            )
+        )
+        if occupied:
+            raise ConflictError(
+                "目标人在该任务上已有待办，不能重复转办", code="TRANSFER_TARGET_ASSIGNED"
+            )
+
+        now = self.clock()
+        action_row = self._write_action(
+            instance=instance, task=task, assignment=assignment, actor=actor,
+            action="TRANSFER", opinion=reason, attachment_ids=(), changed_fields=[],
+            request_id=request_id, to_status=instance.status,
+        )
+        action_row.from_status = instance.status
+
+        assignment.status = AssignmentStatus.CANCELLED
+        assignment.cancel_reason = CancelReason.TRANSFERRED
+        assignment.cancelled_at = now
+
+        new_assignment = TaskAssignment(
+            task_id=task.id,
+            instance_id=instance.id,
+            user_id=target.id,
+            seq=assignment.seq,
+            status=AssignmentStatus.PENDING,
+            origin_user_id=actor.id,
+            origin_kind="TRANSFER",
+            origin_reason=reason[:512],
+        )
+        self.db.add(new_assignment)
+        self.db.flush()
+
+        instance.last_action_at = now
+        result = EngineResult(instance_status=instance.status)
+        result.action_id = action_row.id
+        result.notifications.extend(
+            notify.task_transferred(
+                instance_id=instance.id,
+                instance_title=instance.title,
+                node_name=task.node_name,
+                from_user_id=actor.id,
+                to_user_id=target.id,
+                new_assignment_id=new_assignment.id,
+                reason=reason,
+            )
+        )
+        self._persist_notifications(result.notifications)
+        self.db.commit()
+        self.db.refresh(instance)
         return result
 
     def withdraw(
@@ -897,17 +982,53 @@ class EngineService:
         self.db.add(task)
         self.db.flush()
 
-        for index, user_id in enumerate(assignee_ids):
-            self.db.add(
-                TaskAssignment(
-                    task_id=task.id,
+        # 委托在派发时生效：命中且被委托人不在本任务已有名单中才替换
+        final_assignees: list[tuple[int, int | None, str | None]] = []
+        seen_users = set(assignee_ids)
+        for user_id in assignee_ids:
+            delegation = delegation_service.active_delegation(
+                self.db,
+                user_id=user_id,
+                flow_template_id=instance.flow_template_id,
+                at=now,
+            )
+            if delegation and delegation.delegatee_id not in seen_users:
+                final_assignees.append(
+                    (delegation.delegatee_id, user_id, delegation.reason)
+                )
+                seen_users.add(delegation.delegatee_id)
+            else:
+                final_assignees.append((user_id, None, None))
+
+        created_assignments: list[TaskAssignment] = []
+        for index, (user_id, origin_user_id, origin_reason) in enumerate(final_assignees):
+            assignment = TaskAssignment(
+                task_id=task.id,
+                instance_id=instance.id,
+                user_id=user_id,
+                seq=index,
+                status=initial_status_for_mode(task.assignee_mode, index),
+                origin_user_id=origin_user_id,
+                origin_kind="DELEGATION" if origin_user_id else None,
+                origin_reason=origin_reason[:512] if origin_reason else None,
+            )
+            self.db.add(assignment)
+            created_assignments.append(assignment)
+        self.db.flush()
+
+        for assignment in created_assignments:
+            if assignment.origin_kind != "DELEGATION" or assignment.origin_user_id is None:
+                continue
+            result.notifications.extend(
+                notify.task_delegated(
                     instance_id=instance.id,
-                    user_id=user_id,
-                    seq=index,
-                    status=initial_status_for_mode(task.assignee_mode, index),
+                    instance_title=instance.title,
+                    node_name=node.name,
+                    delegator_id=assignment.origin_user_id,
+                    delegatee_id=assignment.user_id,
+                    assignment_id=assignment.id,
                 )
             )
-        self.db.flush()
 
         result.spawned.append(
             TokenOp(
@@ -915,7 +1036,7 @@ class EngineService:
                 node_key=node_id,
                 gates=cursor.gates,
                 group_id=group_id,
-                assignee_ids=tuple(assignee_ids),
+                assignee_ids=tuple(assignment.user_id for assignment in created_assignments),
                 abnormal=resolution.abnormal,
                 abnormal_reason=resolution.reason,
             )

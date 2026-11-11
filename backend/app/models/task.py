@@ -121,6 +121,13 @@ class TaskAssignment(Base, PkMixin, TimestampMixin):
     #: 该动作产生的 instance_actions.id
     action_id: Mapped[int | None] = mapped_column(IntType, nullable=True)
 
+    # ---- 转办 / 委托（M14）----
+    #: 来源用户：转办是原处理人，委托是委托人
+    origin_user_id: Mapped[int | None] = mapped_column(IntType, nullable=True, index=True)
+    #: TRANSFER / DELEGATION
+    origin_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    origin_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # 抄送专用
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

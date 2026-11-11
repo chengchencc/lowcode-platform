@@ -19,6 +19,7 @@ import {
   PartitionOutlined,
   RocketOutlined,
   ScheduleOutlined,
+  SwapOutlined,
   TableOutlined,
   TeamOutlined,
   UserOutlined,
@@ -61,6 +62,7 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
       icon: () => h(ScheduleOutlined),
     },
     { key: 'work-stats', label: '工作量统计', icon: () => h(TableOutlined) },
+    { key: 'delegations', label: '委托管理', icon: () => h(SwapOutlined) },
   ]
 
   // 审批管理（PRD §5：管理员/设计者）。普通用户看不到模板菜单 ——

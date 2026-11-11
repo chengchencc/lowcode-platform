@@ -280,6 +280,22 @@ vi.mock('@/api/modules/dashboard', () => {
   }
 })
 
+/** 转办与委托（M14）。 */
+vi.mock('@/api/modules/delegation', () => ({
+  delegationApi: {
+    list: vi.fn().mockResolvedValue([
+      {
+        id: 1, delegator_id: 1, delegator_name: '张三',
+        delegatee_id: 2, delegatee_name: '李四',
+        start_at: '2026-11-11T01:00:00', end_at: '2026-11-12T01:00:00',
+        flow_template_ids: null, reason: '出差', status: 'ACTIVE', created_at: null,
+      },
+    ]),
+    create: vi.fn(), update: vi.fn(), cancel: vi.fn(),
+  },
+  transferApi: { transfer: vi.fn().mockResolvedValue({ ok: true }) },
+}))
+
 /** 工作量统计（M12）：列表与表格页。 */
 vi.mock('@/api/modules/workStat', () => {
   const sheet = {
@@ -448,6 +464,7 @@ import UserView from '@/views/admin/org/UserView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import WorkStatsView from '@/views/WorkStatsView.vue'
 import WorkStatSheetView from '@/views/WorkStatSheetView.vue'
+import DelegationsView from '@/views/DelegationsView.vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { MENU_DEFAULT_PARAMS, buildMenuItems, leafKeys } from '@/layouts/menu'
 import LoginView from '@/views/LoginView.vue'
@@ -533,6 +550,7 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
   ['WorkStatsView', WorkStatsView, '/work-stats'],
   ['WorkStatSheetView', WorkStatSheetView, '/work-stats/1'],
+  ['DelegationsView', DelegationsView, '/delegations'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
@@ -1169,6 +1187,21 @@ describe('工作量统计页', () => {
     expect(wrapper.text()).toContain('部门月度工作量')
     expect(wrapper.text()).toContain('张三')
     expect(wrapper.text()).toContain('工时')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('委托管理页', () => {
+  it('显示委托记录', async () => {
+    const wrapper = await mountView(DelegationsView, '/delegations')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('委托管理')
+    expect(wrapper.text()).toContain('李四')
+    expect(wrapper.text()).toContain('出差')
+    expect(wrapper.text()).toContain('生效中')
 
     wrapper.unmount()
   })

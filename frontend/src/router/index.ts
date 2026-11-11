@@ -83,6 +83,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '工作量统计' },
       },
       {
+        path: 'delegations',
+        name: 'delegations',
+        component: () => import('@/views/DelegationsView.vue'),
+        meta: { title: '委托管理' },
+      },
+      {
         path: 'work-stats/:id',
         name: 'work-stat-sheet',
         component: () => import('@/views/WorkStatSheetView.vue'),

@@ -15,6 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { instanceApi, taskApi } from '@/api/modules/instance'
 import InstanceFilterBuilder from '@/components/instance/InstanceFilterBuilder.vue'
+import TransferModal from '@/components/instance/TransferModal.vue'
 import type { FlowTemplate } from '@/types/flow'
 import type { InstanceItem, TaskRow } from '@/types/instance'
 import { INSTANCE_STATUS_META } from '@/types/instance'
@@ -42,6 +43,9 @@ const paging = reactive({ page: 1, size: 20, total: 0 })
 const mineFlows = ref<FlowTemplate[]>([])
 const mineFlowId = ref<number | undefined>(undefined)
 const mineFilters = ref('')
+const transferOpen = ref(false)
+const transferAssignmentId = ref<number | null>(null)
+const transferTitle = ref('')
 
 const isTaskList = computed(() => activeTab.value !== 'mine')
 
@@ -160,6 +164,12 @@ function openTask(row: TaskRow): void {
 
 function openInstance(row: InstanceItem): void {
   void router.push({ name: 'instance-detail', params: { id: row.id } })
+}
+
+function openTransfer(row: TaskRow): void {
+  transferAssignmentId.value = row.assignment_id
+  transferTitle.value = row.instance_title ?? ''
+  transferOpen.value = true
 }
 
 async function markRead(row: TaskRow): Promise<void> {
@@ -285,6 +295,14 @@ function statusMeta(status?: string | null) {
                 {{ activeTab === 'todo' ? '处理' : '查看' }}
               </Button>
               <Button
+                v-if="activeTab === 'todo' && record.status === 'PENDING'"
+                type="link"
+                size="small"
+                @click="openTransfer(record as TaskRow)"
+              >
+                转办
+              </Button>
+              <Button
                 v-if="activeTab === 'cc' && !record.is_read"
                 type="link"
                 size="small"
@@ -348,6 +366,13 @@ function statusMeta(status?: string | null) {
         </template>
       </Table>
     </Card>
+
+    <TransferModal
+      v-model:open="transferOpen"
+      :assignment-id="transferAssignmentId"
+      :instance-title="transferTitle"
+      @transferred="load"
+    />
   </div>
 </template>
 
