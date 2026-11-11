@@ -84,6 +84,8 @@ function resetQuery(): void {
 const editorOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
+/** 正在编辑的模板是否已有编码：已有则不可改，未设置才允许补录 */
+const editingHasCode = ref(false)
 const isCreate = computed(() => editingId.value === null)
 
 const form = reactive({ name: '', code: '', group_name: '', description: '' })
@@ -91,6 +93,7 @@ const formErrors = reactive<Record<string, string>>({})
 
 function openCreate(): void {
   editingId.value = null
+  editingHasCode.value = false
   Object.assign(form, { name: '', code: '', group_name: '', description: '' })
   Object.keys(formErrors).forEach((k) => delete formErrors[k])
   editorOpen.value = true
@@ -98,6 +101,7 @@ function openCreate(): void {
 
 function openEdit(record: FormTemplate): void {
   editingId.value = record.id
+  editingHasCode.value = !!record.code
   Object.assign(form, {
     name: record.name,
     code: record.code ?? '',
@@ -132,12 +136,19 @@ async function submitEditor(): Promise<void> {
       await router.push({ name: 'form-designer', params: { id: created.id } })
       return
     }
-    await formApi.updateTemplate(editingId.value as number, payload)
+    await formApi.updateTemplate(editingId.value as number, {
+      ...payload,
+      // 已设置的编码不可改，不必回传；未设置时允许补录
+      ...(editingHasCode.value ? {} : { code: form.code || null }),
+    })
     editorOpen.value = false
     feedback.success('已保存')
     await Promise.all([load(), loadGroups()])
   } catch (error) {
-    if (error instanceof ApiError && error.code === 'FORM_CODE_EXISTS') {
+    if (
+      error instanceof ApiError &&
+      (error.code === 'FORM_CODE_EXISTS' || error.code === 'FORM_CODE_IMMUTABLE')
+    ) {
       formErrors.code = error.message
     }
   } finally {
@@ -216,7 +227,7 @@ async function handleImportFile(file: File): Promise<boolean> {
   try {
     const text = await file.text()
     const payload = JSON.parse(text) as Record<string, unknown>
-    // 导入时清掉编码，避免与已有表单冲突；用户可在设计器里改
+    // 导入时清掉编码，避免与已有表单冲突；需要时可在列表「编辑」里补录
     await formApi.importTemplate({ ...payload, code: null })
     feedback.success('导入成功')
     await Promise.all([load(), loadGroups()])
@@ -417,10 +428,15 @@ async function handleImportFile(file: File): Promise<boolean> {
           <Input v-model:value="form.name" placeholder="如：费用报销单" />
         </a-form-item>
         <a-form-item
-          v-if="isCreate"
+          v-if="isCreate || !editingHasCode"
           label="表单编码"
           :validate-status="formErrors.code ? 'error' : undefined"
-          :help="formErrors.code || '选填，用于导入导出与人工引用；创建后不可修改'"
+          :help="
+            formErrors.code ||
+            (isCreate
+              ? '选填，用于导入导出与人工引用；设置后不可修改'
+              : '当前未设置，可补录；设置后不可修改')
+          "
         >
           <Input v-model:value="form.code" placeholder="如：REIMBURSEMENT" />
         </a-form-item>
