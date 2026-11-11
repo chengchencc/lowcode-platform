@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    ai,
     audit,
     auth,
     dashboard,
@@ -51,3 +52,4 @@ api_router.include_router(notifications.router)
 # M12 工作量统计
 api_router.include_router(work_stats.router)
 api_router.include_router(delegations.router)
+api_router.include_router(ai.router)

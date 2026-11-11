@@ -16,6 +16,7 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   PlusOutlined,
+  RobotOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Card, Empty, Space, Tag, Tooltip } from 'ant-design-vue'
@@ -26,6 +27,7 @@ import { ApiError } from '@/api/http'
 import { flowApi } from '@/api/modules/flow'
 import { formApi } from '@/api/modules/form'
 import { userApi } from '@/api/modules/user'
+import AiGenerateModal from '@/components/ai/AiGenerateModal.vue'
 import FlowCanvas from '@/components/flow-designer/canvas/FlowCanvas.vue'
 import {
   ADDABLE_NODES,
@@ -60,6 +62,7 @@ const templateId = computed(() => Number(route.params.id))
 const template = ref<FlowTemplate | null>(null)
 const version = ref<FlowVersion | null>(null)
 const definition = ref<FlowDefinition | null>(null)
+const aiOpen = ref(false)
 const formSchema = ref<FormSchema | null>(null)
 
 const loading = ref(false)
@@ -123,6 +126,30 @@ async function bindLatestFormVersion(target: FlowVersion): Promise<FlowVersion> 
 }
 
 /** 后端保证结构完整，这里只兜底缺省字段，避免面板读到 undefined */
+function applyAiDefinition(generated: unknown): void {
+  const data = generated as FlowDefinition
+  if (definition.value?.steps.length) {
+    void feedback
+      .confirm({
+        title: '覆盖当前流程定义？',
+        content: 'AI 生成结果会替换当前草稿的节点。',
+        danger: true,
+      })
+      .then((ok) => {
+        if (ok) doApplyAiDefinition(data)
+      })
+    return
+  }
+  doApplyAiDefinition(data)
+}
+
+function doApplyAiDefinition(data: FlowDefinition): void {
+  definition.value = normalizeDefinition(data)
+  selectedId.value = definition.value.steps[0]?.id ?? null
+  scheduleSave()
+  feedback.success('已应用到设计器，请检查后保存/发布')
+}
+
 function normalizeDefinition(input: FlowDefinition): FlowDefinition {
   const def: FlowDefinition = {
     model_version: input.model_version ?? 1,
@@ -390,6 +417,10 @@ const treeItems = computed<TreeItem[]>(() => {
             <template #icon><CheckCircleOutlined /></template>
             校验
           </Button>
+          <Button @click="aiOpen = true">
+            <template #icon><RobotOutlined /></template>
+            AI 生成
+          </Button>
           <!-- 只用 readonly 做禁用：设计器有自动保存，dirty 会很快变回 false，
                用它做条件会让按钮在保存后立刻变灰。publish() 内部会先 save()。 -->
           <Button
@@ -403,6 +434,13 @@ const treeItems = computed<TreeItem[]>(() => {
         </Space>
       </div>
     </Card>
+
+    <AiGenerateModal
+      v-model:open="aiOpen"
+      kind="flow"
+      :form-schema="formSchema"
+      @generated="applyAiDefinition"
+    />
 
     <a-row :gutter="16" class="designer-body">
       <!-- ------------------------------------------------ 左侧：画布 / 节点清单 -->

@@ -2,7 +2,7 @@
 
 > 配套：`PRD-lowcode-form-approval.md`、`TECH-DESIGN.md`、`PHASE2-DESIGN.md`。
 > 本文是三期的范围、模块边界与里程碑依据；具体实现随里程碑增量修订。
-> **当前状态：M11–M14 已完成；M15–M16 待开发。**
+> **当前状态：M11–M15 已完成；M16 收尾中。**
 
 ---
 
@@ -507,6 +507,20 @@ Pydantic 校验（FormSchema / FlowDefinition）
 - 关闭 AI 开关后入口消失、接口不可用；
 - 审计能查到每次生成的模型、耗时与 token，不包含业务数据原文；
 - 自动化测试用 mock provider，不在 CI 调真实模型。
+
+### 5.7 M15 实现状态
+
+已完成（提交在 `feat3` 分支）：
+
+- 后端：`services/ai_service.py` + `api/v1/ai.py`，OpenAI 兼容协议；表单生成走
+  `FormSchema` + 语义校验，流程生成走 `FlowDefinition` + 引擎静态校验；
+  校验失败自动修复重试一次；每用户每小时限流；审计只记录 prompt 哈希、模型、
+  耗时与 token，不落业务原文；默认关闭，关闭时接口 404 `AI_DISABLED`。
+- 前端：表单/流程设计器的「AI 生成」弹窗，展示 JSON 预览后手动应用并二次确认；
+  不自动保存、不自动发布。
+- 配置：`AI_ENABLED` / `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` 等环境变量。
+- 测试：`backend/tests/test_ai_generate.py` 7 项（含修复重试、限流、关闭）。
+- 全量校验：450 pytest + 130 vitest + ruff / vue-tsc / vite build 全绿。
 
 ---
 

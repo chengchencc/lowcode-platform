@@ -11,6 +11,8 @@ bcrypt>=4.2,<5
 python-multipart>=0.0.20
 # 工作量统计的 Excel 导入导出
 openpyxl>=3.1,<4
+# AI 调用（OpenAI 兼容协议）
+httpx>=0.27,<1
 # Windows 不自带 IANA 时区库；首页「今日/本周」按 Asia/Shanghai 计算需要它
 tzdata>=2024.1
 
