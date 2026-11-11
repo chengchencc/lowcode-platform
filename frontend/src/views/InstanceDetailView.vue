@@ -124,6 +124,25 @@ async function load(): Promise<void> {
 onMounted(load)
 watch([instanceId, activeSnapshotId], () => void load())
 
+/** 处理完任务后清掉 URL 上的 assignment，避免刷新/回退时又按旧待办渲染 */
+async function onActed(): Promise<void> {
+  // 先本地摘掉待办状态：不等 reload 完成，按钮/可编辑态就立即消失
+  if (data.value) {
+    data.value.assignment = null
+    data.value.allowed_actions = []
+    data.value.current_node = null
+    if (data.value.my_role === 'CURRENT_HANDLER') {
+      data.value.my_role = auth.user?.id === data.value.instance.initiator_id
+        ? 'INITIATOR'
+        : 'PARTICIPANT'
+    }
+  }
+  if (route.query.assignment) {
+    await router.replace({ query: { ...route.query, assignment: undefined } })
+  }
+  await load()
+}
+
 function onFormChange(values: Record<string, unknown>): void {
   // 只记录与已保存值不同的字段，避免把整表单都提交上去
   const baseline = data.value?.values ?? {}
@@ -313,7 +332,7 @@ async function doExport(): Promise<void> {
                 v-if="showHeaderActions"
                 :data="data"
                 :field-patch="fieldPatch"
-                @acted="load"
+                @acted="onActed"
                 @clear-patch="clearPatch"
               />
 

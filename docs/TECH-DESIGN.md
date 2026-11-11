@@ -331,7 +331,11 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
   **`GET /instances/{id}/render`（详情页一次取全）**、`/{id}/progress`、`/{id}/timeline`、`/{id}/snapshots/{sid}`、`/{id}/snapshots/diff`、`POST /instances/{id}/ext-fields`
 - **任务**：`GET /tasks/todo|done|cc|mine`、`GET /tasks/assignments/{aid}`、`/{aid}/return-targets`、
   **`POST /tasks/assignments/{aid}/act`（统一动作接口）**、`/{aid}/diff-preview`、`/{aid}/read`
-- **消息/文件**：`/notifications`、`/notifications/unread-count`、`POST /files/upload`、`GET /files/{id}/download`
+- **消息/文件**：`/notifications`、`/notifications/unread-count`、`POST /files/upload`、
+  `GET /files/{id}`（元数据）、`GET /files/{id}/download`
+
+> 详情页的 `?assignment=` 只接受**仍为 PENDING** 的待办。审批完成后 URL 上残留的旧 id
+> 会回落到查看者在该实例的其他待办（没有则按只读展示），不会继续显示审批按钮与可编辑表单。
 
 ---
 

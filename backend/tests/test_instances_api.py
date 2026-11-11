@@ -165,6 +165,16 @@ class TestLeaveScenario:
         assert dir_todo["total"] == 1
         assert dir_todo["items"][0]["node_name"] == "总监审批"
 
+        # 5.1) URL 上残留的旧 assignment 不应再被当成当前待办
+        stale = client.get(
+            f"{BASE}/instances/{draft['id']}/render",
+            headers=mgr_h,
+            params={"assignment_id": assignment["assignment_id"]},
+        ).json()
+        assert stale["assignment"] is None
+        assert stale["my_role"] != "CURRENT_HANDLER"
+        assert stale["allowed_actions"] == []
+
         # 6) 总监同意 → 抄送 HR → 实例通过
         client.post(
             f"{BASE}/tasks/assignments/{dir_todo['items'][0]['assignment_id']}/act",

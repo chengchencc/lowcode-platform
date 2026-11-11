@@ -163,14 +163,22 @@ def render_instance(
 def _resolve_assignment(
     db: Session, instance: FlowInstance, viewer: User, assignment_id: int | None
 ) -> TaskAssignment | None:
-    """找查看者在本实例上的待办。优先用显式指定的那条。"""
+    """找查看者在本实例上的**待办**。
+
+    显式传入的 assignment 只在该条仍为 PENDING 时采用 —— 审批完成后 URL 上
+    还留着旧的 assignment_id，如果继续把它当作「当前处理人」，页面会保留
+    审批按钮与可编辑表单，点提交才报流程已流转。此时应回落到该用户的其他
+    待办（会签/退回可能还有），没有就返回 None。
+    """
     if assignment_id is not None:
         assignment = db.get(TaskAssignment, assignment_id)
-        if assignment is None or assignment.instance_id != instance.id:
-            return None
-        if assignment.user_id != viewer.id:
-            return None
-        return assignment
+        if (
+            assignment is not None
+            and assignment.instance_id == instance.id
+            and assignment.user_id == viewer.id
+            and assignment.status == AssignmentStatus.PENDING
+        ):
+            return assignment
 
     return db.scalar(
         select(TaskAssignment)
