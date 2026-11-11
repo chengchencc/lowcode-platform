@@ -3,7 +3,7 @@ import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
 import zhCN from '@univerjs/preset-sheets-core/locales/zh-CN'
 import '@univerjs/preset-sheets-core/lib/index.css'
 import { createUniver, LocaleType, mergeLocales, type Univer } from '@univerjs/presets'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
   snapshot: Record<string, unknown> | null
@@ -29,7 +29,10 @@ function install(snapshot: Record<string, unknown> | null): void {
   workbook.setEditable(!props.readonly)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 等 Ant Card 的布局完成：容器没有实际高度时 Univer 会把画布初始化成 0 高，
+  // 表现就是工具栏/sheet 标签正常、网格区域全白。
+  await nextTick()
   if (!container.value) return
   const created = createUniver({
     locale: LocaleType.ZH_CN,
@@ -95,7 +98,8 @@ defineExpose({ getSnapshot })
 <style scoped>
 .univer-container {
   width: 100%;
-  height: 100%;
-  min-height: 480px;
+  /* 必须给出可解析的高度（不能只写 100%）：Univer 的 Canvas 按容器实际高度布局 */
+  height: calc(100vh - 220px);
+  min-height: 520px;
 }
 </style>
