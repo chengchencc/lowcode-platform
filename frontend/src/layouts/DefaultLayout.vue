@@ -67,6 +67,7 @@ provide('refreshTodoSummary', refreshSummary)
 const menuItems = computed<MenuProps['items']>(() =>
   buildMenuItems({
     isAdmin: auth.isAdmin,
+    isDesigner: auth.isDesigner,
     todoCount: summary.value.todo,
     ccUnread: summary.value.cc_unread,
   }),
