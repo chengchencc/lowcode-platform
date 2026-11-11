@@ -6,6 +6,7 @@ import axios, {
 
 import type { ApiErrorDetail } from '@/types/api'
 import { feedback } from '@/utils/feedback'
+import { newRequestId } from '@/utils/requestId'
 
 const ACCESS_KEY = 'flowform.access_token'
 const REFRESH_KEY = 'flowform.refresh_token'
@@ -84,7 +85,9 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // 的唯一索引上，网络重试就不会产生重复的业务动作。
   const method = (config.method ?? 'get').toLowerCase()
   if (MUTATING.has(method) && !config.headers['X-Request-Id']) {
-    config.headers['X-Request-Id'] = crypto.randomUUID()
+    // 别写成 crypto.randomUUID()：非安全上下文（http + 局域网 IP）里它是 undefined，
+    // 会在请求发出前抛异常，表现成「点了按钮没有任何请求」。
+    config.headers['X-Request-Id'] = newRequestId()
   }
   return config
 })
