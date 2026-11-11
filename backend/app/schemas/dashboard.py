@@ -37,12 +37,6 @@ class DashboardFlowItem(BaseModel):
     icon: str | None = None
 
 
-class DashboardWorkStatItem(BaseModel):
-    sheet_id: int
-    name: str
-    updated_at: datetime | None = None
-
-
 class DashboardAdminByFlow(BaseModel):
     flow_template_id: int
     name: str
@@ -62,6 +56,4 @@ class DashboardOverview(BaseModel):
     todos: list[DashboardTodoItem] = Field(default_factory=list)
     my_instances: list[DashboardInstanceItem] = Field(default_factory=list)
     quick_flows: list[DashboardFlowItem] = Field(default_factory=list)
-    #: M12 工作量统计上线后填充；M11 恒为空数组
-    work_stats: list[DashboardWorkStatItem] = Field(default_factory=list)
     admin: DashboardAdmin | None = None

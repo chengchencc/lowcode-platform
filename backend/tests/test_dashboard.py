@@ -71,18 +71,6 @@ def test_dashboard_personal_overview(client, db, normal_headers, normal_user):
     instance = _run_instance(db, normal_user, started_at=utcnow())
     _assign(db, instance, normal_user)
 
-    from app.schemas.work_stat import WorkStatColumn, WorkStatSheetCreate
-    from app.services import work_stat_service
-
-    work_stat_service.create_sheet(
-        db,
-        WorkStatSheetCreate(
-            name="测试工作量",
-            columns=[WorkStatColumn(key="c_name", label="姓名", type="text")],
-        ),
-        actor=normal_user,
-    )
-
     resp = client.get(f"{BASE}/dashboard/overview", headers=normal_headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -93,7 +81,6 @@ def test_dashboard_personal_overview(client, db, normal_headers, normal_user):
     assert body["todos"][0]["assignment_id"]
     assert body["my_instances"][0]["instance_id"] == instance.id
     assert body["quick_flows"], "可发起流程应出现在常用流程里"
-    assert body["work_stats"][0]["name"] == "测试工作量"
     assert body["admin"] is None
 
 

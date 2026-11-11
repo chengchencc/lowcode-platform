@@ -262,9 +262,6 @@ vi.mock('@/api/modules/dashboard', () => {
       },
     ],
     quick_flows: [{ flow_template_id: 3, name: '请假申请', icon: null }],
-    work_stats: [
-      { sheet_id: 1, name: '部门月度工作量', updated_at: '2026-11-11T09:00:00' },
-    ],
     admin: {
       running: 4,
       submitted_today: 2,
@@ -279,6 +276,43 @@ vi.mock('@/api/modules/dashboard', () => {
     },
   }
 })
+
+/** 共享电子表格。 */
+vi.mock('@/api/modules/spreadsheet', () => {
+  const workbook = {
+    id: 1, name: '部门共享表', description: '测试', version: 1,
+    viewer_scope: { all: true, roles: [], depts: [], users: [] },
+    editor_scope: null, can_edit: true, created_by: 1, created_by_name: '张三',
+    updated_by: 1, updated_by_name: '张三', created_at: null, updated_at: null,
+  }
+  return {
+    spreadsheetApi: {
+      list: vi.fn().mockResolvedValue([workbook]),
+      create: vi.fn().mockResolvedValue(workbook),
+      get: vi.fn().mockResolvedValue({ ...workbook, snapshot: null }),
+      update: vi.fn().mockResolvedValue(workbook),
+      save: vi.fn().mockResolvedValue({ version: 2, updated_by: 1, updated_by_name: '张三', updated_at: null }),
+      state: vi.fn().mockResolvedValue({ version: 1, changed: false, snapshot: null, updated_by: null, updated_by_name: null, updated_at: null }),
+      remove: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  }
+})
+
+/** 转办与委托（M14）。 */
+vi.mock('@/api/modules/delegation', () => ({
+  delegationApi: {
+    list: vi.fn().mockResolvedValue([
+      {
+        id: 1, delegator_id: 1, delegator_name: '张三',
+        delegatee_id: 2, delegatee_name: '李四',
+        start_at: '2026-11-11T01:00:00', end_at: '2026-11-12T01:00:00',
+        flow_template_ids: null, reason: '出差', status: 'ACTIVE', created_at: null,
+      },
+    ]),
+    create: vi.fn(), update: vi.fn(), cancel: vi.fn(),
+  },
+  transferApi: { transfer: vi.fn().mockResolvedValue({ ok: true }) },
+}))
 
 /** 转办与委托（M14）。 */
 vi.mock('@/api/modules/delegation', () => ({
@@ -462,9 +496,8 @@ import DeptView from '@/views/admin/org/DeptView.vue'
 import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
 import DashboardView from '@/views/DashboardView.vue'
-import WorkStatsView from '@/views/WorkStatsView.vue'
-import WorkStatSheetView from '@/views/WorkStatSheetView.vue'
 import DelegationsView from '@/views/DelegationsView.vue'
+import SpreadsheetsView from '@/views/SpreadsheetsView.vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { MENU_DEFAULT_PARAMS, buildMenuItems, leafKeys } from '@/layouts/menu'
 import LoginView from '@/views/LoginView.vue'
@@ -548,9 +581,8 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['InstanceDetailView', InstanceDetailView, '/instance/1'],
   ['NotificationCenterView', NotificationCenterView],
   ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
-  ['WorkStatsView', WorkStatsView, '/work-stats'],
-  ['WorkStatSheetView', WorkStatSheetView, '/work-stats/1'],
   ['DelegationsView', DelegationsView, '/delegations'],
+  ['SpreadsheetsView', SpreadsheetsView, '/spreadsheets'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
@@ -1151,7 +1183,6 @@ describe('首页按角色展示', () => {
     expect(wrapper.text()).toContain('我的待办')
     expect(wrapper.text()).toContain('出差申请')
     expect(wrapper.text()).toContain('常用流程')
-    expect(wrapper.text()).toContain('部门月度工作量')
     expect(wrapper.text()).not.toContain('全局概览')
 
     wrapper.unmount()
@@ -1169,30 +1200,6 @@ describe('首页按角色展示', () => {
 })
 
 
-describe('工作量统计页', () => {
-  it('列表页显示统计表', async () => {
-    const wrapper = await mountView(WorkStatsView, '/work-stats')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('部门月度工作量')
-    expect(wrapper.text()).toContain('测试表')
-
-    wrapper.unmount()
-  })
-
-  it('表格页显示已有行数据', async () => {
-    const wrapper = await mountView(WorkStatSheetView, '/work-stats/1')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('部门月度工作量')
-    expect(wrapper.text()).toContain('张三')
-    expect(wrapper.text()).toContain('工时')
-
-    wrapper.unmount()
-  })
-})
-
-
 describe('委托管理页', () => {
   it('显示委托记录', async () => {
     const wrapper = await mountView(DelegationsView, '/delegations')
@@ -1202,6 +1209,20 @@ describe('委托管理页', () => {
     expect(wrapper.text()).toContain('李四')
     expect(wrapper.text()).toContain('出差')
     expect(wrapper.text()).toContain('生效中')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('共享表格列表', () => {
+  it('显示工作簿与权限', async () => {
+    const wrapper = await mountView(SpreadsheetsView, '/spreadsheets')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('共享表格')
+    expect(wrapper.text()).toContain('部门共享表')
+    expect(wrapper.text()).toContain('可编辑')
 
     wrapper.unmount()
   })

@@ -76,11 +76,11 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '消息中心' },
       },
       {
-        // 工作量统计：独立于审批数据的协作表格
-        path: 'work-stats',
-        name: 'work-stats',
-        component: () => import('@/views/WorkStatsView.vue'),
-        meta: { title: '工作量统计' },
+        // 共享表格：Univer 在线 Excel，近实时协同
+        path: 'spreadsheets',
+        name: 'spreadsheets',
+        component: () => import('@/views/SpreadsheetsView.vue'),
+        meta: { title: '共享表格' },
       },
       {
         path: 'delegations',
@@ -89,10 +89,10 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '委托管理' },
       },
       {
-        path: 'work-stats/:id',
-        name: 'work-stat-sheet',
-        component: () => import('@/views/WorkStatSheetView.vue'),
-        meta: { title: '统计表', hidden: true },
+        path: 'spreadsheets/:id',
+        name: 'spreadsheet',
+        component: () => import('@/views/SpreadsheetWorkbookView.vue'),
+        meta: { title: '工作簿', hidden: true },
       },
       {
         path: 'admin/forms',

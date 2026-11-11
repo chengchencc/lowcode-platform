@@ -13,19 +13,19 @@
 三期解决的问题从「能不能配出来」转向「日常好不好用」：
 
 1. **首页信息架构**：替换当前只有欢迎语和里程碑进度的占位首页，普通用户看个人工作台，管理员/设计者额外看全局概览。
-2. **工作量统计**：独立功能，提供多人协同的 Excel 式填写表格，用于团队日常工作量登记，不复用审批实例数据。
+2. **共享表格**：嵌入式 Univer 在线 Excel，支持多个工作簿、多个 sheet、自由单元格与公式，多人近实时协同填写。
 3. **实例台账检索**：按 `docs/SEARCH-FILTER-PLAN.md` 实施，让归档/我发起的列表能按业务字段筛选并导出。
 4. **转办与委托**：补上日常审批中最常见的两个流转能力，减少「人不在就没法推进」的阻塞。
 5. **AI 辅助配置**：自然语言生成表单 schema 与流程定义草稿，在设计器里预览、校验后应用，不自动发布。
 
 ### 0.2 里程碑顺序
 
-按「价值优先」推进：首页和工作量统计先解决「没信息、没地方填」，再做台账检索和流转能力，AI 因依赖网络例外审批与模型效果验证，放在最后落地。
+按「价值优先」推进：首页和共享表格先解决「没信息、没地方填」，再做台账检索和流转能力，AI 因依赖网络例外审批与模型效果验证，放在最后落地。
 
 | 里程碑 | 主题 | 交付 | 验收 |
 |---|---|---|---|
 | **M11** | 首页 | 按角色展示个人工作台 / 管理员概览，替换占位页 | 登录后第一屏能看到待办、我发起的、常用流程；管理员/设计者能看到全局概览 |
-| **M12** | 工作量统计 | 独立协作表格：多张表、多人编辑、Excel 导入导出、行级留痕 | 现有 Excel 可导入；两人同时编辑不同行不丢数据；同格冲突有提示 |
+| **M12** | 共享表格 | Univer 在线 Excel：多工作簿、多 sheet、近实时协同、导出 Excel | 多人同时填写不同区域；版本冲突可加载最新或覆盖；导出 xlsx 可打开 |
 | **M13** | 实例台账检索 | 按 `SEARCH-FILTER-PLAN.md` 实现业务字段筛选与导出 | 归档列表可按选项/数字/日期筛选，导出与列表一致 |
 | **M14** | 转办与委托 | 待办转办、时段委托代理，全链路留痕与通知 | 转办后目标人可处理且原处理人可见；委托期内新任务派给被委托人 |
 | **M15** | AI 辅助配置 | 自然语言生成表单 schema / 流程定义草稿 | 生成结果通过 schema 与发布校验，可预览、可修改、不自动保存发布 |
@@ -62,7 +62,6 @@
 | 待办预览 | 最近 5 条待办：标题、单号、当前节点、到达时间，点击直达详情 |
 | 我发起的 | 最近 5 条：标题、状态、当前节点、更新时间 |
 | 常用流程 | 可发起流程按「本人最近发起次数」排序，最多 6 个，点击进入发起页 |
-| 工作量统计 | 有权限的协作表格入口，显示最近更新时间；无权限则不显示。该入口在 M12 完成后接入，M11 阶段先不渲染 |
 
 **管理员/设计者额外区块**
 
@@ -70,7 +69,7 @@
 |---|---|
 | 全局概览 | 运行中实例数、今日提交数、本周完成数、待办积压数 |
 | 流程分布 | 运行中实例按流程模板聚合的 Top 5（名称 + 数量） |
-| 管理入口 | 表单模板、流程模板、实例台账、工作量统计的快捷入口 |
+| 管理入口 | 表单模板、流程模板、实例台账、共享表格的快捷入口 |
 
 不引入图表库：首期用 Ant Design 的 `Statistic`、进度条和列表，避免为几张卡片增加构建体积。
 
@@ -142,145 +141,112 @@
 
 ---
 
-## 2. M12：工作量统计（协作表格）
+## 2. M12：共享表格（在线 Excel）
 
 ### 2.1 定位
 
-**独立功能**，与实例台账、审批数据无关。用户维护的是人工填写的 Excel 式表格，系统只负责多人协同编辑、权限、导入导出和留痕。
+**在线 Excel 工作簿**，不是固定列台账。用户可以新建多个工作簿，每个工作簿包含多个
+sheet，自由编辑单元格、公式、格式、合并单元格。
 
-不做「从审批实例自动汇总工作量」；后续若需要，另立报表读模型。
+协同采用**近实时**模型：编辑自动保存，其他客户端每 5 秒同步一次；多人可以同时填写
+不同区域，同一版本冲突时提示「加载最新」或「覆盖保存」。不做实时协作光标。
 
-### 2.2 使用方式
+### 2.2 技术选型
 
-- 管理员创建「统计表」，定义列（固定列）和可编辑人员范围。
-- 有编辑权的人打开表格，直接在单元格里填写；支持从 Excel 复制多行粘贴、回车/方向键移动、增删行。
-- 有查看权的人只读。
-- 首页显示有权限的统计表入口和最近更新时间。
+- 编辑器：**Univer**（Apache-2.0 核心，`@univerjs/presets` + `@univerjs/preset-sheets-core`）。
+- 中文界面：`@univerjs/preset-sheets-core/locales/zh-CN`。
+- 导出 Excel：SheetJS（`xlsx`）从 Univer 快照生成，支持值、公式、合并单元格、
+  行高列宽；不导出颜色/字体等样式。
+- 首版**不做 xlsx 导入**（Univer 的导入/导出在 Pro 包；后续需要时再接 SheetJS 转换
+  或 Univer Pro）。
 
-### 2.3 数据模型（新增 3 张表，迁移 `0005_m_work_stats`）
+### 2.3 数据模型（迁移 `0008_m_spreadsheets`）
 
-**`work_stat_sheets`**
+**`spreadsheet_workbooks`**
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | PkMixin | |
-| name | String(128) | 表名 |
+| name | String(128) | 工作簿名称 |
 | description | String(512) nullable | 说明 |
-| columns | JSON | 固定列定义，见下 |
-| viewer_scope | JSON nullable | 可见范围：`null`=全体登录用户；对象内按角色/部门/用户命中 |
-| editor_scope | JSON nullable | 可编辑范围：`null`=仅管理员；对象内按角色/部门/用户命中 |
-| sort | Integer | 列表排序 |
-| status | String(16) | ACTIVE / DISABLED |
-| created_by / created_at / updated_at | | 审计 |
-
-列定义：
-
-```jsonc
-[
-  { "key": "c_name", "label": "姓名", "type": "text", "width": 120, "required": true },
-  { "key": "c_date", "label": "日期", "type": "date", "width": 110 },
-  { "key": "c_hours", "label": "工时", "type": "number", "width": 90 },
-  { "key": "c_type", "label": "工作类型", "type": "select", "options": ["需求", "运维", "项目"] }
-]
-```
-
-首期支持 `text / number / date / select` 四种列类型；不支持公式、合并单元格、条件格式。
-
-**`work_stat_rows`**
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | PkMixin | |
-| sheet_id | IntType FK work_stat_sheets.id cascade | |
-| row_no | Integer | 展示顺序 |
-| cells | JSON | `{ "c_name": "张三", "c_hours": 8 }` |
-| version | Integer | 乐观锁版本，每次更新 +1 |
-| created_by / updated_by | IntType nullable | |
+| snapshot | JSON nullable | Univer `IWorkbookData` 完整快照 |
+| version | Integer | 乐观锁版本，每次保存 +1 |
+| viewer_scope | JSON nullable | `{"all": bool, "roles": [], "depts": [], "users": []}` |
+| editor_scope | JSON nullable | 同上；创建者和管理员始终可编辑 |
+| status | String(16) | ACTIVE |
+| created_by / updated_by | IntType | |
 | created_at / updated_at | | |
 
-索引：`(sheet_id, row_no)`、`(sheet_id, updated_at)`。
+范围语义：
 
-**`work_stat_row_logs`**
+- `all=true`：全体登录用户；
+- 列表命中任一角色/部门/人员即可；
+- `viewer_scope=null` 或空对象：仅创建者和管理员可见；
+- `editor_scope=null` 或空对象：仅创建者和管理员可编辑；
+- 创建者和管理员始终可见、可编辑。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | PkMixin | |
-| sheet_id / row_id | IntType | |
-| action | String(16) | CREATE / UPDATE / DELETE / IMPORT |
-| before / after | JSON nullable | 行快照 |
-| actor_id | IntType | |
-| created_at | | |
-
-限制：单表最多 2,000 行、50 列；超过时提示拆分表格。
+快照上限 5MB；超过时提示拆分工作簿。
 
 ### 2.4 协同与冲突
 
-- 单元格失焦或停止输入 800ms 后自动保存该行；行内批量修改一次提交。
-- 保存携带 `version`；服务端比对不一致时返回 `409 ROW_VERSION_CONFLICT`，前端提示「该行已被 XXX 修改」，并只刷新该行。
-- 不同行并发编辑互不影响；同一行以先保存者为准，后保存者必须刷新后重试。
-- 前端每 5 秒拉取 `updated_at` 晚于本地游标的行，合并到表格；正在编辑的行不覆盖。
-- 不做逐单元格锁和实时光标；内网团队规模下轮询足够。
+- 编辑器监听 Univer `CommandExecuted`，停止操作 1.5 秒后自动保存整份快照。
+- 保存请求携带本地 `version`；服务端不一致返回 `409 SPREADSHEET_VERSION_CONFLICT`。
+- 冲突时页面提示「加载最新」或「覆盖保存」：
+  - 加载最新：丢弃本地改动，重新创建 Univer 工作簿；
+  - 覆盖保存：先取服务端当前版本，再用本地快照覆盖。
+- 每 5 秒轮询 `GET /{id}/state?known_version=`；版本变化且本地无未保存改动时，
+  自动重建工作簿到最新快照；本地有改动时提示冲突。
+- 不做 OT/CRDT、不做逐单元格锁；内网团队规模下满足「多人协同填写」。
 
-### 2.5 导入导出
+### 2.5 权限
 
-- **导入 Excel**：管理员上传 `.xlsx`；按表头文字匹配已配置列，未匹配的列忽略并返回警告；日期按 `YYYY-MM-DD` 解析，数字列校验格式；整批在一个事务内写入，失败全量回滚。导入前展示前 20 行预览。
-- **导出 Excel**：按当前列定义导出 `.xlsx`，第一行表头，行序与页面一致。
-- 后端使用 `openpyxl`（新增依赖）；前端不解析 Excel 文件。
-- 导入/导出均写审计。
+- 所有登录用户都可以新建工作簿。
+- 创建者可以修改名称/说明、配置查看与编辑范围、删除工作簿。
+- 管理员可以管理全部工作簿。
+- 编辑者可以编辑单元格并保存，但不能修改共享范围或删除。
+- 只读用户打开工作簿时 `setEditable(false)`。
 
-### 2.6 权限
-
-- 管理员：创建/停用/删除统计表、配置列与范围、导入导出、编辑所有行。
-- 可见范围：`viewer_scope` 命中的角色/部门/用户；管理员全可见。
-- 编辑范围：`editor_scope` 命中的角色/部门/用户；管理员全可编辑；可见但不在编辑范围内为只读。
-- `viewer_scope=null` 表示全体登录用户；`editor_scope=null` 表示仅管理员可编辑；对象中的空数组表示该类范围无人命中，管理员始终例外。
-- 行级不单独授权；确需隔离时拆成多张表。
-
-### 2.7 API
+### 2.6 API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/work-stat-sheets` | 当前用户可见的统计表列表 |
-| POST | `/work-stat-sheets` | 管理员创建统计表 |
-| PUT/DELETE | `/work-stat-sheets/{id}` | 管理员修改/删除统计表 |
-| GET | `/work-stat-sheets/{id}/rows` | 支持 `after_updated_at`、分页/全量（≤2000 行） |
-| POST | `/work-stat-sheets/{id}/rows` | 新增行（可批量） |
-| PUT | `/work-stat-sheets/{id}/rows/{row_id}` | 更新行，校验 `version` |
-| DELETE | `/work-stat-sheets/{id}/rows/{row_id}` | 删除行 |
-| GET | `/work-stat-sheets/{id}/rows/{row_id}/logs` | 行修改历史 |
-| POST | `/work-stat-sheets/{id}/import?dry_run=true` | 上传 xlsx，仅解析并返回前 20 行预览 |
-| POST | `/work-stat-sheets/{id}/import` | 提交导入，整批事务写入 |
-| GET | `/work-stat-sheets/{id}/export` | 导出 xlsx |
+| GET | `/spreadsheet-workbooks` | 我可见的工作簿列表 |
+| POST | `/spreadsheet-workbooks` | 新建（所有登录用户） |
+| GET | `/spreadsheet-workbooks/{id}` | 详情 + 快照 |
+| PUT | `/spreadsheet-workbooks/{id}` | 修改名称/说明/共享范围（创建者/管理员） |
+| POST | `/spreadsheet-workbooks/{id}/save` | 保存快照，校验 version |
+| GET | `/spreadsheet-workbooks/{id}/state` | 轮询最新版本/快照 |
+| DELETE | `/spreadsheet-workbooks/{id}` | 删除（创建者/管理员） |
 
-### 2.8 前端
+### 2.7 前端
 
-- 新增 `views/WorkStatsView.vue`（表列表）与 `views/WorkStatSheetView.vue`（表格编辑）。
-- 表格组件首选 `vxe-table`（Vue 3、MIT、可编辑表格）；里程碑开始时先做半天验证：从 Excel 粘贴多行、回车/方向键移动、增删行。不满足再评估 Univer，不在三期引入公式能力。
-- 顶部工具栏：表名、说明、行数、保存状态（已保存/保存中/有冲突）、导入、导出、列设置（管理员）。
-- 冲突行标黄并提示；刷新按钮只重拉当前表。
-- 首页入口显示表名与最近更新时间。
+- 新增 `views/SpreadsheetsView.vue`（列表、新建、共享设置、删除）。
+- 新增 `views/SpreadsheetWorkbookView.vue`（Univer 编辑器、自动保存、轮询、冲突处理、导出）。
+- 新增 `components/spreadsheet/UniverSheet.vue`：只负责挂载/销毁 Univer、加载快照、
+  发出变更事件、暴露 `getSnapshot()`；Univer 实例存在普通变量里，不放进响应式 ref。
+- 新增 `utils/spreadsheetExport.ts`：快照 → xlsx。
+- 菜单项「共享表格」替换原「工作量统计」；原结构化模块不再从菜单/首页进入。
 
-### 2.9 验收
+### 2.8 验收
 
-- 管理员创建一张 5 列表格，配置 2 个部门可编辑；
-- 导入一份现有 Excel，字段映射正确、错误格式有明确提示；
-- 两个账号同时编辑不同行，刷新后数据都在；同时编辑同一行时后保存者收到冲突提示；
-- 导出文件能被 Excel 正常打开，表头与列顺序一致；
-- 非授权用户看不到表格或只能只读；
-- 行修改历史能查到谁在何时改了哪些单元格。
+- 任一用户可新建工作簿，打开后能编辑单元格、公式、多个 sheet；
+- 编辑后 1.5 秒自动保存，刷新页面内容还在；
+- 两个账号打开同一工作簿：一方保存后，另一方 5 秒内看到最新内容；
+- 双方都改同一版本时，后保存者收到冲突提示，可加载最新或覆盖；
+- 只读用户不能编辑；
+- 能导出 `.xlsx` 并用 Excel 打开，值/公式/合并单元格正确。
 
-### 2.10 M12 实现状态
+### 2.9 M12 实现状态
 
-已完成（提交在 `feat3` 分支）：
+已完成：
 
-- 后端：`work_stat_sheets / work_stat_rows / work_stat_row_logs` 三张表（迁移
-  `0005_m_work_stats`）；表定义、可见/可编辑范围、行级乐观锁、Excel 预览导入与
-  导出、行级修改历史；单表上限 2000 行。
-- 前端：统计表列表与新建/编辑弹窗（固定列、角色/部门/人员范围）、vxe-table
-  协作表格（复制粘贴、自动保存、5 秒增量刷新、冲突提示）、导入预览与导出。
-- 首页按权限显示统计表入口。
-- 测试：`backend/tests/test_work_stats.py` 6 项；前端列表/表格渲染 2 项。
-- 全量校验：435 pytest + 128 vitest + ruff / vue-tsc / vite build 全绿。
+- 后端：`spreadsheet_workbooks` 表（迁移 `0008_m_spreadsheets`）、权限、
+  快照保存乐观锁、状态轮询接口；`backend/tests/test_spreadsheets.py` 6 项通过。
+- 前端：Univer 1.4.0 编辑器、工作簿列表/共享设置、自动保存 + 5 秒轮询、
+  冲突加载/覆盖、SheetJS 导出。
+- 全量校验：456 pytest + 132 vitest + ruff / vue-tsc / vite build 全绿。
+- 构建提示：Univer 编辑器单独懒加载，chunk 约 7.2MB（gzip 1.95MB），只进入
+  工作簿页面时加载；后续可再做 manualChunks 优化。
 
 ---
 
@@ -298,10 +264,12 @@
 
 ### 3.2 与二期计划的差异
 
-`SEARCH-FILTER-PLAN.md` 中规划的迁移号是 `0005_m_search_tables`；三期新增了工作量统计（M12 占用 `0005`），实际迁移号顺延为：
+`SEARCH-FILTER-PLAN.md` 中规划的迁移号是 `0005_m_search_tables`；三期实际迁移顺序为：
 
-- `0005_m_work_stats`（M12）
+- `0005_m_work_stats`（早期结构化统计，已弃用）
 - `0006_m_search_tables`（M13）
+- `0007_m_transfer_delegation`（M14）
+- `0008_m_spreadsheets`（M12 共享表格）
 
 其余设计与验收以 `SEARCH-FILTER-PLAN.md` 为准。
 
@@ -544,14 +512,14 @@ Pydantic 校验（FormSchema / FlowDefinition）
 | 里程碑 | 迁移 | 影响 |
 |---|---|---|
 | M11 首页 | 无 | 纯读接口与前端页面 |
-| M12 工作量统计 | `0005_m_work_stats` | 新增 3 张表 |
+| M12 共享表格 | `0008_m_spreadsheets` | 新增 1 张表；旧 `0005_m_work_stats` 保留但不再使用 |
 | M13 实例台账检索 | `0006_m_search_tables` | 新增 2 张表；见 `SEARCH-FILTER-PLAN.md` |
 | M14 转办与委托 | `0007_m_transfer_delegation` | 1 张新表 + `task_assignments` 3 列 |
 | M15 AI | 无 | 配置与审计 |
 
 - 所有新增列可空；历史任务与实例原样可读；
 - 不改变现有流程定义、表单 schema、快照与导出格式；
-- 工作量统计是独立数据，不进入实例快照与归档导出；
+- 共享表格是独立数据，不进入实例快照与归档导出；
 - 三期不升级 `model_version`。
 
 ---
@@ -560,9 +528,9 @@ Pydantic 校验（FormSchema / FlowDefinition）
 
 | 层 | 内容 |
 |---|---|
-| 纯函数 | 工作量统计列校验与导入映射、转办/委托规则、AI 输出校验 |
-| 后端集成 | 首页聚合接口、协作行乐观锁与冲突、Excel 导入导出、委托派发、转办留痕、AI mock 生成 |
-| 前端组件 | 首页角色区块、协作表格编辑/粘贴/冲突提示、筛选器、转办/委托弹窗、AI 预览 |
+| 纯函数 | 共享表格快照/权限规则、转办/委托规则、AI 输出校验 |
+| 后端集成 | 首页聚合接口、工作簿版本冲突、委托派发、转办留痕、AI mock 生成 |
+| 前端组件 | 首页角色区块、Univer 工作簿列表/编辑器挂载、冲突提示、筛选器、转办/委托弹窗、AI 预览 |
 | 端到端 | 见 M16 五条场景 |
 | 安全 | 台账可见/可编辑范围、转办目标校验、委托重叠、AI 出网内容与限流 |
 | 收尾 | `bash scripts/check.sh` 全量五项 |
@@ -604,12 +572,13 @@ Pydantic 校验（FormSchema / FlowDefinition）
 - [ ] 所有卡片能跳到对应页面，空状态完整；
 - [ ] 首页渲染测试与后端聚合测试通过。
 
-### M12 工作量统计
+### M12 共享表格
 
-- [ ] 统计表 CRUD、列配置、可见/可编辑范围可用；
-- [ ] 协作编辑、行级乐观锁、冲突提示、5 秒增量刷新可用；
-- [ ] Excel 导入/导出与行修改历史可用；
-- [ ] 首页入口与最近更新时间正确；
+- [ ] 任意用户可新建多个工作簿，每个工作簿支持多个 sheet；
+- [ ] Univer 编辑器可编辑单元格、公式、格式；
+- [ ] 自动保存 + 5 秒轮询；版本冲突可加载最新或覆盖；
+- [ ] 创建者/管理员可配置查看与编辑范围；
+- [ ] 可导出 xlsx，值和公式正确；
 - [ ] 后端/前端测试通过。
 
 ### M13 实例台账检索

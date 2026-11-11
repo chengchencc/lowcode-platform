@@ -32,12 +32,6 @@ export interface DashboardFlowItem {
   icon: string | null
 }
 
-export interface DashboardWorkStatItem {
-  sheet_id: number
-  name: string
-  updated_at: string | null
-}
-
 export interface DashboardAdminByFlow {
   flow_template_id: number
   name: string
@@ -57,7 +51,5 @@ export interface DashboardOverview {
   todos: DashboardTodoItem[]
   my_instances: DashboardInstanceItem[]
   quick_flows: DashboardFlowItem[]
-  /** M12 工作量统计上线后填充；M11 恒为空数组 */
-  work_stats: DashboardWorkStatItem[]
   admin: DashboardAdmin | null
 }

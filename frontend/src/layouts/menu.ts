@@ -61,7 +61,7 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
       label: h('span', { class: 'menu-label' }, ['工作台', badge(ctx.todoCount)]),
       icon: () => h(ScheduleOutlined),
     },
-    { key: 'work-stats', label: '工作量统计', icon: () => h(TableOutlined) },
+    { key: 'spreadsheets', label: '共享表格', icon: () => h(TableOutlined) },
     { key: 'delegations', label: '委托管理', icon: () => h(SwapOutlined) },
   ]
 
