@@ -73,13 +73,14 @@ const BOOL_OPS = [
 ]
 
 function opsFor(kind: FilterKind | undefined) {
-  if (!kind) return TEXT_OPS
+  if (!kind || kind === 'text') return TEXT_OPS
   if (kind === 'number') return NUMBER_OPS
   if (['date', 'time', 'datetime'].includes(kind)) return DATE_OPS
   if (kind === 'bool') return BOOL_OPS
   if (['multi_option', 'user_multi', 'dept_multi'].includes(kind)) return MULTI_OPS
   if (['user', 'dept'].includes(kind)) return USER_OPS
-  return OPTION_OPS
+  if (kind === 'option') return OPTION_OPS
+  return TEXT_OPS
 }
 
 function fieldOf(key: string): SearchFieldMeta | undefined {
