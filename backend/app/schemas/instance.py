@@ -86,8 +86,10 @@ class StartOptionsOut(BaseModel):
     base_permissions: dict[str, dict[str, Any]] = Field(default_factory=dict)
     #: 表单联动规则
     form_rules: list[dict[str, Any]] = Field(default_factory=list)
-    #: 发起时的系统自动填充值（发起人 / 发起人所在部门）
+    #: 发起时的系统自动填充值（发起人 / 发起人所在部门 / 发起时间）
     auto_fill_values: dict[str, Any] = Field(default_factory=dict)
+    #: 发起时带入、但发起人仍可修改的默认值
+    default_values: dict[str, Any] = Field(default_factory=dict)
     #: 需要发起人指定审批人的节点
     initiator_select_nodes: list[dict[str, Any]] = Field(default_factory=list)
     nodes: list[dict[str, Any]] = Field(default_factory=list)

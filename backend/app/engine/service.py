@@ -55,7 +55,7 @@ from app.engine.approvers import (
     resolve_approvers,
     resolve_cc,
 )
-from app.engine.auto_fill import auto_fill_values
+from app.engine.auto_fill import auto_fill_values, default_values
 from app.engine.compile import compile_definition
 from app.engine.errors import FlowInvalid, IllegalTransition
 from app.engine.ext_fields import (
@@ -672,12 +672,21 @@ class EngineService:
         permissions = self._permissions_for(
             instance, compiled, compiled.definition.start.id
         )
-        # 发起时自动填充：发起人 / 发起人所在部门（服务端权威，覆盖客户端传值）
+        # 发起时自动填充：发起人 / 发起人所在部门 / 发起时间（服务端权威，覆盖客户端传值）
         forced = auto_fill_values(
             form_schema,
             user_id=actor.id,
             dept_id=instance.initiator_dept_id or actor.dept_id,
         )
+        # 可修改的默认值只在用户没填时带入
+        defaults = default_values(
+            form_schema,
+            user_id=actor.id,
+            dept_id=instance.initiator_dept_id or actor.dept_id,
+        )
+        for key, value in defaults.items():
+            if values_in.get(key) in (None, "", []):
+                values_in[key] = value
         values, diffs, permissions = self._apply_patch_with_rules(
             instance=instance,
             form_schema=form_schema,

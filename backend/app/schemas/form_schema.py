@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.constants import (
     AUTO_FILL_FIELD_TYPES,
+    DEFAULT_SOURCE_FIELD_TYPES,
     DISPLAY_FIELD_TYPES,
     FORMULA_FUNCTIONS,
     FORMULA_KEYWORDS,
@@ -153,9 +154,12 @@ class FieldDef(BaseModel):
     formula: FieldFormula | None = None
     cascader: CascaderConfig | None = None
 
-    #: 发起时由系统自动填充：当前发起人 / 发起人所在部门。
-    #: 仅顶层的人员、部门控件支持；发起阶段强制只读，之后按节点权限处理。
-    auto_fill: Literal["initiator", "initiator_dept"] | None = None
+    #: 发起时由系统自动填充并锁定：当前发起人 / 发起人所在部门 / 流程发起时间。
+    #: 仅顶层的人员、部门、日期时间控件支持；发起阶段强制只读，之后按节点权限处理。
+    auto_fill: Literal["initiator", "initiator_dept", "start_time"] | None = None
+
+    #: 发起时带入但**允许发起人修改**的默认值来源（人员 / 部门）。
+    default_source: Literal["initiator", "initiator_dept"] | None = None
 
     #: 仅 type=subtable：行内列定义（不允许再嵌套 subtable）
     columns: list[FieldDef] = Field(default_factory=list)
@@ -392,6 +396,13 @@ def _check_display(field: FieldDef, path: str, issues: list[SchemaIssue]) -> boo
 AUTO_FILL_LABELS = {
     "initiator": "当前发起人",
     "initiator_dept": "发起人所在部门",
+    "start_time": "流程发起时间",
+}
+
+_AUTO_FILL_TYPE_HINTS = {
+    "initiator": "人员选择控件",
+    "initiator_dept": "部门选择控件",
+    "start_time": "日期时间控件",
 }
 
 
@@ -402,28 +413,51 @@ def _check_auto_fill(
     *,
     in_subtable: bool,
 ) -> None:
-    """自动填充只支持顶层的人员/部门控件 —— 子表行内没有「发起时」这一层语义。"""
-    if field.auto_fill is None:
+    """自动填充/默认值只支持顶层字段 —— 子表行内没有「发起时」这一层语义。"""
+    if field.auto_fill is None and field.default_source is None:
+        return
+    if field.auto_fill is not None and field.default_source is not None:
+        issues.append(
+            _issue(
+                "AUTO_FILL_CONFLICT",
+                f"“{field.label}”同时配置了自动填充和默认值，两者只能选一个",
+                path,
+            )
+        )
         return
     if in_subtable:
         issues.append(
             _issue(
                 "AUTO_FILL_SUBTABLE",
-                f"子表列 “{field.label}” 不能配置发起时自动填充",
-                f"{path}.auto_fill",
+                f"子表列 “{field.label}” 不能配置发起时自动填充/默认值",
+                path,
             )
         )
         return
-    allowed = AUTO_FILL_FIELD_TYPES.get(field.auto_fill, frozenset())
-    if field.type not in allowed:
-        issues.append(
-            _issue(
-                "AUTO_FILL_TYPE",
-                f"“{field.label}”的自动填充来源是「{AUTO_FILL_LABELS[field.auto_fill]}」，"
-                "该控件类型不匹配：请使用人员或部门选择控件",
-                f"{path}.auto_fill",
+
+    if field.auto_fill is not None:
+        allowed = AUTO_FILL_FIELD_TYPES.get(field.auto_fill, frozenset())
+        if field.type not in allowed:
+            issues.append(
+                _issue(
+                    "AUTO_FILL_TYPE",
+                    f"“{field.label}”的自动填充来源是「{AUTO_FILL_LABELS[field.auto_fill]}」，"
+                    f"该控件类型不匹配：请使用{_AUTO_FILL_TYPE_HINTS[field.auto_fill]}",
+                    f"{path}.auto_fill",
+                )
             )
-        )
+
+    if field.default_source is not None:
+        allowed = DEFAULT_SOURCE_FIELD_TYPES.get(field.default_source, frozenset())
+        if field.type not in allowed:
+            issues.append(
+                _issue(
+                    "DEFAULT_SOURCE_TYPE",
+                    f"“{field.label}”的默认值来源是「{AUTO_FILL_LABELS[field.default_source]}」，"
+                    f"该控件类型不匹配：请使用{_AUTO_FILL_TYPE_HINTS[field.default_source]}",
+                    f"{path}.default_source",
+                )
+            )
 
 
 def _check_formula(

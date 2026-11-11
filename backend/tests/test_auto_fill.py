@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from app.engine.approvers import ApproverContext, resolve_approvers
-from app.engine.auto_fill import auto_fill_values
+from app.engine.auto_fill import auto_fill_values, default_values
 from app.schemas.flow_definition import AssigneeRule, AssigneeSource
 from app.schemas.form_schema import parse_form_schema, validate_form_schema
 
@@ -33,8 +34,27 @@ def test_auto_fill_accepts_matching_types() -> None:
         {"key": "applicants", "label": "发起人(多)", "type": "user_multi", "auto_fill": "initiator"},
         {"key": "dept", "label": "部门", "type": "dept", "auto_fill": "initiator_dept"},
         {"key": "depts", "label": "部门(多)", "type": "dept_multi", "auto_fill": "initiator_dept"},
+        {"key": "apply_at", "label": "申请时间", "type": "datetime", "auto_fill": "start_time"},
+        {"key": "owner", "label": "负责人", "type": "user", "default_source": "initiator"},
+        {"key": "owner_dept", "label": "负责部门", "type": "dept",
+         "default_source": "initiator_dept"},
     )
     assert [i for i in _issues(schema) if i.severity == "error"] == []
+
+
+def test_auto_fill_and_default_conflict() -> None:
+    schema = _schema(
+        {"key": "owner", "label": "负责人", "type": "user",
+         "auto_fill": "initiator", "default_source": "initiator"},
+    )
+    assert "AUTO_FILL_CONFLICT" in {i.code for i in _issues(schema)}
+
+
+def test_start_time_requires_datetime() -> None:
+    bad = _schema(
+        {"key": "apply_at", "label": "申请时间", "type": "text", "auto_fill": "start_time"},
+    )
+    assert "AUTO_FILL_TYPE" in {i.code for i in _issues(bad)}
 
 
 def test_auto_fill_rejects_wrong_type_and_subtable_column() -> None:
@@ -92,6 +112,28 @@ def test_auto_fill_values_scalar_and_list() -> None:
     }
 
 
+def test_default_values_are_editable_sources() -> None:
+    schema = _schema(
+        {"key": "owner", "label": "负责人", "type": "user", "default_source": "initiator"},
+        {"key": "owners", "label": "负责人(多)", "type": "user_multi",
+         "default_source": "initiator"},
+        {"key": "dept", "label": "部门", "type": "dept", "default_source": "initiator_dept"},
+    )
+    assert default_values(schema, user_id=7, dept_id=3) == {
+        "owner": 7, "owners": [7], "dept": 3,
+    }
+
+
+def test_start_time_fills_local_datetime_string() -> None:
+    schema = _schema(
+        {"key": "apply_at", "label": "申请时间", "type": "datetime",
+         "auto_fill": "start_time"},
+    )
+    assert auto_fill_values(
+        schema, user_id=1, dept_id=None, now=datetime(2026, 11, 11, 9, 30, 0)
+    ) == {"apply_at": "2026-11-11 09:30:00"}
+
+
 class _Provider:
     def users_by_ids(self, user_ids: Sequence[int]) -> list[int]:
         return list(user_ids)
@@ -118,6 +160,18 @@ def test_prev_node_start_allows_self_approval() -> None:
         sources=[AssigneeSource(type="prev_node_actors", node_id="start")],
     )
     ctx = ApproverContext(initiator_id=1, start_node_id="start")
+    resolution = resolve_approvers(rule, ctx, _Provider())
+    assert resolution.user_ids == [1]
+    assert resolution.abnormal is False
+
+
+def test_form_user_field_allows_self() -> None:
+    """需求负责人默认选发起人时，第一节点应由发起人处理，而不是转管理员。"""
+    rule = AssigneeRule(
+        mode="SINGLE",
+        sources=[AssigneeSource(type="form_user_field", field="req_owner")],
+    )
+    ctx = ApproverContext(initiator_id=1, start_node_id="start", values={"req_owner": 1})
     resolution = resolve_approvers(rule, ctx, _Provider())
     assert resolution.user_ids == [1]
     assert resolution.abnormal is False

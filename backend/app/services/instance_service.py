@@ -21,7 +21,7 @@ from app.core.constants import (
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.core.idgen import create_with_code
 from app.core.policy import is_admin, is_designer
-from app.engine.auto_fill import auto_fill_values
+from app.engine.auto_fill import auto_fill_values, default_values
 from app.engine.compile import compile_definition
 from app.engine.ext_fields import ExtFieldSpec
 from app.engine.form_rules import apply_form_rules
@@ -115,6 +115,8 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
                 required=False,
                 reason=f"{permission.reason} → 自动填充(只读)",
             )
+    # 默认值只带入、不锁定：发起人仍可改
+    defaults = default_values(form_schema, user_id=user.id, dept_id=user.dept_id)
     permissions = apply_form_rules(base_permissions, form_schema, {})
 
     return {
@@ -136,6 +138,8 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         ],
         # 发起时的系统自动填充值：前端据此预填表单
         "auto_fill_values": filled,
+        # 可修改的默认值（发起人仍可改）
+        "default_values": defaults,
         # 需要发起人指定审批人的节点（F3.5）
         "initiator_select_nodes": _initiator_select_nodes(db, compiled, current),
         "nodes": _progress_nodes(compiled),
@@ -255,8 +259,13 @@ def create_draft(
     form_schema = parse_form_schema(form_version.schema) if form_version else None
     values = dict(data or {})
     if form_schema is not None:
-        # 自动填充字段以服务端值为准，覆盖客户端传值
+        # 自动填充字段以服务端值为准，覆盖客户端传值；默认值只在空值时带入
         values.update(auto_fill_values(form_schema, user_id=actor.id, dept_id=dept_id))
+        for key, value in default_values(
+            form_schema, user_id=actor.id, dept_id=dept_id
+        ).items():
+            if values.get(key) in (None, "", []):
+                values[key] = value
     title_text = title or _title_from_form(form_schema, values) or template.name
 
     def factory(code: str) -> FlowInstance:
@@ -316,6 +325,14 @@ def update_draft(
         permissions=permissions,
         form_schema=form_schema,
     )
+    # 可修改的默认值：只在字段仍为空时带入
+    for key, value in default_values(
+        form_schema,
+        user_id=actor.id,
+        dept_id=instance.initiator_dept_id or actor.dept_id,
+    ).items():
+        if values.get(key) in (None, "", []):
+            values[key] = value
     instance.current_data = values
     derived = _title_from_form(form_schema, {**data, **filled})
     if title:

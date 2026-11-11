@@ -259,6 +259,10 @@ class TestSubmit:
                      "auto_fill": "initiator"},
                     {"key": "applyDept", "label": "发起部门", "type": "dept",
                      "auto_fill": "initiator_dept"},
+                    {"key": "applyAt", "label": "申请时间", "type": "datetime",
+                     "auto_fill": "start_time"},
+                    {"key": "owner", "label": "需求负责人", "type": "user",
+                     "default_source": "initiator"},
                     {"key": "reason", "label": "事由", "type": "text"},
                 ],
             }],
@@ -280,6 +284,11 @@ class TestSubmit:
 
         assert instance.current_data["applicant"] == admin.id
         assert instance.current_data["applyDept"] == dept.id
+        # 可修改的默认值：发起人没填时带入本人
+        assert instance.current_data["owner"] == admin.id
+        # 发起时间由服务端写入本地时间字符串
+        assert isinstance(instance.current_data["applyAt"], str)
+        assert len(instance.current_data["applyAt"]) == 19
 
     def test_submit_requires_required_fields(self, db):
         admin = _user(db)

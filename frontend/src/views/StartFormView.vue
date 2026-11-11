@@ -81,6 +81,7 @@ async function load(): Promise<void> {
 
     const initial = {
       ...buildInitialValues(options.value.schema_data),
+      ...(options.value.default_values ?? {}),
       ...(options.value.auto_fill_values ?? {}),
     }
 

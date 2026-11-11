@@ -76,8 +76,23 @@ const isFormula = computed(() => field.value.type === 'formula')
 const isCascader = computed(() => field.value.type === 'cascader')
 const isDisplay = computed(() => isDisplayField(field.value))
 
-/** 发起时自动填充：只有顶层的人员/部门控件支持 */
+/** 发起时自动填充并锁定：顶层人员/部门/日期时间控件支持 */
 const autoFillOptions = computed(() => {
+  if (props.isColumn) return []
+  if (['user', 'user_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator', label: '当前发起人' }]
+  }
+  if (['dept', 'dept_multi'].includes(field.value.type)) {
+    return [{ value: 'initiator_dept', label: '发起人所在部门' }]
+  }
+  if (field.value.type === 'datetime') {
+    return [{ value: 'start_time', label: '流程发起时间' }]
+  }
+  return []
+})
+
+/** 发起时带入、但允许发起人修改的默认值 */
+const defaultSourceOptions = computed(() => {
   if (props.isColumn) return []
   if (['user', 'user_multi'].includes(field.value.type)) {
     return [{ value: 'initiator', label: '当前发起人' }]
@@ -87,6 +102,16 @@ const autoFillOptions = computed(() => {
   }
   return []
 })
+
+function onAutoFillChange(value: unknown): void {
+  if (value) field.value.default_source = null
+  notify()
+}
+
+function onDefaultSourceChange(value: unknown): void {
+  if (value) field.value.auto_fill = null
+  notify()
+}
 
 const spanOptions = [
   { value: 24, label: '整行' },
@@ -298,11 +323,29 @@ const defaultControl = computed(() => {
               :options="autoFillOptions"
               allow-clear
               placeholder="不自动填充"
-              @change="notify"
+              @change="onAutoFillChange"
             />
             <template #extra>
               <span class="text-muted">
                 发起时由系统带入并锁定；后续节点可按字段权限继续编辑
+              </span>
+            </template>
+          </a-form-item>
+
+          <a-form-item
+            v-if="defaultSourceOptions.length && !field.auto_fill"
+            label="发起时默认值"
+          >
+            <a-select
+              v-model:value="field.default_source"
+              :options="defaultSourceOptions"
+              allow-clear
+              placeholder="不设置默认值"
+              @change="onDefaultSourceChange"
+            />
+            <template #extra>
+              <span class="text-muted">
+                发起时带入、但发起人仍可修改（与「自动填充并锁定」二选一）
               </span>
             </template>
           </a-form-item>
@@ -316,7 +359,7 @@ const defaultControl = computed(() => {
             </template>
           </a-form-item>
 
-          <a-form-item v-if="!field.auto_fill" label="默认值">
+          <a-form-item v-if="!field.auto_fill && !field.default_source" label="默认值">
             <a-switch
               v-if="defaultControl === 'switch'"
               v-model:checked="field.default_value as boolean"

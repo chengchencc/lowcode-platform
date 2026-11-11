@@ -149,8 +149,15 @@ def resolve_source(
     return [], f"未知来源 {source.type}"
 
 
-def _resolves_to_initiator(source: AssigneeSource, ctx: ApproverContext) -> bool:
-    """该来源是否明确取到了发起节点（上一节点=发起人）。"""
+def _allows_self_approval(source: AssigneeSource, ctx: ApproverContext) -> bool:
+    """该来源是否属于「显式指定到本人」、应允许自审。
+
+    - `form_user_field`：发起人在表单上明确选的人（如「需求负责人」默认选自己）
+    - `prev_node_actors` 指向发起节点：设计者明确要求由发起人处理
+    角色 / 部门等**宽口径**来源仍剔除发起人，避免无意自审。
+    """
+    if source.type == "form_user_field":
+        return True
     if source.type != "prev_node_actors":
         return False
     node_id = source.node_id or ctx.last_completed_node_id
@@ -173,8 +180,8 @@ def resolve_approvers(
     for source in rule.sources:
         ids, description = resolve_source(source, ctx, provider)
         # 发起人自己不做自己的审批人（避免自审）；
-        # 但「上一节点处理人」明确选了发起节点，是设计者的有意配置，允许自审。
-        if _resolves_to_initiator(source, ctx):
+        # 但表单人员字段 / 上一节点=发起人属于显式配置，允许自审。
+        if _allows_self_approval(source, ctx):
             filtered = list(ids)
         else:
             filtered = [uid for uid in ids if uid != ctx.initiator_id]

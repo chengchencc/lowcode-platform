@@ -63,6 +63,7 @@ export function normalizeField(field: FieldDef): FieldDef {
     field.columns = []
     field.default_value = null
     field.auto_fill = null
+    field.default_source = null
     field.display ??= defaultDisplay(field.type)
     return field
   }
@@ -70,13 +71,25 @@ export function normalizeField(field: FieldDef): FieldDef {
   // 从展示控件切回数据控件时清掉展示配置
   field.display = null
 
-  // 自动填充只对匹配的人员/部门控件有效，切类型时清掉不兼容的配置
+  // 自动填充 / 默认值只对匹配的控件有效，切类型时清掉不兼容的配置
   if (field.auto_fill === 'initiator' && !['user', 'user_multi'].includes(field.type)) {
     field.auto_fill = null
   }
   if (field.auto_fill === 'initiator_dept' && !['dept', 'dept_multi'].includes(field.type)) {
     field.auto_fill = null
   }
+  if (field.auto_fill === 'start_time' && field.type !== 'datetime') {
+    field.auto_fill = null
+  }
+  if (field.default_source === 'initiator' && !['user', 'user_multi'].includes(field.type)) {
+    field.default_source = null
+  }
+  if (field.default_source === 'initiator_dept'
+    && !['dept', 'dept_multi'].includes(field.type)) {
+    field.default_source = null
+  }
+  // 二者互斥：自动填充优先（旧数据里同时存在时以锁定值为准）
+  if (field.auto_fill) field.default_source = null
 
   if (NEEDS_FORMULA.includes(field.type)) {
     field.formula ??= { type: 'arithmetic', expression: '' }

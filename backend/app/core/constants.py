@@ -206,10 +206,18 @@ class AutoFillSource(StrEnum):
 
     INITIATOR = "initiator"            # 当前发起人（user / user_multi）
     INITIATOR_DEPT = "initiator_dept"  # 发起人所在部门（dept / dept_multi）
+    START_TIME = "start_time"          # 流程发起时间（datetime）
 
 
 #: 每种自动填充来源允许的控件类型
 AUTO_FILL_FIELD_TYPES: dict[str, frozenset[str]] = {
+    AutoFillSource.INITIATOR: frozenset({FieldType.USER, FieldType.USER_MULTI}),
+    AutoFillSource.INITIATOR_DEPT: frozenset({FieldType.DEPT, FieldType.DEPT_MULTI}),
+    AutoFillSource.START_TIME: frozenset({FieldType.DATETIME}),
+}
+
+#: 发起时可带入、但允许发起人修改的默认值来源
+DEFAULT_SOURCE_FIELD_TYPES: dict[str, frozenset[str]] = {
     AutoFillSource.INITIATOR: frozenset({FieldType.USER, FieldType.USER_MULTI}),
     AutoFillSource.INITIATOR_DEPT: frozenset({FieldType.DEPT, FieldType.DEPT_MULTI}),
 }
