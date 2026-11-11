@@ -230,7 +230,7 @@ function onValueChange(): void {
     </div>
     <div v-if="fields.length" class="text-muted builder-hint">
       <template v-if="hasCodeField">
-        「编号」指表单内编号；列表里的单号请用上方关键词搜索。
+        「编号」指表单内编号；列表里的实例单号请用上方关键词搜索。
       </template>
       <template v-if="scope === 'archive'">
         归档默认只查已通过，运行中/已终止的单据请先切换状态。

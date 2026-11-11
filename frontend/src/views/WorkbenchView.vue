@@ -68,7 +68,7 @@ const taskColumns = computed(() => {
 
 const instanceColumns = [
   { title: '标题', key: 'title', width: 260 },
-  { title: '编号', key: 'code', width: 160 },
+  { title: '实例单号', key: 'code', width: 160 },
   { title: '流程', key: 'flow_template_name', width: 150 },
   { title: '当前节点', key: 'current_node_keys', width: 170 },
   { title: '提交时间', key: 'started_at', width: 130 },
@@ -205,7 +205,7 @@ function statusMeta(status?: string | null) {
           />
           <Input.Search
             v-model:value="query.keyword"
-            placeholder="标题或编号"
+            placeholder="标题或实例单号"
             style="width: 220px"
             allow-clear
             @search="search"

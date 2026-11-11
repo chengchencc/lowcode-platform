@@ -54,7 +54,7 @@ const STATUS_OPTIONS = [
 ]
 
 const columns = [
-  { title: '编号', key: 'code', width: 165 },
+  { title: '实例单号', key: 'code', width: 165 },
   { title: '标题', key: 'title', width: 220 },
   { title: '流程', key: 'flow_template_name', width: 140 },
   { title: '发起人', key: 'initiator_name', width: 110 },
@@ -145,7 +145,7 @@ function statusMeta(status: string) {
         <Space wrap>
           <Input
             v-model:value="query.keyword"
-            placeholder="标题 / 编号"
+            placeholder="标题 / 实例单号"
             allow-clear
             style="width: 200px"
             @press-enter="search"
