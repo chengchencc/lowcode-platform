@@ -236,6 +236,46 @@ vi.mock('@/api/modules/instance', () => {
   }
 })
 
+/** 首页一次取全；M11 的渲染断言用这份数据。 */
+vi.mock('@/api/modules/dashboard', () => {
+  const overview = {
+    personal: { todo: 2, cc_unread: 1, mine_running: 1, mine_finished_this_month: 3 },
+    todos: [
+      {
+        assignment_id: 9,
+        instance_id: 7,
+        title: '出差申请',
+        code: 'CC20261111-0001',
+        node_name: '部门审批',
+        arrived_at: '2026-11-11T09:00:00',
+      },
+    ],
+    my_instances: [
+      {
+        instance_id: 7,
+        title: '出差申请',
+        status: 'RUNNING',
+        current_node_names: ['部门审批'],
+        updated_at: '2026-11-11T09:00:00',
+      },
+    ],
+    quick_flows: [{ flow_template_id: 3, name: '请假申请', icon: null }],
+    work_stats: [],
+    admin: {
+      running: 4,
+      submitted_today: 2,
+      finished_this_week: 3,
+      pending_backlog: 5,
+      by_flow: [{ flow_template_id: 3, name: '请假申请', count: 2 }],
+    },
+  }
+  return {
+    dashboardApi: {
+      overview: vi.fn().mockResolvedValue(overview),
+    },
+  }
+})
+
 /** 表单配置器一进来就会拉模板与版本，这里给一份最小的可用数据。 */
 vi.mock('@/api/modules/form', () => {
   const schema = {
@@ -990,6 +1030,61 @@ describe('驳回重提与快照对照', () => {
     expect(html).toContain('变更对照')
     // 字段引用要翻成中文标签，不能直接露出 reason
     expect(html).toContain('事由')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('首页按角色展示', () => {
+  async function mountDashboard(asAdmin: boolean) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuthStore(pinia)
+    auth.user = {
+      id: 1,
+      username: 'zhangsan',
+      real_name: '张三',
+      email: null,
+      phone: null,
+      dept_id: 1,
+      dept_name: '技术部',
+      position: null,
+      roles: [],
+      last_login_at: null,
+    } as never
+    auth.isAdmin = asAdmin
+    auth.isDesigner = false
+    auth.resolved = true
+
+    const router = makeRouter('/')
+    await router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(DashboardView, {
+      global: { plugins: [pinia, router, Antd] },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('普通用户看到待办与常用流程', async () => {
+    const wrapper = await mountDashboard(false)
+
+    expect(wrapper.text()).toContain('我的待办')
+    expect(wrapper.text()).toContain('出差申请')
+    expect(wrapper.text()).toContain('常用流程')
+    expect(wrapper.text()).not.toContain('全局概览')
+
+    wrapper.unmount()
+  })
+
+  it('管理员额外看到全局概览', async () => {
+    const wrapper = await mountDashboard(true)
+
+    expect(wrapper.text()).toContain('全局概览')
+    expect(wrapper.text()).toContain('待办积压')
+    expect(wrapper.text()).toContain('运行中流程 Top 5')
 
     wrapper.unmount()
   })
