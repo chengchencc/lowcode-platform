@@ -2,7 +2,7 @@
 
 > 配套：`PRD-lowcode-form-approval.md`、`TECH-DESIGN.md`、`PHASE2-DESIGN.md`。
 > 本文是三期的范围、模块边界与里程碑依据；具体实现随里程碑增量修订。
-> **当前状态：规划中，尚未进入编码。**
+> **当前状态：M11 已完成；M12–M16 待开发。**
 
 ---
 
@@ -128,6 +128,17 @@
 - 点击待办/实例/流程分别落到详情页、发起页；
 - 首页接口只发一次请求，刷新不闪烁；
 - 原有工作台、发起中心测试全绿。
+
+### 1.6 M11 实现状态
+
+已完成（提交在 `feat3` 分支）：
+
+- 后端 `GET /api/v1/dashboard/overview` 一次返回个人计数、待办预览、我发起的、
+  常用流程与管理概览；今日/本周/本月按 `app_timezone`（默认 Asia/Shanghai）计算。
+- 首页拆分为 `StatTiles`、`TodoPreviewList`、`InstancePreviewList`、`QuickFlowGrid`、
+  `AdminOverviewPanel` 五个组件；普通用户看个人工作台，管理员/设计者额外看全局概览。
+- 测试：`backend/tests/test_dashboard.py` 4 项；前端首页角色断言 2 项。
+- 全量校验：429 pytest + 124 vitest + ruff / vue-tsc / vite build 全绿。
 
 ---
 
