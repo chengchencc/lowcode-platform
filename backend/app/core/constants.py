@@ -39,6 +39,11 @@ BUILTIN_ROLES: tuple[tuple[str, str, str], ...] = (
 )
 
 
+class WorkStatSheetStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+
+
 class AuditBizType(StrEnum):
     USER = "USER"
     DEPT = "DEPT"
@@ -46,6 +51,7 @@ class AuditBizType(StrEnum):
     FORM_TEMPLATE = "FORM_TEMPLATE"      # M2
     FLOW_TEMPLATE = "FLOW_TEMPLATE"      # M3
     INSTANCE = "INSTANCE"                # M3+
+    WORK_STAT_SHEET = "WORK_STAT_SHEET"  # M12
 
 
 class AuditAction(StrEnum):
@@ -63,6 +69,7 @@ class AuditAction(StrEnum):
     ADD_EXT_FIELD = "ADD_EXT_FIELD"
     COPY = "COPY"
     UPLOAD = "UPLOAD"
+    EXPORT = "EXPORT"
 
 #: 审计动作 / 对象的中文名。**前端 `src/stores/app.ts` 是这份映射的镜像**
 #: （列表展示用）—— 新增动作时两边都要加，否则界面上会露出英文枚举值。
@@ -81,6 +88,7 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     AuditAction.ADD_EXT_FIELD: "追加字段",
     AuditAction.COPY: "复制",
     AuditAction.UPLOAD: "上传",
+    AuditAction.EXPORT: "导出",
 }
 
 AUDIT_BIZ_LABELS: dict[str, str] = {
@@ -90,6 +98,7 @@ AUDIT_BIZ_LABELS: dict[str, str] = {
     AuditBizType.FORM_TEMPLATE: "表单模板",
     AuditBizType.FLOW_TEMPLATE: "流程模板",
     AuditBizType.INSTANCE: "流程实例",
+    AuditBizType.WORK_STAT_SHEET: "工作量统计",
 }
 
 

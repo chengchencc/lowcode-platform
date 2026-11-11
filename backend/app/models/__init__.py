@@ -19,6 +19,7 @@ from app.models.instance import FlowInstance, InstanceExtField
 from app.models.number import GeneratedNumber
 from app.models.org import Department, Role, User, UserRole
 from app.models.task import Task, TaskAssignment
+from app.models.work_stat import WorkStatRow, WorkStatRowLog, WorkStatSheet
 
 __all__ = [
     "Attachment",
@@ -41,4 +42,7 @@ __all__ = [
     "TaskAssignment",
     "User",
     "UserRole",
+    "WorkStatRow",
+    "WorkStatRowLog",
+    "WorkStatSheet",
 ]

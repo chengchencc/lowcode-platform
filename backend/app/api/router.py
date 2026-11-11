@@ -20,6 +20,7 @@ from app.api.v1 import (
     roles,
     tasks,
     users,
+    work_stats,
 )
 
 api_router = APIRouter()
@@ -45,3 +46,6 @@ api_router.include_router(instances.router)
 api_router.include_router(tasks.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(notifications.router)
+
+# M12 工作量统计
+api_router.include_router(work_stats.router)
