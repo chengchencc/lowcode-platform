@@ -10,14 +10,17 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
+    Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import InstanceStatus
-from app.db.base import Base, IntType, PkMixin, TimestampMixin
+from app.db.base import Base, CreatedAtMixin, IntType, PkMixin, TimestampMixin
 
 
 class FlowInstance(Base, PkMixin, TimestampMixin):
@@ -119,3 +122,29 @@ class InstanceExtField(Base, PkMixin, TimestampMixin):
     )
 
     instance: Mapped[FlowInstance] = relationship("FlowInstance", back_populates="ext_fields")
+
+
+class InstanceFieldValue(Base, PkMixin, CreatedAtMixin):
+    """实例业务字段值索引（M13）。
+
+    JSON 仍是唯一事实源；本表是可重建的派生读模型，只为筛选查询服务。
+    """
+
+    __tablename__ = "instance_field_values"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "field_key", "value_index", name="uk_ifv_instance_field_idx"),
+        Index("ix_ifv_field_text", "field_key", "value_text", "instance_id"),
+        Index("ix_ifv_field_num", "field_key", "value_num", "instance_id"),
+        Index("ix_ifv_field_kind", "field_key", "value_kind", "instance_id"),
+    )
+
+    instance_id: Mapped[int] = mapped_column(
+        IntType, ForeignKey("flow_instances.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    field_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    value_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    value_text: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    value_num: Mapped[float | None] = mapped_column(Numeric(24, 6), nullable=True)
+    #: 多选序号；单值/空值固定 0
+    value_index: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)

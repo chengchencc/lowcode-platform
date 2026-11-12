@@ -22,6 +22,12 @@ from app.schemas.form import (
     FormVersionBrief,
     FormVersionCreate,
 )
+from app.schemas.search import (
+    SearchFieldOut,
+    SearchFieldSaveRequest,
+    SearchFieldSaveResult,
+    SearchRebuildResult,
+)
 from app.services import form_service
 
 router = APIRouter(prefix="/form-templates", tags=["表单模板"])
@@ -135,6 +141,81 @@ def copy_template(
         ip=ip,
     )
     return form_service.to_out(db, template)
+
+
+@router.get(
+    "/{template_id}/search-fields",
+    response_model=list[SearchFieldOut],
+    summary="可检索字段配置（M13）",
+)
+def list_search_fields(template_id: int, db: DbSession, _: DesignerUser) -> list[dict]:
+    from app.services import form_service, search_service
+
+    template = form_service.get_or_404(db, template_id)
+    return search_service.list_search_fields(db, template)
+
+
+@router.put(
+    "/{template_id}/search-fields",
+    response_model=SearchFieldSaveResult,
+    summary="保存可检索字段配置（M13）",
+)
+def save_search_fields(
+    template_id: int,
+    payload: SearchFieldSaveRequest,
+    db: DbSession,
+    actor: DesignerUser,
+    ip: ClientIp,
+) -> dict:
+    from app.core.constants import AuditAction, AuditBizType
+    from app.services import audit_service, form_service, search_service
+
+    template = form_service.get_or_404(db, template_id)
+    result = search_service.save_search_fields(
+        db, template, payload.field_keys, actor_id=actor.id
+    )
+    audit_service.record(
+        db,
+        actor=actor,
+        biz_type=AuditBizType.FORM_TEMPLATE,
+        biz_id=template.id,
+        action=AuditAction.UPDATE,
+        summary=f"更新表单「{template.name}」可检索字段",
+        detail={"field_keys": payload.field_keys},
+        ip=ip,
+    )
+    db.commit()
+    return result
+
+
+@router.post(
+    "/{template_id}/search-fields/rebuild",
+    response_model=SearchRebuildResult,
+    summary="重建该表单的检索索引（M13）",
+)
+def rebuild_search_index(
+    template_id: int,
+    db: DbSession,
+    actor: DesignerUser,
+    ip: ClientIp,
+) -> dict:
+    from app.core.constants import AuditAction, AuditBizType
+    from app.services import audit_service, form_service, search_service
+
+    template = form_service.get_or_404(db, template_id)
+    result = search_service.rebuild_template_index(db, template.id)
+    audit_service.record(
+        db,
+        actor=actor,
+        biz_type=AuditBizType.FORM_TEMPLATE,
+        biz_id=template.id,
+        action=AuditAction.UPDATE,
+        summary=f"重建表单「{template.name}」检索索引",
+        detail=result,
+        ip=ip,
+    )
+    db.commit()
+    return result
 
 
 @router.get("/{template_id}/export", summary="导出为 JSON")

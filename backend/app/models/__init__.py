@@ -13,11 +13,13 @@ from app.models.audit import (
     InstanceAction,
     Notification,
 )
+from app.models.delegation import Delegation
 from app.models.flow import FlowTemplate, FlowVersion
-from app.models.form import FormTemplate, FormVersion
-from app.models.instance import FlowInstance, InstanceExtField
+from app.models.form import FormSearchField, FormTemplate, FormVersion
+from app.models.instance import FlowInstance, InstanceExtField, InstanceFieldValue
 from app.models.number import GeneratedNumber
 from app.models.org import Department, Role, User, UserRole
+from app.models.spreadsheet import SpreadsheetWorkbook
 from app.models.task import Task, TaskAssignment
 
 __all__ = [
@@ -25,18 +27,22 @@ __all__ = [
     "AuditLog",
     "Base",
     "DataSnapshot",
+    "Delegation",
     "Department",
     "EngineEventRecord",
     "FlowInstance",
     "FlowTemplate",
     "FlowVersion",
+    "FormSearchField",
     "FormTemplate",
     "FormVersion",
     "GeneratedNumber",
     "InstanceAction",
     "InstanceExtField",
+    "InstanceFieldValue",
     "Notification",
     "Role",
+    "SpreadsheetWorkbook",
     "Task",
     "TaskAssignment",
     "User",

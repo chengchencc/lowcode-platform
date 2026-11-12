@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, Header, Query
 from app.core.deps import CurrentUser, DbSession
 from app.core.pagination import Page, PageParams, build_page, paginate
 from app.schemas.common import OkResp
+from app.schemas.delegation import TransferRequest
 from app.schemas.instance import AssignmentActRequest, InstanceOut, TaskRow, TodoSummary
-from app.services import instance_service, task_service
+from app.services import instance_service, search_service, task_service
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -69,10 +70,31 @@ def list_mine(
     paging: Annotated[PageParams, Depends()],
     instance_status: Annotated[str | None, Query(alias="status")] = None,
     keyword: Annotated[str | None, Query()] = None,
+    flow_template_id: Annotated[int | None, Query()] = None,
+    filters: Annotated[str | None, Query(description="业务字段筛选 JSON（M13）")] = None,
 ) -> dict:
+    from app.core.policy import is_admin
+
     stmt = task_service.build_mine_query(
-        db, user=user, status=instance_status, keyword=keyword
+        db,
+        user=user,
+        status=instance_status,
+        keyword=keyword,
+        flow_template_id=flow_template_id,
     )
+    if filters:
+        from app.core.errors import UnprocessableError
+
+        if flow_template_id is None:
+            raise UnprocessableError(
+                "按业务字段筛选时必须指定流程模板", code="FLOW_TEMPLATE_REQUIRED"
+            )
+        configs = search_service.allowed_fields(
+            db, flow_template_id, start_only=not is_admin(user)
+        )
+        stmt = search_service.apply_filters(
+            stmt, search_service.parse_filters(filters, configs)
+        )
     rows, total = paginate(db, stmt, paging)
     return build_page(
         [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
@@ -108,6 +130,33 @@ def return_targets(assignment_id: int, db: DbSession, user: CurrentUser) -> list
     if assignment.user_id != user.id:
         raise ForbiddenError("这不是分配给你的任务", code="NOT_ASSIGNEE")
     return task_service.return_targets_for(db, assignment)
+
+
+@router.post(
+    "/assignments/{assignment_id}/transfer",
+    response_model=InstanceOut,
+    summary="转办任务（M14）",
+)
+def transfer(
+    assignment_id: int,
+    payload: TransferRequest,
+    db: DbSession,
+    user: CurrentUser,
+    x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+) -> dict:
+    task_service.transfer(
+        db,
+        assignment_id=assignment_id,
+        actor=user,
+        to_user_id=payload.to_user_id,
+        reason=payload.reason,
+        request_id=x_request_id,
+    )
+    from app.services import instance_service
+
+    assignment = task_service.get_assignment_or_404(db, assignment_id)
+    instance = instance_service.get_or_404(db, assignment.instance_id)
+    return instance_service.to_out(db, instance, viewer=user)
 
 
 @router.post(

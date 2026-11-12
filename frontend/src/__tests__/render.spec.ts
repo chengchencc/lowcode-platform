@@ -193,6 +193,8 @@ vi.mock('@/api/modules/instance', () => {
   return {
     instanceApi: {
       availableFlows: vi.fn().mockResolvedValue([]),
+      searchFields: vi.fn().mockResolvedValue([]),
+      myFlowTemplates: vi.fn().mockResolvedValue([]),
       startOptions: vi.fn().mockResolvedValue({
         flow_template_id: 1, flow_template_name: '请假申请',
         flow_version_id: 1, flow_version_no: 1, form_version_id: 1, form_version_no: 1,
@@ -232,6 +234,147 @@ vi.mock('@/api/modules/instance', () => {
       list: vi.fn().mockResolvedValue(emptyPage),
       unreadCount: vi.fn().mockResolvedValue({ count: 0 }),
       markRead: vi.fn(), markManyRead: vi.fn(), markAllRead: vi.fn(),
+    },
+  }
+})
+
+/** 首页一次取全；M11 的渲染断言用这份数据。 */
+vi.mock('@/api/modules/dashboard', () => {
+  const overview = {
+    personal: { todo: 2, cc_unread: 1, mine_running: 1, mine_finished_this_month: 3 },
+    todos: [
+      {
+        assignment_id: 9,
+        instance_id: 7,
+        title: '出差申请',
+        code: 'CC20261111-0001',
+        node_name: '部门审批',
+        arrived_at: '2026-11-11T09:00:00',
+      },
+    ],
+    my_instances: [
+      {
+        instance_id: 7,
+        title: '出差申请',
+        status: 'RUNNING',
+        current_node_names: ['部门审批'],
+        updated_at: '2026-11-11T09:00:00',
+      },
+    ],
+    quick_flows: [{ flow_template_id: 3, name: '请假申请', icon: null }],
+    admin: {
+      running: 4,
+      submitted_today: 2,
+      finished_this_week: 3,
+      pending_backlog: 5,
+      by_flow: [{ flow_template_id: 3, name: '请假申请', count: 2 }],
+    },
+  }
+  return {
+    dashboardApi: {
+      overview: vi.fn().mockResolvedValue(overview),
+    },
+  }
+})
+
+/** 共享电子表格。 */
+vi.mock('@/api/modules/spreadsheet', () => {
+  const workbook = {
+    id: 1, name: '部门共享表', description: '测试', version: 1,
+    viewer_scope: { all: true, roles: [], depts: [], users: [] },
+    editor_scope: null, can_edit: true, created_by: 1, created_by_name: '张三',
+    updated_by: 1, updated_by_name: '张三', created_at: null, updated_at: null,
+  }
+  return {
+    spreadsheetApi: {
+      list: vi.fn().mockResolvedValue([workbook]),
+      create: vi.fn().mockResolvedValue(workbook),
+      get: vi.fn().mockResolvedValue({ ...workbook, snapshot: null }),
+      update: vi.fn().mockResolvedValue(workbook),
+      save: vi.fn().mockResolvedValue({ version: 2, updated_by: 1, updated_by_name: '张三', updated_at: null }),
+      state: vi.fn().mockResolvedValue({ version: 1, changed: false, snapshot: null, updated_by: null, updated_by_name: null, updated_at: null }),
+      remove: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  }
+})
+
+/** 转办与委托（M14）。 */
+vi.mock('@/api/modules/delegation', () => ({
+  delegationApi: {
+    list: vi.fn().mockResolvedValue([
+      {
+        id: 1, delegator_id: 1, delegator_name: '张三',
+        delegatee_id: 2, delegatee_name: '李四',
+        start_at: '2026-11-11T01:00:00', end_at: '2026-11-12T01:00:00',
+        flow_template_ids: null, reason: '出差', status: 'ACTIVE', created_at: null,
+      },
+    ]),
+    create: vi.fn(), update: vi.fn(), cancel: vi.fn(),
+  },
+  transferApi: { transfer: vi.fn().mockResolvedValue({ ok: true }) },
+}))
+
+/** 转办与委托（M14）。 */
+vi.mock('@/api/modules/delegation', () => ({
+  delegationApi: {
+    list: vi.fn().mockResolvedValue([
+      {
+        id: 1, delegator_id: 1, delegator_name: '张三',
+        delegatee_id: 2, delegatee_name: '李四',
+        start_at: '2026-11-11T01:00:00', end_at: '2026-11-12T01:00:00',
+        flow_template_ids: null, reason: '出差', status: 'ACTIVE', created_at: null,
+      },
+    ]),
+    create: vi.fn(), update: vi.fn(), cancel: vi.fn(),
+  },
+  transferApi: { transfer: vi.fn().mockResolvedValue({ ok: true }) },
+}))
+
+/** 工作量统计（M12）：列表与表格页。 */
+vi.mock('@/api/modules/workStat', () => {
+  const sheet = {
+    id: 1,
+    name: '部门月度工作量',
+    description: '测试表',
+    columns: [
+      { key: 'c_name', label: '姓名', type: 'text', width: 120, required: true, options: [] },
+      { key: 'c_hours', label: '工时', type: 'number', width: 100, required: false, options: [] },
+    ],
+    viewer_scope: null,
+    editor_scope: null,
+    sort: 0,
+    status: 'ACTIVE',
+    can_edit: true,
+    created_by: 1,
+    created_at: null,
+    updated_at: null,
+  }
+  const row = {
+    id: 1,
+    row_no: 1,
+    cells: { c_name: '张三', c_hours: 8 },
+    version: 0,
+    updated_by: 1,
+    updated_at: '2026-11-11T09:00:00',
+  }
+  return {
+    workStatApi: {
+      listSheets: vi.fn().mockResolvedValue([sheet]),
+      getSheet: vi.fn().mockResolvedValue(sheet),
+      createSheet: vi.fn().mockResolvedValue(sheet),
+      updateSheet: vi.fn().mockResolvedValue(sheet),
+      deleteSheet: vi.fn().mockResolvedValue({ ok: true }),
+      rows: vi.fn().mockResolvedValue([row]),
+      createRow: vi.fn().mockResolvedValue(row),
+      updateRow: vi.fn().mockResolvedValue(row),
+      deleteRow: vi.fn().mockResolvedValue({ ok: true }),
+      rowLogs: vi.fn().mockResolvedValue([]),
+      importPreview: vi.fn().mockResolvedValue({
+        headers: ['姓名', '工时'], preview_rows: [row.cells],
+        warnings: [], total_rows: 1,
+      }),
+      importFile: vi.fn().mockResolvedValue({ imported: 1 }),
+      exportFile: vi.fn().mockResolvedValue({ data: new Blob() }),
     },
   }
 })
@@ -314,6 +457,8 @@ vi.mock('@/api/modules/form', () => {
       deleteVersion: vi.fn(),
       validateVersion: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
       publishVersion: vi.fn().mockResolvedValue(version),
+      searchFields: vi.fn().mockResolvedValue([]),
+      saveSearchFields: vi.fn().mockResolvedValue({ added: 0, removed: 0, needs_backfill: false }),
       previewVersion: vi.fn().mockResolvedValue({
         version_id: 1,
         template_id: 1,
@@ -351,6 +496,8 @@ import DeptView from '@/views/admin/org/DeptView.vue'
 import RoleView from '@/views/admin/org/RoleView.vue'
 import UserView from '@/views/admin/org/UserView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import DelegationsView from '@/views/DelegationsView.vue'
+import SpreadsheetsView from '@/views/SpreadsheetsView.vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { MENU_DEFAULT_PARAMS, buildMenuItems, leafKeys } from '@/layouts/menu'
 import LoginView from '@/views/LoginView.vue'
@@ -434,6 +581,8 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['InstanceDetailView', InstanceDetailView, '/instance/1'],
   ['NotificationCenterView', NotificationCenterView],
   ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
+  ['DelegationsView', DelegationsView, '/delegations'],
+  ['SpreadsheetsView', SpreadsheetsView, '/spreadsheets'],
 ]
 
 describe('所有页面都能渲染且没有未注册的组件', () => {
@@ -990,6 +1139,90 @@ describe('驳回重提与快照对照', () => {
     expect(html).toContain('变更对照')
     // 字段引用要翻成中文标签，不能直接露出 reason
     expect(html).toContain('事由')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('首页按角色展示', () => {
+  async function mountDashboard(asAdmin: boolean) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuthStore(pinia)
+    auth.user = {
+      id: 1,
+      username: 'zhangsan',
+      real_name: '张三',
+      email: null,
+      phone: null,
+      dept_id: 1,
+      dept_name: '技术部',
+      position: null,
+      roles: [],
+      last_login_at: null,
+    } as never
+    auth.isAdmin = asAdmin
+    auth.isDesigner = false
+    auth.resolved = true
+
+    const router = makeRouter('/')
+    await router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(DashboardView, {
+      global: { plugins: [pinia, router, Antd] },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('普通用户看到待办与常用流程', async () => {
+    const wrapper = await mountDashboard(false)
+
+    expect(wrapper.text()).toContain('我的待办')
+    expect(wrapper.text()).toContain('出差申请')
+    expect(wrapper.text()).toContain('常用流程')
+    expect(wrapper.text()).not.toContain('全局概览')
+
+    wrapper.unmount()
+  })
+
+  it('管理员额外看到全局概览', async () => {
+    const wrapper = await mountDashboard(true)
+
+    expect(wrapper.text()).toContain('全局概览')
+    expect(wrapper.text()).toContain('待办积压')
+    expect(wrapper.text()).toContain('运行中流程 Top 5')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('委托管理页', () => {
+  it('显示委托记录', async () => {
+    const wrapper = await mountView(DelegationsView, '/delegations')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('委托管理')
+    expect(wrapper.text()).toContain('李四')
+    expect(wrapper.text()).toContain('出差')
+    expect(wrapper.text()).toContain('生效中')
+
+    wrapper.unmount()
+  })
+})
+
+
+describe('共享表格列表', () => {
+  it('显示工作簿与权限', async () => {
+    const wrapper = await mountView(SpreadsheetsView, '/spreadsheets')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('共享表格')
+    expect(wrapper.text()).toContain('部门共享表')
+    expect(wrapper.text()).toContain('可编辑')
 
     wrapper.unmount()
   })

@@ -18,6 +18,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { instanceApi } from '@/api/modules/instance'
+import InstanceFilterBuilder from '@/components/instance/InstanceFilterBuilder.vue'
 import { flowApi } from '@/api/modules/flow'
 import type { ArchiveQuery } from '@/api/modules/instance'
 import type { FlowTemplate } from '@/types/flow'
@@ -33,6 +34,7 @@ const rows = ref<InstanceItem[]>([])
 const flows = ref<FlowTemplate[]>([])
 const loading = ref(false)
 const exporting = ref(false)
+const filters = ref('')
 
 const query = reactive({
   keyword: '',
@@ -52,7 +54,7 @@ const STATUS_OPTIONS = [
 ]
 
 const columns = [
-  { title: '编号', key: 'code', width: 165 },
+  { title: '实例单号', key: 'code', width: 165 },
   { title: '标题', key: 'title', width: 220 },
   { title: '流程', key: 'flow_template_name', width: 140 },
   { title: '发起人', key: 'initiator_name', width: 110 },
@@ -70,6 +72,7 @@ function params(): ArchiveQuery {
     flow_template_id: query.flow_template_id,
     finished_from: query.range?.[0] || undefined,
     finished_to: query.range?.[1] || undefined,
+    filters: filters.value || undefined,
   }
 }
 
@@ -100,6 +103,11 @@ onMounted(() => {
 function search(): void {
   paging.page = 1
   void load()
+}
+
+function onFiltersChange(value: string): void {
+  filters.value = value
+  search()
 }
 
 function onTableChange(pagination: { current?: number; pageSize?: number }): void {
@@ -137,7 +145,7 @@ function statusMeta(status: string) {
         <Space wrap>
           <Input
             v-model:value="query.keyword"
-            placeholder="标题 / 编号"
+            placeholder="标题 / 实例单号"
             allow-clear
             style="width: 200px"
             @press-enter="search"
@@ -174,6 +182,13 @@ function statusMeta(status: string) {
           导出 CSV
         </Button>
       </div>
+
+      <InstanceFilterBuilder
+        :flow-template-id="query.flow_template_id"
+        scope="archive"
+        :model-value="filters"
+        @update:model-value="onFiltersChange"
+      />
 
       <Table
         :columns="columns"

@@ -10,6 +10,7 @@ import type {
   FormVersion,
   FormVersionBrief,
 } from '@/types/form'
+import type { SearchFieldConfig } from '@/types/search'
 
 export const formApi = {
   listTemplates(params?: { keyword?: string; group_name?: string; status?: string }) {
@@ -93,6 +94,27 @@ export const formApi = {
     return request.post<FormPreview>(`/form-versions/${versionId}/preview`, {
       sample_data: sampleData,
     })
+  },
+
+  /** 可检索字段配置（M13） */
+  searchFields(id: number) {
+    return request.get<SearchFieldConfig[]>(`/form-templates/${id}/search-fields`)
+  },
+
+  saveSearchFields(id: number, fieldKeys: string[]) {
+    return request.put<{ added: number; removed: number; needs_backfill: boolean }>(
+      `/form-templates/${id}/search-fields`,
+      { field_keys: fieldKeys },
+    )
+  },
+
+  /** 为存量实例重建检索索引（用当前已保存的字段配置） */
+  rebuildSearchIndex(id: number) {
+    return request.post<{ total: number; processed: number }>(
+      `/form-templates/${id}/search-fields/rebuild`,
+      undefined,
+      { timeout: 120000 },
+    )
   },
 }
 

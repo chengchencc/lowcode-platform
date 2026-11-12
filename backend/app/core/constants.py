@@ -39,6 +39,7 @@ BUILTIN_ROLES: tuple[tuple[str, str, str], ...] = (
 )
 
 
+
 class AuditBizType(StrEnum):
     USER = "USER"
     DEPT = "DEPT"
@@ -46,6 +47,7 @@ class AuditBizType(StrEnum):
     FORM_TEMPLATE = "FORM_TEMPLATE"      # M2
     FLOW_TEMPLATE = "FLOW_TEMPLATE"      # M3
     INSTANCE = "INSTANCE"                # M3+
+    AI = "AI"                            # M15
 
 
 class AuditAction(StrEnum):
@@ -63,6 +65,7 @@ class AuditAction(StrEnum):
     ADD_EXT_FIELD = "ADD_EXT_FIELD"
     COPY = "COPY"
     UPLOAD = "UPLOAD"
+    AI_GENERATE = "AI_GENERATE"
 
 #: 审计动作 / 对象的中文名。**前端 `src/stores/app.ts` 是这份映射的镜像**
 #: （列表展示用）—— 新增动作时两边都要加，否则界面上会露出英文枚举值。
@@ -81,6 +84,7 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     AuditAction.ADD_EXT_FIELD: "追加字段",
     AuditAction.COPY: "复制",
     AuditAction.UPLOAD: "上传",
+    AuditAction.AI_GENERATE: "AI 生成",
 }
 
 AUDIT_BIZ_LABELS: dict[str, str] = {
@@ -90,6 +94,7 @@ AUDIT_BIZ_LABELS: dict[str, str] = {
     AuditBizType.FORM_TEMPLATE: "表单模板",
     AuditBizType.FLOW_TEMPLATE: "流程模板",
     AuditBizType.INSTANCE: "流程实例",
+    AuditBizType.AI: "AI 生成",
 }
 
 
@@ -338,12 +343,18 @@ class AggregateMode(StrEnum):
 
 class CancelReason(StrEnum):
     ANY_SIGN_DONE = "ANY_SIGN_DONE"    # 或签他人已处理
+    TRANSFERRED = "TRANSFERRED"        # 转办（M14）
     REJECTED = "REJECTED"
     RETURNED = "RETURNED"
     WITHDRAWN = "WITHDRAWN"
     TERMINATED = "TERMINATED"
     RESUBMITTED = "RESUBMITTED"
     GROUP_FAILED = "GROUP_FAILED"
+
+
+class DelegationStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    CANCELLED = "CANCELLED"
 
 
 class SnapshotKind(StrEnum):
@@ -367,3 +378,5 @@ class NotifType(StrEnum):
     CC_RECEIVED = "CC_RECEIVED"
     ABNORMAL_ASSIGN = "ABNORMAL_ASSIGN"
     EXT_FIELD_ADDED = "EXT_FIELD_ADDED"
+    TASK_TRANSFERRED = "TASK_TRANSFERRED"
+    TASK_DELEGATED = "TASK_DELEGATED"

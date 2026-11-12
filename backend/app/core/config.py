@@ -29,6 +29,21 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{BACKEND_DIR / 'flowform.db'}"
     sql_echo: bool = False
 
+    # ---- 展示时区 ----
+    #: 数据统一存 naive UTC；首页「今日/本周/本月」按该时区计算边界
+    app_timezone: str = "Asia/Shanghai"
+
+    # ---- AI 辅助配置（M15）----
+    #: 默认关闭；开启前需完成网络例外与模型供应商配置
+    ai_enabled: bool = False
+    ai_base_url: str = "https://api.openai.com/v1"
+    ai_api_key: str | None = None
+    ai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: int = 60
+    ai_max_tokens: int = 4000
+    #: 每用户每小时最多生成次数
+    ai_rate_limit_per_hour: int = 20
+
     # ---- 认证 ----
     jwt_secret: str = "dev-only-secret-please-change-in-production"
     jwt_algorithm: str = "HS256"

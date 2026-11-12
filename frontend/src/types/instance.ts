@@ -291,6 +291,8 @@ export const MY_ROLE_LABELS: Record<string, string> = {
 export const NOTIF_TYPE_LABELS: Record<string, string> = {
   TASK_CREATED: '新待办',
   TASK_CANCELLED: '待办取消',
+  TASK_TRANSFERRED: '转办',
+  TASK_DELEGATED: '委托',
   INSTANCE_APPROVED: '已通过',
   INSTANCE_REJECTED: '被驳回',
   INSTANCE_RETURNED: '被退回',
@@ -308,6 +310,8 @@ export const NOTIF_TYPE_LABELS: Record<string, string> = {
 const NOTIF_TYPE_COLORS: Record<string, string> = {
   TASK_CREATED: 'blue',
   TASK_CANCELLED: 'default',
+  TASK_TRANSFERRED: 'purple',
+  TASK_DELEGATED: 'cyan',
   INSTANCE_APPROVED: 'green',
   INSTANCE_REJECTED: 'red',
   INSTANCE_RETURNED: 'orange',

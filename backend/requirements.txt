@@ -9,6 +9,10 @@ email-validator>=2.2,<3
 PyJWT>=2.10,<3
 bcrypt>=4.2,<5
 python-multipart>=0.0.20
+# AI 调用（OpenAI 兼容协议）
+httpx>=0.27,<1
+# Windows 不自带 IANA 时区库；首页「今日/本周」按 Asia/Shanghai 计算需要它
+tzdata>=2024.1
 
 # 数据库驱动：SQLite 走标准库 sqlite3，MySQL / PostgreSQL 各装一个
 PyMySQL>=1.1,<2

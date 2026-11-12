@@ -218,3 +218,76 @@ def abnormal_assignment(
             )
         )
     return out
+
+
+def task_transferred(
+    *,
+    instance_id: int,
+    instance_title: str,
+    node_name: str,
+    from_user_id: int,
+    to_user_id: int,
+    new_assignment_id: int,
+    reason: str,
+) -> list[NotificationDraft]:
+    """转办：被转办人收到新待办，原处理人收到转出知会。"""
+    return [
+        NotificationDraft(
+            user_id=to_user_id,
+            type=NotifType.TASK_TRANSFERRED,
+            title=f"转办待办：{instance_title}",
+            content=f"「{node_name}」由他人转办给你（{reason}）",
+            link=_link(instance_id, new_assignment_id),
+            dedup_key=f"TRANSFER:{new_assignment_id}:U:{to_user_id}",
+            payload={
+                "instance_id": instance_id,
+                "assignment_id": new_assignment_id,
+                "node_name": node_name,
+            },
+        ),
+        NotificationDraft(
+            user_id=from_user_id,
+            type=NotifType.TASK_TRANSFERRED,
+            title=f"已转办：{instance_title}",
+            content=f"「{node_name}」已转办给他人",
+            link=_link(instance_id),
+            dedup_key=f"TRANSFER_OUT:{new_assignment_id}:U:{from_user_id}",
+            payload={"instance_id": instance_id, "node_name": node_name},
+        ),
+    ]
+
+
+def task_delegated(
+    *,
+    instance_id: int,
+    instance_title: str,
+    node_name: str,
+    delegator_id: int,
+    delegatee_id: int,
+    assignment_id: int,
+) -> list[NotificationDraft]:
+    """委托生效：被委托人收到代理待办，委托人收到知会。"""
+    return [
+        NotificationDraft(
+            user_id=delegatee_id,
+            type=NotifType.TASK_DELEGATED,
+            title=f"代理待办：{instance_title}",
+            content=f"「{node_name}」由委托代理给你",
+            link=_link(instance_id, assignment_id),
+            dedup_key=f"DELEGATE:{assignment_id}:U:{delegatee_id}",
+            payload={
+                "instance_id": instance_id,
+                "assignment_id": assignment_id,
+                "node_name": node_name,
+            },
+        ),
+        NotificationDraft(
+            user_id=delegator_id,
+            type=NotifType.TASK_DELEGATED,
+            title=f"委托已生效：{instance_title}",
+            content=f"「{node_name}」已由被委托人处理",
+            link=_link(instance_id),
+            dedup_key=f"DELEGATE_OWNER:{assignment_id}:U:{delegator_id}",
+            payload={"instance_id": instance_id, "node_name": node_name},
+        ),
+    ]

@@ -76,6 +76,25 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '消息中心' },
       },
       {
+        // 共享表格：Univer 在线 Excel，近实时协同
+        path: 'spreadsheets',
+        name: 'spreadsheets',
+        component: () => import('@/views/SpreadsheetsView.vue'),
+        meta: { title: '共享表格' },
+      },
+      {
+        path: 'delegations',
+        name: 'delegations',
+        component: () => import('@/views/DelegationsView.vue'),
+        meta: { title: '委托管理' },
+      },
+      {
+        path: 'spreadsheets/:id',
+        name: 'spreadsheet',
+        component: () => import('@/views/SpreadsheetWorkbookView.vue'),
+        meta: { title: '工作簿', hidden: true },
+      },
+      {
         path: 'admin/forms',
         name: 'form-templates',
         component: () => import('@/views/admin/form/FormTemplateListView.vue'),

@@ -122,6 +122,7 @@ def build_mine_query(
     user: User,
     status: str | None = None,
     keyword: str | None = None,
+    flow_template_id: int | None = None,
 ) -> Select:
     stmt = (
         select(FlowInstance)
@@ -130,6 +131,8 @@ def build_mine_query(
     )
     if status:
         stmt = stmt.where(FlowInstance.status == status)
+    if flow_template_id is not None:
+        stmt = stmt.where(FlowInstance.flow_template_id == flow_template_id)
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))
@@ -257,6 +260,27 @@ def todo_summary(db: Session, user: User) -> dict[str, int]:
 
 
 # --------------------------------------------------------------------------- 动作
+
+
+def transfer(
+    db: Session,
+    *,
+    assignment_id: int,
+    actor: User,
+    to_user_id: int,
+    reason: str,
+    request_id: str | None = None,
+):
+    """转办 —— 直接转发给引擎。"""
+    from app.services.instance_service import engine_for
+
+    return engine_for(db).transfer(
+        assignment_id=assignment_id,
+        actor=actor,
+        to_user_id=to_user_id,
+        reason=reason,
+        request_id=request_id,
+    )
 
 
 def act(

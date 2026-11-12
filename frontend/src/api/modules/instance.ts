@@ -12,6 +12,7 @@ import type {
   TaskRow,
   TodoSummary,
 } from '@/types/instance'
+import type { SearchFieldMeta } from '@/types/search'
 
 export interface InstanceListQuery {
   page?: number
@@ -20,6 +21,8 @@ export interface InstanceListQuery {
   status?: string
   flow_template_id?: number
   keyword?: string
+  /** 业务字段筛选 JSON（M13） */
+  filters?: string
 }
 
 export interface ArchiveQuery {
@@ -32,6 +35,8 @@ export interface ArchiveQuery {
   keyword?: string
   finished_from?: string
   finished_to?: string
+  /** 业务字段筛选 JSON（M13） */
+  filters?: string
 }
 
 export interface TaskListQuery {
@@ -40,12 +45,25 @@ export interface TaskListQuery {
   keyword?: string
   flow_template_id?: number
   unread_only?: boolean
+  filters?: string
 }
 
 export const instanceApi = {
   /** 发起中心：我能发起的流程 */
   availableFlows() {
     return request.get<FlowTemplate[]>('/instances/available-flows')
+  },
+
+  /** 业务字段筛选：当前流程模板允许筛的字段（M13） */
+  searchFields(flowTemplateId: number, scope: 'mine' | 'archive' = 'mine') {
+    return request.get<SearchFieldMeta[]>('/instances/search-fields', {
+      params: { flow_template_id: flowTemplateId, scope },
+    })
+  },
+
+  /** 普通用户可用的流程下拉（工作台「我发起的」筛选用） */
+  myFlowTemplates() {
+    return request.get<FlowTemplate[]>('/instances/my-flow-templates')
   },
 
   /** 发起页元数据：表单 schema + 发起节点权限 + 需指定审批人的节点 */

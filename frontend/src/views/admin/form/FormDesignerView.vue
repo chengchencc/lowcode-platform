@@ -14,11 +14,13 @@ import {
   ArrowLeftOutlined,
   ArrowUpOutlined,
   CheckCircleOutlined,
+  RobotOutlined,
   DeleteOutlined,
   EyeOutlined,
   LinkOutlined,
   PlusOutlined,
   SaveOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Card, Drawer, Empty, Space, Tag, Tooltip } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -28,6 +30,8 @@ import { ApiError } from '@/api/http'
 import { formApi } from '@/api/modules/form'
 import FieldPropertyPanel from '@/components/form-designer/FieldPropertyPanel.vue'
 import FormRulesPanel from '@/components/form-designer/FormRulesPanel.vue'
+import SearchFieldPanel from '@/components/form-designer/SearchFieldPanel.vue'
+import AiGenerateModal from '@/components/ai/AiGenerateModal.vue'
 import { FormRenderer, resolveFieldStates } from '@/components/form-renderer'
 import type {
   FieldDef,
@@ -161,6 +165,39 @@ onMounted(load)
 // --------------------------------------------------------------------------- 自动保存
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+function applyAiSchema(generated: unknown): void {
+  const data = generated as FormSchema
+  if (schema.value.sections.length) {
+    void feedback
+      .confirm({
+        title: '覆盖当前表单结构？',
+        content: 'AI 生成结果会替换当前草稿的分区与字段。',
+        danger: true,
+      })
+      .then((ok) => {
+        if (ok) doApplyAiSchema(data)
+      })
+    return
+  }
+  doApplyAiSchema(data)
+}
+
+function doApplyAiSchema(data: FormSchema): void {
+  schema.value = {
+    ...data,
+    layout: data.layout ?? { label_position: 'top', columns: 2 },
+    sections: data.sections ?? [],
+    rules: data.rules ?? [],
+  }
+  const firstSection = schema.value.sections[0]
+  const firstField = firstSection?.fields[0]
+  selected.value = firstSection && firstField
+    ? { sectionKey: firstSection.key, fieldKey: firstField.key }
+    : null
+  scheduleSave()
+  feedback.success('已应用到设计器，请检查后保存/发布')
+}
 
 function scheduleSave(): void {
   dirty.value = true
@@ -333,6 +370,8 @@ async function publish(): Promise<void> {
 // --------------------------------------------------------------------------- 预览
 
 const rulesOpen = ref(false)
+const searchFieldsOpen = ref(false)
+const aiOpen = ref(false)
 const previewOpen = ref(false)
 const previewValues = ref<Record<string, unknown>>({})
 const previewMode = ref<'edit' | 'readonly'>('edit')
@@ -428,6 +467,14 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
           <Button @click="rulesOpen = true">
             <template #icon><LinkOutlined /></template>
             联动规则
+          </Button>
+          <Button @click="searchFieldsOpen = true">
+            <template #icon><SearchOutlined /></template>
+            检索字段
+          </Button>
+          <Button @click="aiOpen = true">
+            <template #icon><RobotOutlined /></template>
+            AI 生成
           </Button>
           <Button @click="openPreview">
             <template #icon><EyeOutlined /></template>
@@ -760,6 +807,18 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
     </Drawer>
 
     <!-- ------------------------------------------------ 联动规则 -->
+    <AiGenerateModal
+      v-model:open="aiOpen"
+      kind="form"
+      @generated="applyAiSchema"
+    />
+
+    <SearchFieldPanel
+      v-model:open="searchFieldsOpen"
+      :template-id="templateId"
+      :template-name="template?.name"
+    />
+
     <Drawer v-model:open="rulesOpen" title="字段联动规则" :width="780" placement="right">
       <FormRulesPanel
         :schema="schema"

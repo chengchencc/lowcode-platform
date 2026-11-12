@@ -5,8 +5,11 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    ai,
     audit,
     auth,
+    dashboard,
+    delegations,
     departments,
     files,
     flow_templates,
@@ -17,6 +20,7 @@ from app.api.v1 import (
     instances,
     notifications,
     roles,
+    spreadsheets,
     tasks,
     users,
 )
@@ -42,4 +46,9 @@ api_router.include_router(flow_versions.router)
 # M4 发起与工作台
 api_router.include_router(instances.router)
 api_router.include_router(tasks.router)
+api_router.include_router(dashboard.router)
 api_router.include_router(notifications.router)
+
+api_router.include_router(delegations.router)
+api_router.include_router(ai.router)
+api_router.include_router(spreadsheets.router)
