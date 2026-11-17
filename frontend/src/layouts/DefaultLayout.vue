@@ -160,8 +160,8 @@ async function handleLogout(): Promise<void> {
       :width="220"
     >
       <div class="logo">
-        <span class="logo-mark">FF</span>
-        <span v-if="!app.sidebarCollapsed" class="logo-text">FlowForm</span>
+        <span class="logo-mark">一</span>
+        <span v-if="!app.sidebarCollapsed" class="logo-text">流程平台</span>
       </div>
       <a-menu         theme="dark"
         mode="inline"
@@ -187,9 +187,9 @@ async function handleLogout(): Promise<void> {
                 {{ auth.displayName.slice(0, 1) }}
               </a-avatar>
               <span class="user-name">{{ auth.displayName }}</span>
-              <span v-if="auth.user?.dept_name" class="user-dept">
+             <!--  <span v-if="auth.user?.dept_name" class="user-dept">
                 {{ auth.user.dept_name }}
-              </span>
+              </span> -->
             </div>
             <template #overlay>
               <a-menu>

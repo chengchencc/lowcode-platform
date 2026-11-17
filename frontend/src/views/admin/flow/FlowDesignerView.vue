@@ -208,6 +208,12 @@ onBeforeUnmount(() => {
 
 async function save(): Promise<boolean> {
   if (!version.value || !definition.value || !dirty.value) return true
+
+  // 轻量形状预检 —— 后端 Pydantic 会硬拒空 id / 空 name。
+  // 设计期把 id 删空属于"正在编辑中"，不该触发保存、更不该弹 toast。
+  const shapeError = checkDefinitionShape(definition.value)
+  if (shapeError) return true // 假装保存成功，不清 dirty —— 等用户补完再存
+
   saving.value = true
   try {
     version.value = await flowApi.saveVersion(version.value.id, definition.value)
@@ -222,18 +228,84 @@ async function save(): Promise<boolean> {
   }
 }
 
-function onNodeChange(): void {
+/** 后端 Pydantic 形状校验（id/min_length=1 等）的前端兜底预查。
+ *  返回 null 表示通过；否则返回简短原因。
+ *  只拦硬性形状错误，语义问题（审批人没选、条件没配）留给后端发布时拦。 */
+function checkDefinitionShape(def: FlowDefinition): string | null {
+  const walk = (steps: StepNode[]): string | null => {
+    for (const s of steps) {
+      if (!s.id?.trim()) return `节点标识不能为空`
+      if (!s.name?.trim()) return `节点名称不能为空`
+      if (s.type === 'condition') {
+        for (const b of s.branches) {
+          const err = walk(b.steps)
+          if (err) return err
+        }
+      } else if (s.type === 'parallel') {
+        const err = walk(s.members as StepNode[])
+        if (err) return err
+      }
+    }
+    return null
+  }
+  return walk(def.steps)
+}
+
+function onNodeChange(node?: StepNode): void {
+  // 节点属性任何改动都会来这里，包括改 node.id。
+  // 绝对不要在这里手动同步 selectedId ——
+  //   - 改 id 时 findNode(def, newId) 可能找不到（空字符串）或找错
+  //     （临时冲突），同步 selectedId 会让 selectedNode computed 找不到
+  //     对应节点，导致面板消失。
+  //   - selectedNode computed 里的缓存回退已经能处理"id 还没同步 /
+  //     冲突 / 空值"这些中间态，它依赖的是对象引用而不是 id 字符串。
   scheduleSave()
   void refreshReturnTargets()
 }
 
 // --------------------------------------------------------------------------- 节点查找
 
-const selectedNode = computed(() =>
-  definition.value && selectedId.value
-    ? findNode(definition.value, selectedId.value)
-    : null,
-)
+/** findNode(definition, selectedId) 失败时回退到的缓存引用。
+ *  场景：用户正在改 node.id，新 id 还没同步到 selectedId 或者已经与
+ *  其他节点冲突（definition 暂时有两个同 id 的节点）——这时 findNode
+ *  找不到或找错，面板不能消失。缓存的是**对象引用**，不是 id。 */
+const _cachedSelectedNode = ref<StepNode | null>(null)
+
+/** 判断某个 StepNode 引用是否还在 definition 里（递归遍历）。 */
+function isNodeInDefinition(def: FlowDefinition, target: StepNode): boolean {
+  const walk = (steps: StepNode[]): boolean => {
+    for (const s of steps) {
+      if (s === target) return true
+      if (s.type === 'condition') {
+        for (const b of s.branches) if (walk(b.steps)) return true
+      } else if (s.type === 'parallel') {
+        if (walk(s.members as StepNode[])) return true
+      }
+    }
+    return false
+  }
+  return walk(def.steps)
+}
+
+const selectedNode = computed(() => {
+  if (!definition.value || !selectedId.value) {
+    _cachedSelectedNode.value = null
+    return null
+  }
+  const found = findNode(definition.value, selectedId.value)
+  if (found) {
+    _cachedSelectedNode.value = found
+    return found
+  }
+  // findNode 失败（id 刚改了还没同步 / 冲突）→ 用缓存的引用。
+  // 注意：缓存的是对象引用，它的 id 可能已经变了，不能再用 id 查找 ——
+  // 直接用引用比较确认它还在 definition 里。
+  const cached = _cachedSelectedNode.value
+  if (cached && isNodeInDefinition(definition.value, cached)) {
+    return cached
+  }
+  return null
+})
 
 /** 所有节点的 id→名称，供「上一节点处理人」的候选下拉 */
 const nodeNameById = computed(() => {

@@ -45,13 +45,13 @@ const props = defineProps<{
   nodeNameById: Record<string, string>
 }>()
 
-const emit = defineEmits<{ change: [] }>()
+const emit = defineEmits<{ change: [node: StepNode] }>()
 
 const org = useOrgStore()
 onMounted(() => void org.loadDeptTree())
 
 function notify(): void {
-  emit('change')
+  emit('change', props.node)
 }
 
 // --------------------------------------------------------------------------- 能力判断

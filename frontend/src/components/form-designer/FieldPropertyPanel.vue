@@ -26,7 +26,7 @@ const props = defineProps<{
   isColumn?: boolean
 }>()
 
-const emit = defineEmits<{ change: [] }>()
+const emit = defineEmits<{ change: [field: FieldDef] }>()
 
 const field = computed(() => props.field)
 
@@ -38,7 +38,7 @@ const typeOptions = computed(() => {
 })
 
 function notify(): void {
-  emit('change')
+  emit('change', field.value)
 }
 
 /**
