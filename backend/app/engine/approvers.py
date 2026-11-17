@@ -153,10 +153,11 @@ def _allows_self_approval(source: AssigneeSource, ctx: ApproverContext) -> bool:
     """该来源是否属于「显式指定到本人」、应允许自审。
 
     - `form_user_field`：发起人在表单上明确选的人（如「需求负责人」默认选自己）
+    - `initiator_select`：发起人在提交时从候选里**主动选的** —— 选自己也应允许
     - `prev_node_actors` 指向发起节点：设计者明确要求由发起人处理
     角色 / 部门等**宽口径**来源仍剔除发起人，避免无意自审。
     """
-    if source.type == "form_user_field":
+    if source.type in ("form_user_field", "initiator_select"):
         return True
     if source.type != "prev_node_actors":
         return False

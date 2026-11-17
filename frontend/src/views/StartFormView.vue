@@ -288,9 +288,9 @@ function confirmPicks(): void {
               <Button type="text" @click="router.push({ name: 'start-center' })">
                 <template #icon><ArrowLeftOutlined /></template>
               </Button>
-              <span class="title">{{ options.flow_template_name }}</span>
-              <Tag color="green">流程 v{{ options.flow_version_no }}</Tag>
-              <Tag color="blue">表单 v{{ options.form_version_no }}</Tag>
+              
+              <!-- <Tag color="green">流程 v{{ options.flow_version_no }}</Tag>
+              <Tag color="blue">表单 v{{ options.form_version_no }}</Tag> -->
             </Space>
 
             <Space>
@@ -316,7 +316,12 @@ function confirmPicks(): void {
 
         </Card>
 
-        <Card :bordered="false" class="block">
+        <Card :bordered="false" class="block form-block">
+
+          <div class="title">
+            <span>{{ options.flow_template_name }}</span>
+          </div>
+        
           <FormRenderer
             :schema="options.schema_data"
             :model-value="values"
@@ -380,6 +385,10 @@ function confirmPicks(): void {
   margin-bottom: 12px;
 }
 
+.form-block {
+  border: 1px solid #cccddd;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -389,8 +398,10 @@ function confirmPicks(): void {
 }
 
 .title {
-  font-size: 16px;
+  text-align: center;
+  font-size: 24px;
   font-weight: 600;
+  margin-bottom: 20px;
 }
 
 .save-hint {
