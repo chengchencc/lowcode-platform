@@ -109,14 +109,41 @@ def submit(
     data: dict[str, Any],
     *,
     note: str = "",
+    attachment_ids: list[int] | None = None,
     request_id: str | None = None,
 ) -> Any:
     headers = {"X-Request-Id": request_id} if request_id else None
     return client.post(
         f"instances/{instance_id}/submit",
-        json={"data": data, "note": note, "attachment_ids": [], "assignee_picks": {}},
+        json={
+            "data": data,
+            "note": note,
+            "attachment_ids": attachment_ids or [],
+            "assignee_picks": {},
+        },
         headers=headers,
     )
+
+
+def upload_file(
+    client: ApiClient,
+    *,
+    filename: str = "e2e.txt",
+    content: bytes = b"e2e attachment",
+    content_type: str = "text/plain",
+) -> Any:
+    return client.post(
+        "files/upload",
+        files={"file": (filename, content, content_type)},
+    )
+
+
+def download_file(client: ApiClient, attachment_id: int) -> Any:
+    return client.get(f"files/{attachment_id}/download")
+
+
+def delete_file(client: ApiClient, attachment_id: int) -> Any:
+    return client.delete(f"files/{attachment_id}")
 
 
 def todo(client: ApiClient) -> list[dict[str, Any]]:
@@ -458,6 +485,26 @@ def parallel_any_definition(user_ids: list[int]) -> dict[str, Any]:
                 "mode": "any",
                 "members": [
                     _approval_node(f"m{index}", f"或签成员{index}", user_rule(user_id))
+                    for index, user_id in enumerate(user_ids, start=1)
+                ],
+            }
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def parallel_all_definition(user_ids: list[int]) -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            {
+                "id": "p1",
+                "name": "会签",
+                "type": "parallel",
+                "mode": "all",
+                "members": [
+                    _approval_node(f"m{index}", f"会签成员{index}", user_rule(user_id))
                     for index, user_id in enumerate(user_ids, start=1)
                 ],
             }

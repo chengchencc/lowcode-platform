@@ -416,12 +416,14 @@ def submit(
         if template is not None:
             instance.title = template.name[:255]
 
-    # 提交前把表单里的临时附件绑定到实例，审批参与者才能下载
+    # 提交前把表单里的临时附件（以及提交时携带的意见附件）绑定到实例，
+    # 审批参与者才能下载。
     file_service.bind_instance_attachments(
         db,
         instance,
         form_schema,
         {**(instance.current_data or {}), **dict(data)},
+        extra_ids=list(attachment_ids),
     )
 
     engine = engine_for(db)
