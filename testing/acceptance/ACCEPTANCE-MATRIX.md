@@ -12,8 +12,8 @@
 | P0 场景 | 44 |
 | P1 场景 | 4 |
 | 已设计用例 | 132 条 + 38 项非功能检查 |
-| 已自动化 | 45 条（G1 API R1–R7） |
-| 最近一次执行通过率 | 45/45（100%） |
+| 已自动化 | 49 条（G1 API R1–R8） |
+| 最近一次执行通过率 | 49/49（100%） |
 | 未关闭 S1 / S2 | 0 / 0（BUG-API-001..009 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
@@ -111,7 +111,7 @@
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1；D-05 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | `testing/api/test_search.py` | PARTIAL | R9: text contains/eq、number between/gte、AND、mine/all 权限 PASS；日期/人员/多选/编号语义待执行 | — |
+| SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1；D-05 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | `testing/api/test_search_operators.py` | PARTIAL | R10: 文本/数字/日期/布尔/选项/多选/人员/部门/空值、AND、mine/all 权限 PASS；编号语义待执行 | — |
 | SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | `testing/api/test_search.py` | PARTIAL | R9: 配置+提交后索引可检索 PASS；重建脚本/配置删除/跨版本待执行 | — |
 | ARCHIVE-01 | P0 | PRD F8.1；M6；D-05 | 归档只含已通过；CSV 列完整（含动态字段）、中文不乱码；非管理员不可导出 | API+E2E | `testing/api/test_archive.py` | PARTIAL | R5: 仅 APPROVED、批量/单实例导出、BOM/转义 PASS；列序/动态字段待执行 | BUG-API-003/004/005（已修） |
 | DASH-01 | P0 | PHASE3 M11 §1；D-02 | 普通用户/设计者个人工作台；管理员额外概览；空状态不报错 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R3: 设计者 admin=null PASS；其余角色/口径待执行 | BUG-API-002（已修） |
@@ -120,7 +120,7 @@
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| CONC-01 | P0 | PRD §7 一致性 | 会签同时操作、撤回/同意、终止/同意、转办/自动派单并发时结果可解释 | API | `testing/api/test_concurrency.py` | PARTIAL | R8: 并发会签同时同意 PASS；撤回/终止/或签并发待执行 | — |
+| CONC-01 | P0 | PRD §7 一致性 | 会签同时操作、撤回/同意、终止/同意、转办/自动派单并发时结果可解释 | API | `testing/api/test_concurrency.py` | PARTIAL | R10: 并发会签、撤回-同意、终止-同意、或签同时操作 PASS；转办/自动派单并发待执行 | — |
 | ENV-01 | P0 | PRD §7 部署；README Docker | Docker MySQL 8 / PostgreSQL 16 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-02 | P0 | PRD §7；TECH §3.1 | 空库迁移、上一版本升级迁移成功；SQLite/MySQL/PG 核心链路一致 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-03 | P0 | TECH §9 时间统一；PRD §7 | UTC 存储与 Asia/Shanghai 展示边界；首页今日/本周/本月跨日正确 | API+手工 | 待建 | DESIGNED | — | — |
@@ -165,6 +165,7 @@
 | R7 | 2026-11-19 | P0 G1 API 第五批（快照/快照对照 hidden 裁剪） | Claude | 38/38（BUG-API-008 已修） | `testing/reports/2026-11-19-p0-api-r5.md` |
 | R8 | 2026-11-19 | P0 G1 API 第六批（附件权限/并发会签） | Claude | 42/42（BUG-API-009 已修） | `testing/reports/2026-11-19-p0-api-r6.md` |
 | R9 | 2026-11-19 | P0 G1 API 第七批（SEARCH 业务字段筛选） | Claude | 45/45（无新缺陷） | `testing/reports/2026-11-19-p0-api-r7.md` |
+| R10 | 2026-11-19 | P0 G1 API 第八批（SEARCH 其余操作符/并发竞态） | Claude | 49/49（无新缺陷） | `testing/reports/2026-11-19-p0-api-r8.md` |
 
 ## 13. 变更记录
 
@@ -182,3 +183,4 @@
 | 2026-11-19 | G1 API R5：38/38；修复 BUG-API-008（运行中快照/对照泄露 hidden 字段） |
 | 2026-11-19 | G1 API R6：42/42；修复 BUG-API-009（提交携带附件未绑定实例）；并发会签通过 |
 | 2026-11-19 | G1 API R7：45/45；SEARCH 文本/数字/AND/权限与错误分支通过；无新缺陷 |
+| 2026-11-19 | G1 API R8：49/49；SEARCH 其余操作符、撤回/终止/或签并发竞态通过；无新缺陷 |

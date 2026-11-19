@@ -369,6 +369,72 @@ def simple_form_schema(*, title_field: str = "reason") -> dict[str, Any]:
     }
 
 
+def search_form_schema() -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "layout": {"label_position": "top", "columns": 1},
+        "title_field": "reason",
+        "rules": [],
+        "sections": [
+            {
+                "key": "sec_apply",
+                "title": "申请",
+                "stage": "apply",
+                "sort": 0,
+                "fields": [
+                    {"key": "reason", "label": "事由", "type": "text", "sort": 0,
+                     "required": True, "visible_at_start": True},
+                    {"key": "amount", "label": "金额", "type": "number", "sort": 1,
+                     "required": False, "visible_at_start": True},
+                    {"key": "leaveDate", "label": "日期", "type": "date", "sort": 2,
+                     "required": False, "visible_at_start": True},
+                    {"key": "urgent", "label": "紧急", "type": "switch", "sort": 3,
+                     "required": False, "visible_at_start": True},
+                    {"key": "category", "label": "类别", "type": "select", "sort": 4,
+                     "required": False, "visible_at_start": True,
+                     "options": [
+                         {"label": "差旅", "value": "travel"},
+                         {"label": "办公", "value": "office"},
+                     ]},
+                    {"key": "tags", "label": "标签", "type": "checkbox", "sort": 5,
+                     "required": False, "visible_at_start": True,
+                     "options": [
+                         {"label": "紧急", "value": "urgent"},
+                         {"label": "普通", "value": "normal"},
+                     ]},
+                    {"key": "owner", "label": "负责人", "type": "user", "sort": 6,
+                     "required": False, "visible_at_start": True},
+                    {"key": "dept", "label": "部门", "type": "dept", "sort": 7,
+                     "required": False, "visible_at_start": True},
+                ],
+            }
+        ],
+    }
+
+
+def search_data(
+    *,
+    reason: str,
+    amount: float,
+    leave_date: str,
+    urgent: bool,
+    category: str,
+    tags: list[str],
+    owner: int,
+    dept: int,
+) -> dict[str, Any]:
+    return {
+        "reason": reason,
+        "amount": amount,
+        "leaveDate": leave_date,
+        "urgent": urgent,
+        "category": category,
+        "tags": tags,
+        "owner": owner,
+        "dept": dept,
+    }
+
+
 def hidden_form_schema() -> dict[str, Any]:
     schema = simple_form_schema()
     schema["sections"][0]["fields"].append(
