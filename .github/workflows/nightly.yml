@@ -1,0 +1,95 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 北京时间次日 02:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            testing/e2e/package-lock.json
+      - name: 安装依赖
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+          npm ci --prefix frontend
+          npm ci --prefix testing/e2e
+          npx --prefix testing/e2e playwright install --with-deps chromium
+      - name: 全量浏览器旅程
+        run: E2E_BROWSER_CHANNEL=bundled bash scripts/e2e.sh
+      - name: 上传失败现场
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-playwright-report
+          path: |
+            testing/.runtime/playwright-report
+            testing/.runtime/test-results
+          retention-days: 7
+
+  db-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [mysql, postgres]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: flowform
+          MYSQL_USER: flowform
+          MYSQL_PASSWORD: flowform
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: flowform
+          POSTGRES_USER: flowform
+          POSTGRES_PASSWORD: flowform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U flowform"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: 安装后端依赖
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+      - name: 核心链路与并发（${{ matrix.db }}）
+        env:
+          E2E_DATABASE_URL: ${{ matrix.db == 'mysql' && 'mysql+pymysql://flowform:flowform@127.0.0.1:3306/flowform?charset=utf8mb4' || 'postgresql+psycopg://flowform:flowform@127.0.0.1:5432/flowform' }}
+        run: bash scripts/api.sh testing/api/test_concurrency.py testing/api/test_custom_flows.py

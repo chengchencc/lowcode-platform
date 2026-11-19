@@ -12,7 +12,8 @@ export E2E_API_URL="${E2E_API_URL:-http://127.0.0.1:$E2E_BACKEND_PORT/api/v1}"
 
 export DEBUG=false
 export SQL_ECHO=false
-export DATABASE_URL="sqlite:///../testing/.runtime/e2e/e2e.db"
+# 默认 SQLite；CI/nightly 可通过 E2E_DATABASE_URL 覆盖为 MySQL/PG。
+export DATABASE_URL="${E2E_DATABASE_URL:-sqlite:///../testing/.runtime/e2e/e2e.db}"
 export STORAGE_ROOT="../testing/.runtime/e2e/storage"
 export APP_TIMEZONE="Asia/Shanghai"
 
