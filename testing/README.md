@@ -16,8 +16,6 @@
 | `plan/TEST-PLAN.md` | 总体测试战略、四道闸门、退出标准 |
 | `plan/TESTING-GUIDE.md` | 新增/修改/回归测试的操作手册 |
 | `plan/TEST-WORKFLOW.md` | 新特性测试流程、按改动选测试、运行节奏 |
-| `plan/FOLLOW-UPS.md` | 后续欠账清单（环境/自动化/P1/托管） |
-| `plan/CI-PLAN.md` | GitHub Actions 流水线规划 |
 | `acceptance/ACCEPTANCE-MATRIX.md` | 需求→用例→结果，唯一验收口径 |
 | `acceptance/P0-DECISIONS.md` | 已确认决策、实现默认、文档冲突 |
 | `acceptance/P0-CASES-*.md` | 三份 P0 用例草案（132 条 + 38 项检查） |
@@ -29,6 +27,8 @@
 | `e2e/` | Playwright 工程（真实浏览器多角色旅程） |
 | `scripts/` | Spec Pack 构建、API/E2E 启动与重置 |
 | `.runtime/` | 生成物（gitignore）：Spec Pack、E2E 库、报告 |
+
+> 剩余验证事项、GitHub 迁移与 CI 规划见 [../docs/PROJECT-PLAN.md](../docs/PROJECT-PLAN.md)。
 
 ## 快速开始
 

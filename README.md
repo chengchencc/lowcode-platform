@@ -18,9 +18,12 @@
 > - **二期设计**：`docs/PHASE2-DESIGN.md`（范围、里程碑、M7–M10 技术边界）
 > - **三期设计**：`docs/PHASE3-DESIGN.md`（首页、工作量统计、台账检索、转办委托、AI）
 > - **引擎代码说明**：`docs/ENGINE.md`（模块地图、一次事件的调用链、改一处跑哪个测试）
+> - **AI 开发指南**：`CLAUDE.md`（常用命令、新特性测试流程、工作规则）
 > - **测试总入口**：`testing/README.md`（验收测试资产都在这里）
 > - **测试编写指南**：`testing/plan/TESTING-GUIDE.md`（新增/修改测试、E2E、回归闭环）
+> - **测试工作流**：`testing/plan/TEST-WORKFLOW.md`（按改动选测试、运行节奏与耗时）
 > - **验收矩阵**：`testing/acceptance/ACCEPTANCE-MATRIX.md`（需求 → 用例 → 结果）
+> - **工程后续计划**：`docs/PROJECT-PLAN.md`（剩余验证、GitHub 迁移与 Actions）
 > - **演示脚本**：`docs/DEMO.md`（10 分钟走完请假与报销两条链路）
 > - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
 >   —— 面向熟悉 Spring Boot / .NET Core 的工程师，用 IoC / JPA / Flyway 等已有概念
