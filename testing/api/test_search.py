@@ -159,6 +159,51 @@ def test_search_filter_errors_and_scope(
     assert bad_scope.status_code in (400, 403, 422), bad_scope.text
 
 
+def test_rebuild_and_remove_search_fields(
+    admin_client: ApiClient,
+    zhangsan_client: ApiClient,
+    seed: dict[str, Any],
+) -> None:
+    form = create_form_and_publish(admin_client, name="E2E 检索重建表单")
+    _configure_search_fields(admin_client, form["id"], ["reason", "amount"])
+    flow = create_flow_and_publish(
+        admin_client,
+        form_template_id=form["id"],
+        name="E2E 检索重建流程",
+        definition=sequential_definition(
+            [("a1", "审批", seed["users"]["lisi"]["id"])]
+        ),
+    )
+    instance_id = _create_instance(zhangsan_client, flow["id"], reason="rebuild", amount=10)
+
+    rebuilt = admin_client.post(f"form-templates/{form['id']}/search-fields/rebuild")
+    assert rebuilt.status_code == 200, rebuilt.text
+    assert rebuilt.json()["processed"] >= 1
+
+    still = admin_client.get(
+        "instances",
+        params={
+            "scope": "all",
+            "flow_template_id": flow["id"],
+            "filters": json.dumps([{"field": "reason", "op": "eq", "value": "rebuild"}]),
+        },
+    )
+    assert still.status_code == 200, still.text
+    assert instance_id in {item["id"] for item in still.json()["items"]}
+
+    removed = _configure_search_fields(admin_client, form["id"], [])
+    assert removed.status_code == 200, removed.text
+    invalid = admin_client.get(
+        "instances",
+        params={
+            "scope": "all",
+            "flow_template_id": flow["id"],
+            "filters": json.dumps([{"field": "reason", "op": "eq", "value": "rebuild"}]),
+        },
+    )
+    assert invalid.status_code == 422, invalid.text
+
+
 def test_search_field_metadata(zhangsan_client: ApiClient, admin_client: ApiClient, seed: dict[str, Any]) -> None:
     form = create_form_and_publish(admin_client, name="E2E 检索元数据表单")
     _configure_search_fields(admin_client, form["id"], ["reason", "amount"])

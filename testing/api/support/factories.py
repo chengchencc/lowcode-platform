@@ -110,6 +110,7 @@ def submit(
     *,
     note: str = "",
     attachment_ids: list[int] | None = None,
+    assignee_picks: dict[str, list[int]] | None = None,
     request_id: str | None = None,
 ) -> Any:
     headers = {"X-Request-Id": request_id} if request_id else None
@@ -119,7 +120,7 @@ def submit(
             "data": data,
             "note": note,
             "attachment_ids": attachment_ids or [],
-            "assignee_picks": {},
+            "assignee_picks": assignee_picks or {},
         },
         headers=headers,
     )
@@ -367,6 +368,113 @@ def simple_form_schema(*, title_field: str = "reason") -> dict[str, Any]:
                 ],
             }
         ],
+    }
+
+
+def full_form_schema() -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "layout": {"label_position": "top", "columns": 3},
+        "title_field": "title_text",
+        "rules": [],
+        "sections": [
+            {
+                "key": "sec_apply",
+                "title": "全部控件",
+                "stage": "apply",
+                "sort": 0,
+                "columns": 2,
+                "collapsible": True,
+                "fields": [
+                    {"key": "title_text", "label": "标题文本", "type": "text", "sort": 0,
+                     "required": True, "visible_at_start": True},
+                    {"key": "long_text", "label": "多行文本", "type": "textarea", "sort": 1,
+                     "required": False, "visible_at_start": True},
+                    {"key": "qty", "label": "数量", "type": "number", "sort": 2,
+                     "required": False, "visible_at_start": True},
+                    {"key": "double", "label": "两倍", "type": "formula", "sort": 3,
+                     "visible_at_start": True,
+                     "formula": {"type": "arithmetic", "expression": "qty * 2"}},
+                    {"key": "radio_pick", "label": "单选", "type": "radio", "sort": 4,
+                     "visible_at_start": True,
+                     "options": [{"label": "A", "value": "a"}, {"label": "B", "value": "b"}]},
+                    {"key": "checks", "label": "多选", "type": "checkbox", "sort": 5,
+                     "visible_at_start": True,
+                     "options": [{"label": "X", "value": "x"}, {"label": "Y", "value": "y"}]},
+                    {"key": "category", "label": "类别", "type": "select", "sort": 6,
+                     "visible_at_start": True,
+                     "options": [{"label": "差旅", "value": "travel"},
+                                 {"label": "办公", "value": "office"}]},
+                    {"key": "sub_category", "label": "明细类别", "type": "cascader", "sort": 7,
+                     "visible_at_start": True,
+                     "cascader": {"parent_field": "category",
+                                  "options_by_parent": {
+                                      "travel": [{"label": "机票", "value": "flight"}],
+                                      "office": [{"label": "文具", "value": "supply"}],
+                                  }}},
+                    {"key": "day", "label": "日期", "type": "date", "sort": 8,
+                     "visible_at_start": True},
+                    {"key": "clock", "label": "时间", "type": "time", "sort": 9,
+                     "visible_at_start": True},
+                    {"key": "moment", "label": "日期时间", "type": "datetime", "sort": 10,
+                     "visible_at_start": True},
+                    {"key": "urgent", "label": "紧急", "type": "switch", "sort": 11,
+                     "visible_at_start": True},
+                    {"key": "owner", "label": "负责人", "type": "user", "sort": 12,
+                     "visible_at_start": True},
+                    {"key": "reviewers", "label": "复核人", "type": "user_multi", "sort": 13,
+                     "visible_at_start": True},
+                    {"key": "dept", "label": "部门", "type": "dept", "sort": 14,
+                     "visible_at_start": True},
+                    {"key": "depts", "label": "协作部门", "type": "dept_multi", "sort": 15,
+                     "visible_at_start": True},
+                    {"key": "files", "label": "附件", "type": "attachment", "sort": 16,
+                     "visible_at_start": True},
+                    {"key": "pictures", "label": "图片", "type": "image", "sort": 17,
+                     "visible_at_start": True},
+                    {"key": "items", "label": "明细", "type": "subtable", "sort": 18,
+                     "visible_at_start": True,
+                     "columns": [
+                         {"key": "name", "label": "项目", "type": "text", "sort": 0,
+                          "required": True},
+                         {"key": "amount", "label": "小计", "type": "number", "sort": 1},
+                     ]},
+                    {"key": "intro", "label": "说明", "type": "rich_text", "sort": 19,
+                     "display": {"markdown": "**请如实填写**"}},
+                    {"key": "head", "label": "标题", "type": "heading", "sort": 20,
+                     "display": {"text": "申请信息", "level": 1}},
+                    {"key": "para", "label": "段落", "type": "paragraph", "sort": 21,
+                     "display": {"text": "请逐项填写"}},
+                    {"key": "line", "label": "分割线", "type": "divider", "sort": 22,
+                     "display": {}},
+                    {"key": "banner", "label": "横幅", "type": "image_view", "sort": 23,
+                     "display": {"url": "https://example.com/banner.png", "alt": "banner"}},
+                ],
+            }
+        ],
+    }
+
+
+def full_data(*, owner: int, reviewer: int, dept: int, other_dept: int) -> dict[str, Any]:
+    return {
+        "title_text": "全控件表单",
+        "long_text": "多行\n文本",
+        "qty": 10,
+        "radio_pick": "a",
+        "checks": ["x", "y"],
+        "category": "travel",
+        "sub_category": "flight",
+        "day": "2026-11-20",
+        "clock": "10:30",
+        "moment": "2026-11-20T10:30:00",
+        "urgent": True,
+        "owner": owner,
+        "reviewers": [owner, reviewer],
+        "dept": dept,
+        "depts": [dept, other_dept],
+        "files": [],
+        "pictures": [],
+        "items": [{"name": "项目一", "amount": 3}],
     }
 
 
