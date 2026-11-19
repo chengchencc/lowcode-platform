@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.constants import AssignmentStatus, InstanceStatus, TaskType
-from app.core.policy import is_designer
+from app.core.policy import is_admin
 from app.models import FlowInstance, FlowTemplate, Task, TaskAssignment, User
 from app.services import instance_service, task_service
 
@@ -100,7 +100,7 @@ def overview(db: Session, user: User, *, now: datetime | None = None) -> dict:
     ]
 
     admin = None
-    if is_designer(user):
+    if is_admin(user):
         running = db.scalar(
             select(func.count(FlowInstance.id)).where(
                 FlowInstance.status == InstanceStatus.RUNNING

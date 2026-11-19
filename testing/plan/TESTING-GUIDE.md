@@ -75,6 +75,16 @@ bash scripts/e2e.sh --no-reset       # 保留 testing/.runtime/e2e 数据
 bash scripts/e2e.sh --no-server      # 复用已启动的 8000/5173
 ```
 
+### API 黑盒
+
+```bash
+bash scripts/api.sh                  # 重置独立库 → 起后端 → pytest
+bash scripts/api.sh -k hidden        # 只跑匹配用例
+bash scripts/api.sh --no-reset       # 保留 testing/.runtime/e2e 数据
+```
+
+API 黑盒位于 `testing/api/`，只走 HTTP，不 import 业务实现；运行说明见 [../api/README.md](../api/README.md)。
+
 ---
 
 ## 5. 修一个 bug

@@ -19,17 +19,15 @@
 | `TEMPLATE.md` | 单条用例模板 |
 | `SPEC-PACK.md` | Spec Pack 的构建方法、独立设计 Prompt、评审流程 |
 | `TEST-DATA.md` | 测试角色、组织、种子数据、数据重置 |
-| `01-auth-org.md` | AUTH / ORG |
-| `02-form.md` | FORM |
-| `03-flow.md` | FLOW |
-| `04-permission.md` | PERM / SEC |
-| `05-initiate-task.md` | INIT / TASK |
-| `06-exception.md` | REJECT / RETURN / WITHDRAW / TERMINATE / CC / EXT / NOTIFY |
-| `07-search-archive.md` | SEARCH / ARCHIVE / DASH |
-| `08-nonfunctional.md` | CONC / ENV / PERF / UAT |
-| `09-p1.md` | SHEET / AI / PRINT / MOBILE（P1） |
+| `ACCEPTANCE-MATRIX.md` | 需求→用例→结果，唯一验收口径 |
+| `P0-DECISIONS.md` | 已确认决策、实现默认、文档冲突 |
+| `P0-CASES-01-DESIGN-PERM.md` | AUTH / ORG / FORM / FLOW / PERM（40 条） |
+| `P0-CASES-02-EXECUTION-EXCEPTION.md` | INIT / TASK / 驳回退回撤回终止 / CC / EXT / NOTIFY（49 条） |
+| `P0-CASES-03-SEARCH-SEC-NFR.md` | SEARCH / ARCHIVE / DASH / SEC / CONC + ENV/PERF/UAT（43 条 + 38 检查） |
 
-用例文件按需创建；没有设计的场景先在 `ACCEPTANCE-MATRIX.md` 里保持 `TODO`。
+P1（SHEET / AI / PRINT / MOBILE）用例尚未设计，先在矩阵中保持 `TODO`。
+
+用例文件按场景域拆分；新增用例时同步更新 `ACCEPTANCE-MATRIX.md` 的状态和计数。
 
 ## 用例 ID
 

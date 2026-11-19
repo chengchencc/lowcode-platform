@@ -16,17 +16,24 @@
 | `plan/TEST-PLAN.md` | 总体测试战略、四道闸门、退出标准 |
 | `plan/TESTING-GUIDE.md` | 新增/修改/回归测试的操作手册 |
 | `acceptance/ACCEPTANCE-MATRIX.md` | 需求→用例→结果，唯一验收口径 |
+| `acceptance/P0-DECISIONS.md` | 已确认决策、实现默认、文档冲突 |
+| `acceptance/P0-CASES-*.md` | 三份 P0 用例草案（132 条 + 38 项检查） |
 | `acceptance/README.md` | G1 用例规则与状态流转 |
 | `acceptance/SPEC-PACK.md` | 独立用例设计（Spec Pack）流程 |
 | `acceptance/TEMPLATE.md` | 单条用例模板 |
 | `acceptance/TEST-DATA.md` | 测试账号、组织、种子数据 |
+| `api/` | G1 API 黑盒验收（pytest + HTTP，不 import 业务实现） |
 | `e2e/` | Playwright 工程（真实浏览器多角色旅程） |
-| `scripts/` | Spec Pack 构建、E2E 启动/重置 |
+| `scripts/` | Spec Pack 构建、API/E2E 启动与重置 |
 | `.runtime/` | 生成物（gitignore）：Spec Pack、E2E 库、报告 |
 
 ## 快速开始
 
 ```bash
+# G1 API 黑盒（重置独立库 → 起后端 → pytest）
+bash scripts/api.sh
+bash scripts/api.sh -k hidden
+
 # 带界面跑 P0 冒烟（会打开 Edge）
 bash scripts/e2e.sh @p0 --headed
 
@@ -48,5 +55,7 @@ bash scripts/check.sh
 ## 当前状态
 
 - Phase 0 骨架完成；R0 工程冒烟 6/6。
-- 验收矩阵 44 个 P0 + 4 个 P1 场景，用例设计进行中。
-- 详见 [plan/TEST-PLAN.md](plan/TEST-PLAN.md) 与 [acceptance/ACCEPTANCE-MATRIX.md](acceptance/ACCEPTANCE-MATRIX.md)。
+- P0 用例设计完成：132 条 + 38 项非功能检查，覆盖 44 个 P0 场景；D-01–D-05 已确认并回写文档。
+- G1 API 黑盒已执行 34 条（全绿），累计修复 7 个缺陷（含 1 个 S1 转办卡死）。
+- 继续补 ORG-02、TASK 或签/并行退回、PERM 快照/打印/附件、SEARCH，之后再补 Playwright 旅程。
+- 详见 [plan/TEST-PLAN.md](plan/TEST-PLAN.md)、[acceptance/P0-DECISIONS.md](acceptance/P0-DECISIONS.md) 与 [acceptance/ACCEPTANCE-MATRIX.md](acceptance/ACCEPTANCE-MATRIX.md)。

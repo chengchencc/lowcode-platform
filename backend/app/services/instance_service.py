@@ -40,7 +40,7 @@ from app.models import (
     User,
 )
 from app.schemas.form_schema import FormSchema, parse_form_schema
-from app.services import file_service, flow_service, form_service
+from app.services import file_service, flow_service, form_service, view_filter
 from app.services.approver_provider import DbApproverProvider
 
 
@@ -124,7 +124,13 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
     # 默认值只带入、不锁定：发起人仍可改
     defaults = default_values(form_schema, user_id=user.id, dept_id=user.dept_id)
     permissions = apply_form_rules(base_permissions, form_schema, {})
+    permission_map = {k: v.to_dict() for k, v in permissions.items()}
+    base_map = {k: v.to_dict() for k, v in base_permissions.items()}
+    form_rules = [
+        rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
+    ]
 
+    # D-04：运行中只下发可见字段的 schema/权限/值；终态归档由调用方另行处理。
     return {
         "flow_template_id": template.id,
         "flow_template_name": template.name,
@@ -136,16 +142,14 @@ def start_options(db: Session, template: FlowTemplate, user: User) -> dict[str, 
         "form_latest_version_no": (
             latest_form_version.version_no if latest_form_version else None
         ),
-        "schema_data": form_version.schema,
-        "permissions": {k: v.to_dict() for k, v in permissions.items()},
-        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
-        "form_rules": [
-            rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
-        ],
+        "schema_data": view_filter.filter_schema(form_version.schema, permission_map),
+        "permissions": view_filter.filter_permissions(permission_map),
+        "base_permissions": view_filter.filter_permissions(base_map),
+        "form_rules": view_filter.filter_rules(form_rules, permission_map),
         # 发起时的系统自动填充值：前端据此预填表单
-        "auto_fill_values": filled,
+        "auto_fill_values": view_filter.filter_values(filled, permission_map),
         # 可修改的默认值（发起人仍可改）
-        "default_values": defaults,
+        "default_values": view_filter.filter_values(defaults, permission_map),
         # 需要发起人指定审批人的节点（F3.5）
         "initiator_select_nodes": _initiator_select_nodes(db, compiled, current),
         "nodes": _progress_nodes(compiled),
@@ -499,7 +503,11 @@ def can_view(db: Session, instance: FlowInstance, user: User) -> bool:
         select(TaskAssignment.id)
         .where(
             TaskAssignment.instance_id == instance.id,
-            TaskAssignment.user_id == user.id,
+            or_(
+                TaskAssignment.user_id == user.id,
+                # 转办/委托的原处理人仍保留查看权（PHASE3 M14 §4.4）
+                TaskAssignment.origin_user_id == user.id,
+            ),
         )
         .limit(1)
     )

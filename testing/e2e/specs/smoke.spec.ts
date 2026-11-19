@@ -19,10 +19,11 @@ test.describe('@p0 冒烟与角色可见性', () => {
     await page.getByRole('button', { name: /登\s*录/ }).click()
 
     await expect(page).toHaveURL(/\/dashboard/)
-    await expect(page.getByText('发起中心')).toBeVisible()
-    await expect(page.getByText('审批管理')).toBeVisible()
-    await expect(page.getByText('组织管理')).toBeVisible()
-    await expect(page.getByText('操作审计')).toBeVisible()
+    const menu = page.getByRole('menu')
+    await expect(menu.getByText('发起中心')).toBeVisible()
+    await expect(menu.getByText('审批管理')).toBeVisible()
+    await expect(menu.getByText('组织管理')).toBeVisible()
+    await expect(menu.getByText('操作审计')).toBeVisible()
   })
 
   test('@p0 错误密码在登录页就地提示', async ({ page }) => {
@@ -40,9 +41,10 @@ test.describe('@p0 冒烟与角色可见性', () => {
     const { context, page } = await openAs(browser, 'zhangsan')
     try {
       await page.goto('/dashboard')
-      await expect(page.getByText('发起中心')).toBeVisible()
-      await expect(page.getByText('审批管理')).toHaveCount(0)
-      await expect(page.getByText('组织管理')).toHaveCount(0)
+      const menu = page.getByRole('menu')
+      await expect(menu.getByText('发起中心')).toBeVisible()
+      await expect(menu.getByText('审批管理')).toHaveCount(0)
+      await expect(menu.getByText('组织管理')).toHaveCount(0)
     } finally {
       await context.close()
     }
@@ -52,11 +54,12 @@ test.describe('@p0 冒烟与角色可见性', () => {
     const { context, page } = await openAs(browser, 'zhaoliu')
     try {
       await page.goto('/dashboard')
-      await expect(page.getByText('审批管理')).toBeVisible()
-      await expect(page.getByText('表单模板')).toBeVisible()
-      await expect(page.getByText('流程模板')).toBeVisible()
-      await expect(page.getByText('实例管理')).toHaveCount(0)
-      await expect(page.getByText('组织管理')).toHaveCount(0)
+      const menu = page.getByRole('menu')
+      await expect(menu.getByText('审批管理')).toBeVisible()
+      await expect(menu.getByText('表单模板')).toBeVisible()
+      await expect(menu.getByText('流程模板')).toBeVisible()
+      await expect(menu.getByText('实例管理')).toHaveCount(0)
+      await expect(menu.getByText('组织管理')).toHaveCount(0)
     } finally {
       await context.close()
     }

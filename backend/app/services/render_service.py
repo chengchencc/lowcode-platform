@@ -48,7 +48,7 @@ from app.models import (
     TaskAssignment,
     User,
 )
-from app.services import instance_service, snapshot_service, timeline_service
+from app.services import instance_service, snapshot_service, timeline_service, view_filter
 
 
 def render_instance(
@@ -123,7 +123,12 @@ def render_instance(
 
     # ---- 我在这张单上的角色 ----
     my_role = _viewer_role(db, instance, viewer, assignment)
+    permission_map = {k: v.to_dict() for k, v in permissions.items()}
+    base_map = {k: v.to_dict() for k, v in base_permissions.items()}
+    schema_data = form_schema.model_dump(mode="json")
 
+    # D-04：运行中无权限视角只下发可见字段的 schema/权限/值；终态归档时
+    # permissions 已是全量 visible，过滤后自然保留全部。
     return {
         "instance": instance_service.to_out(db, instance, viewer=viewer),
         "my_role": my_role,
@@ -142,11 +147,11 @@ def render_instance(
             else None
         ),
         # 渲染用的 schema 是「模板 ⊕ 动态字段」的那一份 —— 前端照它渲染即可
-        "schema_data": form_schema.model_dump(mode="json"),
-        "values": values,
-        "permissions": {k: v.to_dict() for k, v in permissions.items()},
-        "base_permissions": {k: v.to_dict() for k, v in base_permissions.items()},
-        "form_rules": form_rules,
+        "schema_data": view_filter.filter_schema(schema_data, permission_map),
+        "values": view_filter.filter_values(values, permission_map),
+        "permissions": view_filter.filter_permissions(permission_map),
+        "base_permissions": view_filter.filter_permissions(base_map),
+        "form_rules": view_filter.filter_rules(form_rules, permission_map),
         "progress": build_progress(db, instance, compiled),
         "actions": timeline_service.list_actions(db, instance),
         "allowed_actions": allowed_actions,

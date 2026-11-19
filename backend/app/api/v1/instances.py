@@ -294,7 +294,7 @@ def list_archive(
     user: CurrentUser,
     paging: Annotated[PageParams, Depends()],
     instance_status: Annotated[
-        str | None, Query(alias="status", description="默认 APPROVED；可传多个逗号分隔")
+        str | None, Query(alias="status", description="归档仅支持 APPROVED")
     ] = None,
     flow_template_id: Annotated[int | None, Query()] = None,
     initiator_id: Annotated[int | None, Query()] = None,
@@ -374,12 +374,14 @@ def export_instance(instance_id: int, db: DbSession, user: CurrentUser) -> Respo
     """发起人/处理人/管理员都能导出**自己看得见**的单据。
 
     导出等于把整张单据的数据一次性拿走，可见性校验不能省 ——
-    它和详情页用的是同一条规则（PRD §2）。
+    它和详情页用的是同一条规则（PRD §2）。单实例导出复用 render 的
+    查看者视角：运行中只导出可见字段，终态导出归档全量（D-04）。
     """
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
+    rendered = render_service.render_instance(db, instance, viewer=user)
     return _csv_response(
-        export_service.build_csv(db, [instance]),
+        export_service.build_csv_from_render(rendered),
         export_service.csv_filename(f"flowform-{instance.code or instance.id}"),
     )
 
@@ -388,6 +390,13 @@ def _status_list(raw: str | None) -> list[str] | None:
     if not raw:
         return None
     values = [v.strip().upper() for v in raw.split(",") if v.strip()]
+    invalid = [value for value in values if value != "APPROVED"]
+    if invalid:
+        raise UnprocessableError(
+            "归档列表只支持 APPROVED",
+            code="ARCHIVE_STATUS_INVALID",
+            extra={"invalid": invalid},
+        )
     return values or None
 
 

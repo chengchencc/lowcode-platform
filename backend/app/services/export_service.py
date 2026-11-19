@@ -86,6 +86,38 @@ def _stamp(value: Any) -> str:
     return value.strftime("%Y-%m-%d %H:%M") if value else ""
 
 
+def _stamp_any(value: Any) -> str:
+    """InstanceOut 里时间是 ISO 字符串；归档查询里是 datetime。"""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return value.replace("T", " ")[:16]
+    return _stamp(value)
+
+
+def _safe_cell(value: Any) -> str:
+    """R3：阻止 CSV 公式注入（Excel 会把 = + - @ 开头的单元格当公式）。"""
+    text = "" if value is None else str(value)
+    if text.startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
+def _write_table(
+    rows: list[list[Any]],
+    columns: list[tuple[str, str]],
+) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        _safe_cell(label) for label in [label for _, label in META_COLUMNS] + [label for _, label in columns]
+    )
+    for row in rows:
+        writer.writerow(_safe_cell(value) for value in row)
+    # BOM：Excel 靠它认出 UTF-8，否则中文列名全是乱码
+    return "﻿" + buffer.getvalue()
+
+
 def build_csv(db: Session, instances: Sequence[FlowInstance]) -> str:
     """生成 CSV 文本（含 BOM）。`instances` 由调用方按权限过滤好。"""
     rows = _instance_rows(db, instances)
@@ -111,19 +143,55 @@ def build_csv(db: Session, instances: Sequence[FlowInstance]) -> str:
                     seen.add(ref)
                     columns.append((ref, f"{field.label} · {column.label}"))
 
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow([label for _, label in META_COLUMNS] + [label for _, label in columns])
-
+    table_rows: list[list[Any]] = []
     for row in rows:
         values = row["values"]
         line = [row[key] for key, _ in META_COLUMNS]
         for key, _ in columns:
             line.append(_cell(values, key))
-        writer.writerow(line)
+        table_rows.append(line)
+    return _write_table(table_rows, columns)
 
-    # BOM：Excel 靠它认出 UTF-8，否则中文列名全是乱码
-    return "﻿" + buffer.getvalue()
+
+def build_csv_from_render(render: dict[str, Any]) -> str:
+    """单实例导出：使用 render 已按查看者权限裁剪过的 schema/values（D-04）。
+
+    归档实例的 render 权限已是全量可见；运行中则只导出可见字段。
+    """
+    info = render.get("instance") or {}
+    schema = render.get("schema_data") or {}
+    values = render.get("values") or {}
+
+    columns: list[tuple[str, str]] = []
+    for section in schema.get("sections", []) or []:
+        for field in section.get("fields", []) or []:
+            field_type = field.get("type")
+            if field_type in DISPLAY_FIELD_TYPES:
+                continue
+            key = field.get("key")
+            label = field.get("label") or key
+            if not key:
+                continue
+            columns.append((key, label))
+            for column in field.get("columns") or []:
+                ref = f"{key}.{column.get('key')}"
+                columns.append((ref, f"{label} · {column.get('label') or column.get('key')}"))
+
+    from app.core.constants import INSTANCE_STATUS_LABELS
+
+    meta = [
+        info.get("code", ""),
+        info.get("title", ""),
+        info.get("flow_template_name", ""),
+        info.get("initiator_name", ""),
+        info.get("initiator_dept_name", ""),
+        INSTANCE_STATUS_LABELS.get(info.get("status"), info.get("status", "")),
+        info.get("round", ""),
+        _stamp_any(info.get("started_at")),
+        _stamp_any(info.get("finished_at")),
+    ]
+    line = [*meta, *(_cell(values, key) for key, _ in columns)]
+    return _write_table([line], columns)
 
 
 def _cell(values: dict[str, Any], ref: str) -> str:

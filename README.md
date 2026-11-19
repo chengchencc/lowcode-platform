@@ -201,6 +201,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
 | `scripts/docker-up.sh` | 一键起完整形态（MySQL 或 PostgreSQL + 后端 + nginx 前端） |
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
+| `scripts/api.sh` | G1 API 黑盒验收（真实实现 `testing/scripts/api.sh`） |
 | `scripts/e2e.sh` | 浏览器 E2E（真实实现 `testing/scripts/e2e.sh`） |
 | `scripts/build-spec-pack.sh` | 生成独立验收设计用 Spec Pack |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |

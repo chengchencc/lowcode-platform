@@ -232,7 +232,7 @@ key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
 
 由此自然满足 PRD：「取消被退回节点及后续全部令牌；已通过的更早节点不重走；字段数据保留（**不回滚 `current_data`**）」。
 
-> **需评审确认的取舍**：若退回目标位于并行组之前，该组会被**整组重派**（含此前已同意的成员）。这是 PRD 原文「取消后续全部令牌」的直接后果；替代方案（只重派未完成成员）会让组语义出现「半激活」状态，V1 不采用。
+> **已确认（D-03）**：并行组内任一成员退回，取消整个并行组及后续令牌（含此前已同意的成员），实例保持 RUNNING，在目标节点整组重派。替代方案（只重派未完成成员）会让组语义出现「半激活」状态，V1 不采用。
 
 ### 4.5 字段权限矩阵求值（PRD §3.4 机制 A/B）
 
@@ -249,6 +249,8 @@ key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
 | 查看者维度 | 非当前处理人且实例已终态 → 全部 `visible + readonly`（支撑「申请人全程看不到补充字段，通过后归档可见」） |
 
 返回值带 `reason` 字段（如 `"L1:partitions[sec_supplement]=hidden"`），供前端提示与设计器冲突高亮（F2.3）。
+
+**视图裁剪（D-04）**：`render` / 快照 / 导出 / 打印只下发查看者可见字段的 schema 与值；hidden 字段的 key、标签、值、附件元数据都不得出现。运行中按查看者当前权限；实例终态后按上表“查看者维度”给参与者/管理员归档视角（只读），无关人员仍不可见。
 
 **实例数据存储**（PRD §3.4 末尾实现提示的三元组）：
 
@@ -353,7 +355,8 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
 | `/start-center` `/start/:flowTemplateId` | — | — | M2/M4 |
 | `/workbench/:type(todo\|done\|mine\|cc)` | — | — | M4 |
 | `/instance/:id` | — | — | M4 ★核心页面 |
-| `/admin/forms[/:id/design]` `/admin/flows[/:id/design]` `/admin/instances` | — | `roles:['designer']` | M2/M3 |
+| `/admin/forms[/:id/design]` `/admin/flows[/:id/design]` | — | `roles:['designer']` | M2/M3 |
+| `/admin/instances` | instances | `adminOnly` | M4 |
 | `/messages` | — | — | M4 |
 
 M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导航结构与 PRD §5 保持一致。
@@ -364,7 +367,7 @@ M2–M4 的菜单项已在 `DefaultLayout.vue` 中以**禁用态占位**，导�
    **单一渲染树，三态由服务端下发的 `permissions` 驱动，禁止分叉实现**：
    `FormRenderer → SectionBlock（分区全 hidden 则整块不渲染）→ FieldWrapper（hidden 时 return null）→ FieldControl（按 type 查注册表）`；
    另有 `SubtableControl` / `AttachmentControl` / `OrgPickerControl` / `FormulaControl`。
-   被**发起页、实例详情、快照回放、设计器预览**四处复用。
+   被**发起页、实例详情、快照回放、设计器预览**四处复用。服务端只下发查看者可见的 schema；hidden 字段不进入渲染树（D-04）。
 
 2. **流程配置器** `components/flow-designer/`
    三栏：左节点清单树（顺序 + 条件分支嵌套 + 并行组子节点）、中属性面板

@@ -1709,9 +1709,15 @@ class EngineService:
 
     @staticmethod
     def _assignment_views(task: Task) -> list[AssignmentView]:
+        # 转办留下的原指派是 CANCELLED/TRANSFERRED，不参与节点聚合；
+        # 否则 SINGLE/ALL 会认为「还有人未完成」，节点永远 OPEN。
         return [
             AssignmentView(user_id=a.user_id, status=a.status, result=a.result, seq=a.seq)
             for a in task.assignments
+            if not (
+                a.status == AssignmentStatus.CANCELLED
+                and a.cancel_reason == CancelReason.TRANSFERRED
+            )
         ]
 
     @staticmethod

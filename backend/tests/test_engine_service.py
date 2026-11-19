@@ -1419,7 +1419,8 @@ class TestExtFields:
         row = self._append(engine, instance, manager)
 
         perms, data = _render_perms(db, instance, initiator)
-        assert perms[row.field_key]["visible"] is False
+        # D-04：不可见时连权限 key 都不下发
+        assert row.field_key not in perms
         # 结构里仍带着定义，管理员才能管理它
         assert data["ext_fields"][0]["field_key"] == row.field_key
 
