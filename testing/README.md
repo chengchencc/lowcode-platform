@@ -56,6 +56,6 @@ bash scripts/check.sh
 
 - Phase 0 骨架完成；R0 工程冒烟 6/6。
 - P0 用例设计完成：132 条 + 38 项非功能检查，覆盖 44 个 P0 场景；D-01–D-05 已确认并回写文档。
-- G1 API 黑盒已执行 42 条（全绿），累计修复 9 个缺陷（含 1 个 S1 转办卡死）；已覆盖 ORG-02、或签 any、并行退回 D-03、快照裁剪、附件权限、并发会签。
-- 继续补 SEARCH、CONC 其余并发、PERM 打印/hidden 附件，之后再补 Playwright 旅程。
+- G1 API 黑盒已执行 45 条（全绿），累计修复 9 个缺陷（含 1 个 S1 转办卡死）；已覆盖 ORG-02、或签 any、并行退回 D-03、快照裁剪、附件权限、并发会签、SEARCH。
+- 继续补 SEARCH 其余操作符、CONC 其余并发、PERM 打印/hidden 附件，之后再补 Playwright 旅程。
 - 详见 [plan/TEST-PLAN.md](plan/TEST-PLAN.md)、[acceptance/P0-DECISIONS.md](acceptance/P0-DECISIONS.md) 与 [acceptance/ACCEPTANCE-MATRIX.md](acceptance/ACCEPTANCE-MATRIX.md)。

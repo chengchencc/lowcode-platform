@@ -12,8 +12,8 @@
 | P0 场景 | 44 |
 | P1 场景 | 4 |
 | 已设计用例 | 132 条 + 38 项非功能检查 |
-| 已自动化 | 42 条（G1 API R1–R6） |
-| 最近一次执行通过率 | 42/42（100%） |
+| 已自动化 | 45 条（G1 API R1–R7） |
+| 最近一次执行通过率 | 45/45（100%） |
 | 未关闭 S1 / S2 | 0 / 0（BUG-API-001..009 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
@@ -111,8 +111,8 @@
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | 待建 | DESIGNED | — | — |
-| SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | 待建 | DESIGNED | — | — |
+| SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1；D-05 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | `testing/api/test_search.py` | PARTIAL | R9: text contains/eq、number between/gte、AND、mine/all 权限 PASS；日期/人员/多选/编号语义待执行 | — |
+| SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | `testing/api/test_search.py` | PARTIAL | R9: 配置+提交后索引可检索 PASS；重建脚本/配置删除/跨版本待执行 | — |
 | ARCHIVE-01 | P0 | PRD F8.1；M6；D-05 | 归档只含已通过；CSV 列完整（含动态字段）、中文不乱码；非管理员不可导出 | API+E2E | `testing/api/test_archive.py` | PARTIAL | R5: 仅 APPROVED、批量/单实例导出、BOM/转义 PASS；列序/动态字段待执行 | BUG-API-003/004/005（已修） |
 | DASH-01 | P0 | PHASE3 M11 §1；D-02 | 普通用户/设计者个人工作台；管理员额外概览；空状态不报错 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R3: 设计者 admin=null PASS；其余角色/口径待执行 | BUG-API-002（已修） |
 
@@ -164,6 +164,7 @@
 | R6 | 2026-11-19 | P0 G1 API 第四批（自建流程：ORG-02/或签/并行退回） | Claude | 37/37（无新缺陷） | `testing/reports/2026-11-19-p0-api-r4.md` |
 | R7 | 2026-11-19 | P0 G1 API 第五批（快照/快照对照 hidden 裁剪） | Claude | 38/38（BUG-API-008 已修） | `testing/reports/2026-11-19-p0-api-r5.md` |
 | R8 | 2026-11-19 | P0 G1 API 第六批（附件权限/并发会签） | Claude | 42/42（BUG-API-009 已修） | `testing/reports/2026-11-19-p0-api-r6.md` |
+| R9 | 2026-11-19 | P0 G1 API 第七批（SEARCH 业务字段筛选） | Claude | 45/45（无新缺陷） | `testing/reports/2026-11-19-p0-api-r7.md` |
 
 ## 13. 变更记录
 
@@ -180,3 +181,4 @@
 | 2026-11-19 | G1 API R4：37/37；自建流程覆盖 ORG-02、或签 any、并行退回 D-03；无新缺陷 |
 | 2026-11-19 | G1 API R5：38/38；修复 BUG-API-008（运行中快照/对照泄露 hidden 字段） |
 | 2026-11-19 | G1 API R6：42/42；修复 BUG-API-009（提交携带附件未绑定实例）；并发会签通过 |
+| 2026-11-19 | G1 API R7：45/45；SEARCH 文本/数字/AND/权限与错误分支通过；无新缺陷 |
