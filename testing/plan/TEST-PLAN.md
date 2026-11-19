@@ -139,12 +139,12 @@
 - 步骤：1... 2... 3...
 - 期望结果：可观察、可断言（页面文本、状态、API 响应、数据库副作用）
 - 验证层：API / 浏览器 E2E / 手工
-- 自动化位置：e2e/xxx.spec.ts（或"待自动化"）
+- 自动化位置：testing/e2e/xxx.spec.ts（或"待自动化"）
 ```
 
 ### 5.4 需求追踪矩阵
 
-维护 `docs/ACCEPTANCE-MATRIX.md`：
+维护 `testing/acceptance/ACCEPTANCE-MATRIX.md`：
 
 | 需求编号 | 验收点 | 用例 ID | 自动化 | 最近结果 | 关联缺陷 |
 |---|---|---|---|---|---|
@@ -271,7 +271,7 @@
 ### 7.2 建议目录与运行方式
 
 ```text
-e2e/
+testing/e2e/
 ├─ playwright.config.ts
 ├─ fixtures/
 │  ├─ auth.ts            # 各角色 storageState / API 登录
@@ -304,7 +304,7 @@ bash scripts/e2e.sh --ui         # 本地调试
 ### 7.3 环境与数据隔离
 
 - **独立测试库**：`E2E_DATABASE_URL` 指向单独的 SQLite 文件或 Compose 里的独立 MySQL/PG 库；绝不连开发库。
-- **独立附件目录**：`STORAGE_ROOT` 指向 `.e2e-storage`，跑完可整体删除。
+- **独立附件目录**：`STORAGE_ROOT` 指向 `testing/.runtime/e2e/storage`，跑完可整体删除。
 - **固定种子**：固定组织树、账号、表单、流程；所有 E2E 数据带运行前缀（如 `E2E-<runId>-`），避免并行冲突。
 - **重置策略**：测试套件启动时删库→迁移→种子；测试内用 API 工厂自建数据，不依赖执行顺序。
 - **账号密码只存在于 E2E 环境**：`SEED_DEMO_ACCOUNTS=true` 仅在隔离环境开启，禁止暴露到可访问网络。
@@ -530,7 +530,7 @@ CRUD 完整性、状态迁移、权限矩阵、空/满/异常数据、边界值�
 
 ### 12.3 重置
 
-- `scripts/e2e-reset.sh`：删测试库/附件目录 → 迁移 → 种子 → 输出账号表。
+- `testing/scripts/e2e-reset.sh`：删测试库/附件目录 → 迁移 → 种子 → 输出账号表。
 - 测试数据统一前缀 `E2E-<runId>-`；套件结束可选清理，失败时保留现场。
 - 禁止在开发库/生产库上跑 E2E。
 
@@ -544,7 +544,7 @@ CRUD 完整性、状态迁移、权限矩阵、空/满/异常数据、边界值�
 |---|---|---|---|
 | **P0 基线** | 第 1–2 天 | 冻结功能；建 Spec Pack；建验收矩阵骨架；准备独立 E2E 库与账号；跑一次现有套件留基线 | `ACCEPTANCE-MATRIX.md` 骨架、环境说明 |
 | **G1 独立验收** | 第 3–5 天 | Spec-only 设计 P0 用例；你确认期望结果；API 黑盒执行；差异三角定位 | P0 用例集、首轮缺陷清单 |
-| **G2 E2E 骨架** | 第 6–9 天 | Playwright 工程、种子/重置、多角色会话；先落 6 条核心旅程 | `e2e/` 可运行、首份 E2E 报告 |
+| **G2 E2E 骨架** | 第 6–9 天 | Playwright 工程、种子/重置、多角色会话；先落 6 条核心旅程 | `testing/e2e/` 可运行、首份 E2E 报告 |
 | **G4 探索与环境** | 第 10 天 | 一次 Bug Bash；Docker MySQL/PG 冒烟；并发/权限重点抽查 | 探索记录、环境问题清单 |
 | **回归与签收** | 第 11–12 天 | 修 S1/S2；补回归用例；全量回归；你的 UAT | 测试报告、签收结论 |
 
@@ -581,11 +581,11 @@ CRUD 完整性、状态迁移、权限矩阵、空/满/异常数据、边界值�
 
 交付物：
 
-- `docs/TEST-PLAN.md`（本文）
-- `docs/ACCEPTANCE-MATRIX.md`（需求→用例→结果）
-- `docs/acceptance/*.md`（按模块的 Given/When/Then 用例）
-- `e2e/` + `scripts/e2e.sh` + `scripts/e2e-reset.sh`
-- `docs/TEST-REPORT-YYYY-MM-DD.md`（每轮）
+- `testing/plan/TEST-PLAN.md`（本文）
+- `testing/acceptance/ACCEPTANCE-MATRIX.md`（需求→用例→结果）
+- `testing/acceptance/*.md`（按模块的 Given/When/Then 用例）
+- `testing/e2e/` + `scripts/e2e.sh`（兼容入口）+ `testing/scripts/e2e-reset.sh`
+- `testing/reports/TEST-REPORT-YYYY-MM-DD.md`（每轮）
 - 缺陷清单与回归用例映射
 
 ---

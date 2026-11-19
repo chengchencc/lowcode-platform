@@ -18,6 +18,9 @@
 > - **二期设计**：`docs/PHASE2-DESIGN.md`（范围、里程碑、M7–M10 技术边界）
 > - **三期设计**：`docs/PHASE3-DESIGN.md`（首页、工作量统计、台账检索、转办委托、AI）
 > - **引擎代码说明**：`docs/ENGINE.md`（模块地图、一次事件的调用链、改一处跑哪个测试）
+> - **测试总入口**：`testing/README.md`（验收测试资产都在这里）
+> - **测试编写指南**：`testing/plan/TESTING-GUIDE.md`（新增/修改测试、E2E、回归闭环）
+> - **验收矩阵**：`testing/acceptance/ACCEPTANCE-MATRIX.md`（需求 → 用例 → 结果）
 > - **演示脚本**：`docs/DEMO.md`（10 分钟走完请假与报销两条链路）
 > - **Python 技术栈入门**：`docs/PYTHON-FOR-SPRING-DEVS.md`
 >   —— 面向熟悉 Spring Boot / .NET Core 的工程师，用 IoC / JPA / Flyway 等已有概念
@@ -198,6 +201,8 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
 | `scripts/docker-up.sh` | 一键起完整形态（MySQL 或 PostgreSQL + 后端 + nginx 前端） |
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
+| `scripts/e2e.sh` | 浏览器 E2E（真实实现 `testing/scripts/e2e.sh`） |
+| `scripts/build-spec-pack.sh` | 生成独立验收设计用 Spec Pack |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 
@@ -304,6 +309,7 @@ lowcode-platform/
 ├─ docker-compose.dev.yml 只起开发用数据库（默认走 SQLite，切库时才用）
 ├─ scripts/               启动 / 校验 / 迁移 / 部署脚本
 ├─ docs/                  PRD、技术设计、引擎说明、演示脚本、Python 技术栈入门
+├─ testing/               验收测试：策略、矩阵、验收用例、E2E、脚本（见 testing/README.md）
 ├─ backend/
 │  ├─ Dockerfile          后端镜像（入口：等库 → 迁移 → uvicorn）
 │  ├─ alembic/            迁移（0001 = M1 组织表，0003 = 流程表）
