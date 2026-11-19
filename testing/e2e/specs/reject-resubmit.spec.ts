@@ -1,19 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { openAs } from '../fixtures/auth'
 import { renderAs, submitLeaveAsZhangsan, uniqueReason } from '../fixtures/data'
-
-async function openTodoByCode(page: Page, code: string, instanceId: number): Promise<void> {
-  await page.goto('/workbench/todo')
-  const search = page.getByPlaceholder('标题或实例单号')
-  await search.fill(code)
-  await search.press('Enter')
-
-  const row = page.locator('tbody tr').filter({ hasText: code })
-  await expect(row).toBeVisible()
-  await row.locator('td').first().locator('a').click()
-  await expect(page).toHaveURL(new RegExp(`/instance/${instanceId}`))
-}
+import { openTodoByCode, rejectViaUi } from '../fixtures/ui'
 
 test.describe('@p0 驳回与重提', () => {
   test('@p0 审批人驳回后，发起人修改并重提，轮次 +1', async ({ browser }) => {
@@ -24,13 +13,8 @@ test.describe('@p0 驳回与重提', () => {
     const approver = await openAs(browser, 'lisi')
     try {
       await openTodoByCode(approver.page, instance.code, instance.id)
-      // antd 会在两个汉字的按钮里插空格，可访问名是「驳 回」
-      await approver.page.getByRole('button', { name: /驳\s*回/ }).click()
       const rejection = uniqueReason('驳回意见')
-      await approver.page.getByPlaceholder('必填', { exact: true }).fill(rejection)
-      await approver.page.getByRole('button', { name: '确认驳回' }).click()
-
-      await expect(approver.page.getByText('已驳回').first()).toBeVisible()
+      await rejectViaUi(approver.page, rejection)
 
       const rejected = await renderAs('zhangsan', instance.id)
       expect(rejected.instance.status).toBe('REJECTED')

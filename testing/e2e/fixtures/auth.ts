@@ -25,8 +25,23 @@ export interface LoginResult {
   user?: Record<string, unknown>
 }
 
+/** 同一轮 E2E 内复用 token，避免每条用例重复登录。 */
+const loginCache = new Map<Role, Promise<LoginResult>>()
+
 /** API 登录，返回 token。UI 登录只保留一条冒烟用例，其余测试走这里。 */
-export async function loginViaApi(role: Role): Promise<LoginResult> {
+export function loginViaApi(role: Role): Promise<LoginResult> {
+  let pending = loginCache.get(role)
+  if (!pending) {
+    pending = doLogin(role).catch((error: unknown) => {
+      loginCache.delete(role)
+      throw error
+    })
+    loginCache.set(role, pending)
+  }
+  return pending
+}
+
+async function doLogin(role: Role): Promise<LoginResult> {
   const context = await playwrightRequest.newContext()
   try {
     // 用绝对 URL：baseURL 末尾没有斜杠时，相对路径会吃掉 /api/v1。

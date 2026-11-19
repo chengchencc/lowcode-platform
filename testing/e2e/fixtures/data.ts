@@ -99,10 +99,16 @@ export async function submitLeaveAsZhangsan(reason: string): Promise<InstanceBri
 }
 
 /** 以指定角色读实例渲染结果，用于断言后端副作用。 */
-export async function renderAs(role: Role, instanceId: number): Promise<RenderResult> {
+export async function renderAs(
+  role: Role,
+  instanceId: number,
+  assignmentId?: number,
+): Promise<RenderResult> {
   const api = await apiAs(role)
   try {
-    const response = await api.get(`instances/${instanceId}/render`)
+    const response = await api.get(`instances/${instanceId}/render`, {
+      params: assignmentId ? { assignment_id: assignmentId } : undefined,
+    })
     if (!response.ok()) {
       throw new Error(`读取实例失败：${response.status()} ${await response.text()}`)
     }

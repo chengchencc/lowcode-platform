@@ -1,24 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { openAs } from '../fixtures/auth'
 import { renderAs, submitLeaveAsZhangsan, uniqueReason } from '../fixtures/data'
-
-/** 在待办列表里按实例单号定位并打开；避免多条「请假申请」互相干扰。 */
-async function openTodoByCode(
-  page: Page,
-  code: string,
-  instanceId: number,
-): Promise<void> {
-  await page.goto('/workbench/todo')
-  const search = page.getByPlaceholder('标题或实例单号')
-  await search.fill(code)
-  await search.press('Enter')
-
-  const row = page.locator('tbody tr').filter({ hasText: code })
-  await expect(row).toBeVisible()
-  await row.locator('td').first().locator('a').click()
-  await expect(page).toHaveURL(new RegExp(`/instance/${instanceId}`))
-}
+import { approveViaUi, openTodoByCode } from '../fixtures/ui'
 
 test.describe('@p0 审批人旅程', () => {
   test('@p0 待办打开实例、填写意见并同意', async ({ browser }) => {
@@ -30,12 +14,8 @@ test.describe('@p0 审批人旅程', () => {
       await openTodoByCode(page, instance.code, instance.id)
       await expect(page.getByText('直属上级审批').first()).toBeVisible()
 
-      await page.getByRole('button', { name: /同\s*意/ }).click()
       const opinion = uniqueReason('同意意见')
-      await page.getByPlaceholder('选填', { exact: true }).fill(opinion)
-      await page.getByRole('button', { name: '确认同意' }).click()
-
-      await expect(page.getByText('已同意')).toBeVisible()
+      await approveViaUi(page, opinion)
       await expect(page.getByText('已通过').first()).toBeVisible()
 
       const rendered = await renderAs('zhangsan', instance.id)
@@ -54,9 +34,7 @@ test.describe('@p0 审批人旅程', () => {
     const { context, page } = await openAs(browser, 'lisi')
     try {
       await openTodoByCode(page, instance.code, instance.id)
-      await page.getByRole('button', { name: /同\s*意/ }).click()
-      await page.getByRole('button', { name: '确认同意' }).click()
-      await expect(page.getByText('已同意')).toBeVisible()
+      await approveViaUi(page)
 
       await page.goto('/workbench/done')
       const search = page.getByPlaceholder('标题或实例单号')
