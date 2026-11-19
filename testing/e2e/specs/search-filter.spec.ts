@@ -69,4 +69,71 @@ test.describe('@p0 业务字段筛选', () => {
       await initiator.context.close()
     }
   })
+
+  test('@p0 数字区间筛选', async ({ browser }) => {
+    const users = await seedUsers()
+    const form = await createFormAndPublish('E2E 区间筛选表单')
+    const api = await apiAs('admin')
+    try {
+      const saved = await api.put(`form-templates/${form.id}/search-fields`, {
+        data: { field_keys: ['amount'] },
+      })
+      expect(saved.ok()).toBeTruthy()
+    } finally {
+      await api.dispose()
+    }
+
+    const flow = await createFlowAndPublish(
+      form.id,
+      'E2E 区间筛选流程',
+      sequentialDefinition([{ id: 'a1', name: '初审', userId: users.lisi.id }]),
+    )
+    const low = await submitFor('zhangsan', flow.id, {
+      reason: uniqueReason('E2E 区间-低'),
+      amount: 50,
+    })
+    const middle = await submitFor('zhangsan', flow.id, {
+      reason: uniqueReason('E2E 区间-中'),
+      amount: 500,
+    })
+    const high = await submitFor('zhangsan', flow.id, {
+      reason: uniqueReason('E2E 区间-高'),
+      amount: 5000,
+    })
+
+    const initiator = await openAs(browser, 'zhangsan')
+    try {
+      await initiator.page.goto('/workbench/mine')
+      const flowPicker = initiator.page.getByRole('combobox').first()
+      await flowPicker.click()
+      await flowPicker.fill(flow.name)
+      await flowPicker.press('Enter')
+      await initiator.page.getByRole('button', { name: '添加条件' }).click()
+
+      const row = initiator.page.locator('.condition-row').first()
+      const fieldPicker = row.getByRole('combobox').nth(0)
+      await row.locator('.field-select').click()
+      await fieldPicker.fill('金额')
+      await fieldPicker.press('Enter')
+
+      // 操作符：等于 → 区间（向下 5 项）
+      const opPicker = row.getByRole('combobox').nth(1)
+      await row.locator('.op-select').click()
+      for (let index = 0; index < 5; index += 1) {
+        await opPicker.press('ArrowDown')
+      }
+      await opPicker.press('Enter')
+
+      const rangeInputs = row.locator('input.native-input')
+      await rangeInputs.nth(0).fill('100')
+      await rangeInputs.nth(1).fill('1000')
+      await rangeInputs.nth(1).press('Tab')
+
+      await expect(initiator.page.locator('tbody tr').filter({ hasText: middle.code })).toBeVisible()
+      await expect(initiator.page.locator('tbody tr').filter({ hasText: low.code })).toHaveCount(0)
+      await expect(initiator.page.locator('tbody tr').filter({ hasText: high.code })).toHaveCount(0)
+    } finally {
+      await initiator.context.close()
+    }
+  })
 })

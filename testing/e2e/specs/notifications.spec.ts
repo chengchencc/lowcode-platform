@@ -56,4 +56,44 @@ test.describe('@p0 消息中心', () => {
       await approver.context.close()
     }
   })
+
+  test('@p0 首页待办角标在 10 秒内感知新任务', async ({ browser }) => {
+    const users = await seedUsers()
+    const form = await createFormAndPublish('E2E 轮询表单')
+    const flow = await createFlowAndPublish(
+      form.id,
+      'E2E 轮询流程',
+      sequentialDefinition([{ id: 'a1', name: '初审', userId: users.lisi.id }]),
+    )
+
+    const api = await apiAs('lisi')
+    let before = 0
+    try {
+      const summary = await api.get('tasks/summary')
+      expect(summary.ok()).toBeTruthy()
+      before = ((await summary.json()) as { todo: number }).todo
+    } finally {
+      await api.dispose()
+    }
+
+    const approver = await openAs(browser, 'lisi')
+    try {
+      await approver.page.goto('/dashboard')
+      const tile = approver.page
+        .locator('.ant-statistic')
+        .filter({ hasText: '待办' })
+        .first()
+      await expect(tile).toContainText(String(before))
+
+      await submitFor('zhangsan', flow.id, {
+        reason: uniqueReason('E2E 轮询'),
+        amount: 100,
+      })
+
+      // 布局每 10s 轮询一次；给 15s 余量
+      await expect(tile).toContainText(String(before + 1), { timeout: 15_000 })
+    } finally {
+      await approver.context.close()
+    }
+  })
 })

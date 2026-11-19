@@ -74,6 +74,64 @@ test.describe('@p0 转办与委托', () => {
     expect(rendered.instance.status).toBe('APPROVED')
   })
 
+  test('@p0 页面创建委托后新任务派给被委托人', async ({ browser }) => {
+    const users = await seedUsers()
+    const form = await createFormAndPublish('E2E 委托创建表单')
+    const flow = await createFlowAndPublish(
+      form.id,
+      'E2E 委托创建流程',
+      sequentialDefinition([{ id: 'a1', name: '初审', userId: users.lisi.id }]),
+    )
+
+    const delegator = await openAs(browser, 'lisi')
+    try {
+      await delegator.page.goto('/delegations')
+      await delegator.page.getByRole('button', { name: '新建委托' }).click()
+      const dialog = delegator.page.getByRole('dialog')
+
+      const delegatee = dialog.getByRole('combobox').first()
+      await delegatee.click()
+      await delegatee.fill('王五')
+      await delegatee.press('Enter')
+      await expect(dialog.locator('.ant-select').first()).toContainText('王五')
+
+      await dialog.locator('.ant-picker-range').click()
+      const panel = delegator.page
+        .locator('.ant-picker-dropdown')
+        .filter({ visible: true })
+        .last()
+      await expect(panel).toBeVisible()
+      const rangeInputs = dialog.locator('.ant-picker-range input')
+      await panel.locator('td.ant-picker-cell-today').first().click()
+      const tomorrow = await delegator.page.evaluate(() => {
+        const date = new Date()
+        date.setDate(date.getDate() + 1)
+        const pad = (value: number) => String(value).padStart(2, '0')
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+      })
+      // 选完开始日期后点结束输入框，面板才会进入结束日期选择
+      await rangeInputs.nth(1).click()
+      await panel.locator(`td[title="${tomorrow}"]`).first().click()
+      await expect(rangeInputs.nth(1)).not.toHaveValue('')
+      await panel.getByRole('button', { name: /确\s*定/ }).click()
+
+      await dialog.getByPlaceholder('必填，如：出差 / 休假').fill(uniqueReason('E2E 页面委托'))
+      await dialog.getByRole('button', { name: /保\s*存/ }).click()
+      await expect(delegator.page.getByText('委托已创建')).toBeVisible()
+      await expect(delegator.page.getByText('生效中').first()).toBeVisible()
+    } finally {
+      await delegator.context.close()
+    }
+
+    // 委托生效期内新派发的任务直接给被委托人
+    const instance = await submitFor('zhangsan', flow.id, {
+      reason: uniqueReason('E2E 委托任务'),
+      amount: 100,
+    })
+    expect(await todoInstanceIds('wangwu')).toContain(instance.id)
+    expect(await todoInstanceIds('lisi')).not.toContain(instance.id)
+  })
+
   test('@p0 委托列表显示生效状态并可取消', async ({ browser }) => {
     const users = await seedUsers()
     const api = await apiAs('lisi')
