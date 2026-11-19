@@ -52,6 +52,13 @@ def zhaoliu_client() -> ApiClient:
 
 
 @pytest.fixture(scope="session")
+def db_dialect(admin_client: ApiClient) -> str:
+    response = admin_client.get("readyz")
+    assert response.status_code == 200, response.text
+    return response.json()["database"]
+
+
+@pytest.fixture(scope="session")
 def seed(admin_client: ApiClient) -> dict[str, Any]:
     users = admin_client.get("users?size=100").json()["items"]
     roles = admin_client.get("roles?size=100").json()

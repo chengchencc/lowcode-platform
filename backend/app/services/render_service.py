@@ -160,7 +160,7 @@ def render_instance(
         "actions": actions,
         "allowed_actions": allowed_actions,
         "return_targets": return_targets,
-        "attachments": _instance_attachments(db, instance),
+        "attachments": _instance_attachments(db, instance, permission_map),
         "snapshot": viewing_snapshot,
         "ext_fields": _ext_fields(instance),
     }
@@ -457,8 +457,10 @@ def _last_completed(node_tasks: list[Task]):
 # --------------------------------------------------------------------------- 附件与扩展字段
 
 
-def _instance_attachments(db: Session, instance: FlowInstance) -> list[dict[str, Any]]:
-    """实例上的「补充附件」区（F4.4）：所有节点处理时上传的附件汇总。"""
+def _instance_attachments(
+    db: Session, instance: FlowInstance, permissions: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """实例上的「补充附件」区（F4.4）：只保留查看者可见字段的附件。"""
     from app.models import Attachment
     from app.services import file_service
 
@@ -467,7 +469,11 @@ def _instance_attachments(db: Session, instance: FlowInstance) -> list[dict[str,
         .where(Attachment.instance_id == instance.id, Attachment.status == "BOUND")
         .order_by(Attachment.id)
     ).all()
-    return [file_service.describe(a) for a in rows]
+    return [
+        file_service.describe(a)
+        for a in rows
+        if not a.field_key or permissions.get(a.field_key, {}).get("visible", True)
+    ]
 
 
 def _ext_fields(instance: FlowInstance) -> list[dict[str, Any]]:

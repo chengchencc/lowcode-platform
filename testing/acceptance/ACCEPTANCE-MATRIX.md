@@ -12,9 +12,9 @@
 | P0 场景 | 44 |
 | P1 场景 | 4 |
 | 已设计用例 | 132 条 + 38 项非功能检查 |
-| 已自动化 | 49 条（G1 API R1–R8） |
-| 最近一次执行通过率 | 49/49（100%） |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..009 已修） |
+| 已自动化 | 50 条 + 1 MySQL-only skipped（G1 API R1–R9） |
+| 最近一次执行通过率 | 50/50（100%），1 条 MySQL-only skipped |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..010 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -70,7 +70,7 @@
 | PERM-01 | P0 | PRD F2.3；§3.4 | 节点×字段 hidden/readonly/editable/required 正确；分区批量+单字段覆盖 | API+E2E | 待建 | DESIGNED | — | — |
 | PERM-02 | P0 | PRD §3.4；§7 安全；D-04 | hidden 字段不出现在响应/快照/导出/打印；伪造提交值被过滤 | API+E2E | `testing/api/test_snapshots.py` | PARTIAL | R7: hidden key/值、导出、快照/对照 PASS；打印/附件待执行 | BUG-API-001/004/008（已修） |
 | PERM-03 | P0 | PRD §2；§7；F6 | 参与者/管理员/设计者/无关人员四视角正确；越权 ID 返回 403/404 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R2: 无关人/设计者实例访问 PASS；快照/导出/任务 IDOR 待执行 | — |
-| PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定 | API+E2E | `testing/api/test_attachments.py` | PARTIAL | R8: 临时/提交绑定/参与者/无关人/非法扩展名 PASS；hidden 附件字段/打印待执行 | BUG-API-009（已修） |
+| PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策；D-04 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定；hidden 字段附件不可见 | API+E2E | `testing/api/test_hidden_attachment.py` | PARTIAL | R11: 临时/提交绑定/参与者/无关人/非法扩展名/hidden 附件元数据+下载 PASS；打印待执行 | BUG-API-009/010（已修） |
 | SEC-01 | P0 | PRD §7 安全 | IDOR：实例/任务/附件/模板/审计/导出接口逐一用无关用户访问 | API | 待建 | DESIGNED | — | — |
 | SEC-02 | P0 | PRD §7 安全；PHASE2 M10 | 富文本 XSS、CSV 注入、上传白名单/大小/路径穿越 | API+手工 | 待建 | DESIGNED | — | — |
 
@@ -120,7 +120,7 @@
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| CONC-01 | P0 | PRD §7 一致性 | 会签同时操作、撤回/同意、终止/同意、转办/自动派单并发时结果可解释 | API | `testing/api/test_concurrency.py` | PARTIAL | R10: 并发会签、撤回-同意、终止-同意、或签同时操作 PASS；转办/自动派单并发待执行 | — |
+| CONC-01 | P0 | PRD §7 一致性 | 会签同时操作、撤回/同意、终止/同意、转办/自动派单并发时结果可解释 | API | `testing/api/test_concurrency.py` | PARTIAL | R10: 并发会签、撤回-同意、终止-同意、或签同时操作 PASS；转办-同意在 SQLite 500，需 MySQL 验证 | — |
 | ENV-01 | P0 | PRD §7 部署；README Docker | Docker MySQL 8 / PostgreSQL 16 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-02 | P0 | PRD §7；TECH §3.1 | 空库迁移、上一版本升级迁移成功；SQLite/MySQL/PG 核心链路一致 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-03 | P0 | TECH §9 时间统一；PRD §7 | UTC 存储与 Asia/Shanghai 展示边界；首页今日/本周/本月跨日正确 | API+手工 | 待建 | DESIGNED | — | — |
@@ -166,6 +166,7 @@
 | R8 | 2026-11-19 | P0 G1 API 第六批（附件权限/并发会签） | Claude | 42/42（BUG-API-009 已修） | `testing/reports/2026-11-19-p0-api-r6.md` |
 | R9 | 2026-11-19 | P0 G1 API 第七批（SEARCH 业务字段筛选） | Claude | 45/45（无新缺陷） | `testing/reports/2026-11-19-p0-api-r7.md` |
 | R10 | 2026-11-19 | P0 G1 API 第八批（SEARCH 其余操作符/并发竞态） | Claude | 49/49（无新缺陷） | `testing/reports/2026-11-19-p0-api-r8.md` |
+| R11 | 2026-11-19 | P0 G1 API 第九批（hidden 附件/转办竞态） | Claude | 50 passed + 1 skipped（BUG-API-010 已修） | `testing/reports/2026-11-19-p0-api-r9.md` |
 
 ## 13. 变更记录
 
@@ -184,3 +185,4 @@
 | 2026-11-19 | G1 API R6：42/42；修复 BUG-API-009（提交携带附件未绑定实例）；并发会签通过 |
 | 2026-11-19 | G1 API R7：45/45；SEARCH 文本/数字/AND/权限与错误分支通过；无新缺陷 |
 | 2026-11-19 | G1 API R8：49/49；SEARCH 其余操作符、撤回/终止/或签并发竞态通过；无新缺陷 |
+| 2026-11-19 | G1 API R9：50 passed + 1 skipped；修复 BUG-API-010（hidden 附件元数据/下载泄露）；转办竞态需 MySQL |

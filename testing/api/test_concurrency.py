@@ -19,6 +19,7 @@ from support.factories import (
     submit,
     terminate,
     todo,
+    transfer,
     withdraw,
 )
 
@@ -156,6 +157,57 @@ def test_concurrent_terminate_and_approve_has_single_final_state(
     instance = render(zhangsan_client, instance_id).json()["instance"]
     assert instance["status"] in {"TERMINATED", "APPROVED"}, instance
     assert [item for item in todo(lisi_client) if item["instance_id"] == instance_id] == []
+
+
+def test_concurrent_transfer_and_approve_has_single_winner(
+    zhangsan_client: ApiClient,
+    lisi_client: ApiClient,
+    wangwu_client: ApiClient,
+    seed: dict[str, Any],
+    db_dialect: str,
+) -> None:
+    if db_dialect == "sqlite":
+        import pytest
+
+        pytest.skip("SQLite 无行锁，action_seq 并发冲突需在 MySQL 环境验证")
+    instance_id = _submit_with(
+        zhangsan_client,
+        seed["leave_flow"]["id"],
+        leave_data(reason="CONC-01 转办vs同意"),
+    )
+    task = find_assignment(lisi_client, instance_id)
+    barrier = threading.Barrier(2)
+
+    def do_transfer() -> int:
+        barrier.wait(timeout=5)
+        return transfer(
+            lisi_client,
+            task["assignment_id"],
+            to_user_id=seed["users"]["wangwu"]["id"],
+            reason="并发转办",
+        ).status_code
+
+    def do_approve() -> int:
+        barrier.wait(timeout=5)
+        return act(lisi_client, task["assignment_id"], opinion="并发同意").status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = [
+            future.result(timeout=20)
+            for future in [
+                pool.submit(do_transfer),
+                pool.submit(do_approve),
+            ]
+        ]
+
+    assert 500 not in statuses, f"并发动作不应 500：{statuses}"
+    assert 200 in statuses, f"至少一个动作应成功：{statuses}"
+    instance = render(zhangsan_client, instance_id).json()["instance"]
+    assert instance["status"] in {"RUNNING", "APPROVED"}, instance
+    if instance["status"] == "RUNNING":
+        assert find_assignment(wangwu_client, instance_id)
+    else:
+        assert [item for item in todo(lisi_client) if item["instance_id"] == instance_id] == []
 
 
 def test_simultaneous_any_sign_has_single_winner(

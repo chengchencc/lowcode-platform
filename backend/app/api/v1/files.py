@@ -47,6 +47,18 @@ def _assert_can_access(db, attachment, user) -> None:
     if attachment.instance_id is not None:
         instance = db.get(FlowInstance, attachment.instance_id)
         if instance is not None and instance_service.can_view(db, instance, user):
+            # D-04：附件挂在 hidden 字段上时，即使能查看实例也不能下载。
+            if attachment.field_key:
+                from app.services import render_service
+
+                rendered = render_service.render_instance(db, instance, viewer=user)
+                visible = rendered.get("permissions", {}).get(
+                    attachment.field_key, {}
+                ).get("visible", False)
+                if not visible:
+                    raise ForbiddenError(
+                        "没有权限访问该附件", code="ATTACHMENT_FORBIDDEN"
+                    )
             return
     raise ForbiddenError("没有权限访问该附件", code="ATTACHMENT_FORBIDDEN")
 

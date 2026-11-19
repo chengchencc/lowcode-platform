@@ -369,6 +369,45 @@ def simple_form_schema(*, title_field: str = "reason") -> dict[str, Any]:
     }
 
 
+def attachment_form_schema() -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "layout": {"label_position": "top", "columns": 1},
+        "title_field": "reason",
+        "rules": [],
+        "sections": [
+            {
+                "key": "sec_apply",
+                "title": "申请",
+                "stage": "apply",
+                "sort": 0,
+                "fields": [
+                    {"key": "reason", "label": "事由", "type": "text", "sort": 0,
+                     "required": True, "visible_at_start": True},
+                    {"key": "secret_file", "label": "补充附件", "type": "attachment",
+                     "sort": 1, "required": False, "visible_at_start": False},
+                ],
+            }
+        ],
+    }
+
+
+def fill_then_approval_attachment_definition(
+    *,
+    fill_user_id: int,
+    approver_user_id: int,
+) -> dict[str, Any]:
+    definition = fill_then_approval_definition(
+        fill_user_id=fill_user_id,
+        approver_user_id=approver_user_id,
+    )
+    # 填写节点开放附件字段
+    definition["steps"][0]["fields_permission"]["overrides"] = {
+        "secret_file": "editable-required"
+    }
+    return definition
+
+
 def search_form_schema() -> dict[str, Any]:
     return {
         "model_version": 1,
