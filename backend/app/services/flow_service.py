@@ -377,19 +377,20 @@ def create_version(
     if existing is not None:
         return existing
 
+    # 草稿始终跟随表单的最新发布版本；发布时会再次确认并锁定它。
+    locked = _resolve_form_version_id(db, template.form_template_id)
     if from_version_id is not None:
         base = get_version_or_404(db, from_version_id)
         if base.template_id != template.id:
             raise NotFoundError("该版本不属于此流程模板", code="FLOW_VERSION_MISMATCH")
-        definition, locked = base.definition, base.locked_form_version_id
+        definition = base.definition
     else:
         current = _current_version(db, template)
         if current is not None:
-            definition, locked = current.definition, current.locked_form_version_id
+            definition = current.definition
         else:
             versions = _versions_of(db, template.id)
             definition = versions[0].definition if versions else default_definition()
-            locked = _resolve_form_version_id(db, template.form_template_id)
 
     next_no = (
         db.scalar(
@@ -514,6 +515,22 @@ def publish_version(
             f"v{version.version_no} 已归档，不能重新发布", code="VERSION_ARCHIVED"
         )
 
+    template = db.get(FlowTemplate, version.template_id)
+    if template is None:
+        raise NotFoundError("流程模板不存在", code="FLOW_TEMPLATE_NOT_FOUND")
+
+    # ★ 先确定要锁定的表单版本，再按它校验：
+    # 草稿可能创建于表单改版之前；如果先按旧版本校验、发布时再锁新版本，
+    # 会放过「引用已被删除字段」的流程，运行期条件/权限就会静默失配。
+    form_template = form_service.get_or_404(db, template.form_template_id)
+    published_form = form_service._current_version(db, form_template)
+    if published_form is None:
+        raise UnprocessableError(
+            f"表单模板「{form_template.name}」还没有发布版本，请先发布表单",
+            code="FORM_NOT_PUBLISHED",
+        )
+    version.locked_form_version_id = published_form.id
+
     issues = validate_version(db, version)
     version.validation_report = {
         "valid": not has_errors(issues),
@@ -527,20 +544,6 @@ def publish_version(
             code="FLOW_INVALID",
             extra={"errors": [i.to_dict() for i in issues if i.severity == "error"]},
         )
-
-    template = db.get(FlowTemplate, version.template_id)
-    if template is None:
-        raise NotFoundError("流程模板不存在", code="FLOW_TEMPLATE_NOT_FOUND")
-
-    # ★ 锁定表单版本：实例全程用这一份 schema，模板改版不影响运行中的实例
-    form_template = form_service.get_or_404(db, template.form_template_id)
-    published_form = form_service._current_version(db, form_template)
-    if published_form is None:
-        raise UnprocessableError(
-            f"表单模板「{form_template.name}」还没有发布版本，请先发布表单",
-            code="FORM_NOT_PUBLISHED",
-        )
-    version.locked_form_version_id = published_form.id
 
     for previous in db.scalars(
         select(FlowVersion).where(

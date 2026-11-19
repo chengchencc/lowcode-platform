@@ -836,6 +836,59 @@ def fill_then_approval_definition(
     }
 
 
+def create_flow_draft(
+    admin: ApiClient,
+    *,
+    form_template_id: int,
+    name: str,
+) -> tuple[dict[str, Any], int]:
+    """只建流程草稿，不发布；返回 (flow, version_id)。"""
+    response = admin.post(
+        "flow-templates",
+        json={
+            "name": name,
+            "form_template_id": form_template_id,
+            "initiator_scope": {"type": "all"},
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+    flow = response.json()
+    versions = admin.get(f"flow-templates/{flow['id']}/versions")
+    assert versions.status_code == 200, versions.text
+    draft = next(v for v in versions.json() if v["status"] == "DRAFT")
+    return flow, draft["id"]
+
+
+def publish_definition(
+    admin: ApiClient,
+    version_id: int,
+    definition: dict[str, Any],
+) -> Any:
+    saved = admin.put(f"flow-versions/{version_id}", json={"definition": definition})
+    assert saved.status_code == 200, saved.text
+    return admin.post(
+        f"flow-versions/{version_id}/publish", json={"remark": "E2E 校验"}
+    )
+
+
+def role_rule(role_id: int) -> dict[str, Any]:
+    return {
+        "mode": "SINGLE",
+        "sources": [{"type": "role", "role_ids": [role_id]}],
+        "on_empty": "to_admin",
+        "initiator_select": None,
+    }
+
+
+def prev_node_rule() -> dict[str, Any]:
+    return {
+        "mode": "SINGLE",
+        "sources": [{"type": "prev_node_actors"}],
+        "on_empty": "to_admin",
+        "initiator_select": None,
+    }
+
+
 def simple_data(*, reason: str = "E2E 自建流程", amount: float = 100) -> dict[str, Any]:
     return {"reason": reason, "amount": amount}
 
