@@ -1657,6 +1657,9 @@ class EngineService:
         return merge_ext_fields(self._form_schema(instance), list(instance.ext_fields))
 
     def _approver_context(self, instance: FlowInstance, compiled: CompiledFlow) -> ApproverContext:
+        # 会话是 autoflush=False：刚刚完成的节点必须先 flush，否则
+        # prev_node_actors 查不到它，会误退回管理员。
+        self.db.flush()
         completed = list(
             self.db.scalars(
                 select(Task)
