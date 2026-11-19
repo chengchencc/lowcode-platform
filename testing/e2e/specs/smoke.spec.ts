@@ -70,8 +70,8 @@ test.describe('@p0 冒烟与角色可见性', () => {
     try {
       await page.goto('/start-center')
       await expect(page.getByText('发起新流程')).toBeVisible()
-      await expect(page.getByText('请假申请', { exact: true })).toBeVisible()
-      await expect(page.getByText('费用报销', { exact: true })).toBeVisible()
+      await expect(page.getByTestId('flow-card').filter({ hasText: '请假申请' })).toBeVisible()
+      await expect(page.getByTestId('flow-card').filter({ hasText: '费用报销' })).toBeVisible()
     } finally {
       await context.close()
     }
