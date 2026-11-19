@@ -97,6 +97,7 @@ testing/e2e/
 │  ├─ search-archive-export.spec.ts
 │  ├─ transfer-delegation.spec.ts
 │  ├─ notifications.spec.ts
+│  ├─ search-filter.spec.ts
 │  ├─ timeline-snapshot.spec.ts
 │  └─ mobile-print.spec.ts
 ├─ package.json
@@ -105,6 +106,6 @@ testing/e2e/
 
 ## 当前状态
 
-- `bash scripts/e2e.sh @p0`：**36 passed**（2026-11-20，R17）。
+- `bash scripts/e2e.sh @p0`：**37 passed**（2026-11-20，R17）。
 - TEST-PLAN §7.6 的 12 条核心旅程已全部有可重复执行的用例。
 - 打印只验证入口调用；A4 排版、图形化设计器的条件/并行/权限配置、跨浏览器仍待补。
