@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-19（G1 API R1 执行完成：17/20，通过 2 个缺陷）
+> 最近更新：2026-11-20（G2 E2E R17 执行完成：35/35）
 
 ## 0. 汇总
 
@@ -12,8 +12,8 @@
 | P0 场景 | 44 |
 | P1 场景 | 4 |
 | 已设计用例 | 132 条 + 38 项非功能检查 |
-| 已自动化 | 71 条 + 1 MySQL-only skipped（G1 API R1–R14） |
-| 最近一次执行通过率 | 71/71（100%），1 条 MySQL-only skipped |
+| 已自动化 | G1 API 71 条 + 1 MySQL-only skipped；G2 E2E 35 条 |
+| 最近一次执行通过率 | API 71/71（100%）；E2E 35/35（100%） |
 | 未关闭 S1 / S2 | 0 / 0（BUG-API-001..013 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
@@ -133,8 +133,8 @@
 |---|---|---|---|---|---|---|---|---|
 | SHEET-01 | P1 | PHASE3 M12 §2 | 共享表格：创建/编辑/自动保存/冲突/导出/权限 | API+E2E | 待建 | TODO | — | — |
 | AI-01 | P1 | PHASE3 M15 §5 | 默认关闭；生成→校验→预览→应用；不自动发布；限流/审计/失败重试 | API+E2E | 待建 | TODO | — | — |
-| PRINT-01 | P1 | PHASE2 M10 §4 | A4 打印：分页/字段/时间线/hidden 字段正确 | 手工 | — | TODO | — | — |
-| MOBILE-01 | P1 | PHASE2 M10 §4 | 390px 核心路径可用，无横向溢出 | E2E+手工 | 待建 | TODO | — | — |
+| PRINT-01 | P1 | PHASE2 M10 §4 | A4 打印：分页/字段/时间线/hidden 字段正确 | 手工 | `testing/e2e/specs/mobile-print.spec.ts`（仅入口） | PARTIAL | R17: 打印按钮触发 `window.print` 通过；A4 排版待人工 | — |
+| MOBILE-01 | P1 | PHASE2 M10 §4 | 390px 核心路径可用，无横向溢出 | E2E+手工 | `testing/e2e/specs/mobile-print.spec.ts` | PARTIAL | R17: 发起中心/填写页/详情页 390px 无横向溢出；其余页面待覆盖 | — |
 
 ---
 
@@ -172,6 +172,7 @@
 | R14 | 2026-11-20 | P0 G1 API 第十二批（全控件/展示布局/扩展字段/安全/百节点） | Claude | 63 passed + 1 skipped（无新缺陷） | `testing/reports/2026-11-20-p0-api-r12.md` |
 | R15 | 2026-11-20 | P0 G1 API 第十三批（审批人来源） | Claude | 66 passed + 1 skipped（BUG-API-013 已修） | `testing/reports/2026-11-20-p0-api-r13.md` |
 | R16 | 2026-11-20 | P0 G1 API 第十四批（联动规则/通知边界/检索重建/首页口径/重名节点） | Claude | 71 passed + 1 skipped（无新缺陷） | `testing/reports/2026-11-20-p0-api-r14.md` |
+| R17 | 2026-11-20 | P0 G2 浏览器旅程（12 条核心旅程 + 移动/打印冒烟） | Claude | **35/35** | `testing/reports/2026-11-20-p0-e2e-r17.md` |
 
 ## 13. 变更记录
 
@@ -196,3 +197,4 @@
 | 2026-11-20 | G1 API R12：63 passed + 1 skipped；全控件/展示布局/EXT-01/SEC-01/02/FLOW-03 百节点通过；无新缺陷 |
 | 2026-11-20 | G1 API R13：66 passed + 1 skipped；修复 BUG-API-013（发起人指定审批人被过滤） |
 | 2026-11-20 | G1 API R14：71 passed + 1 skipped；联动规则/通知边界/检索重建/首页口径/重名节点通过；无新缺陷 |
+| 2026-11-20 | G2 E2E R17：35/35；12 条核心旅程（登录/设计/发起/审批/会签/或签/条件/权限/退回撤回终止/追加字段/检索导出/转办委托通知）+ 移动/打印冒烟全部通过 |

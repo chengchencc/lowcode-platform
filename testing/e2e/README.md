@@ -78,12 +78,32 @@ npm run report
 ```text
 testing/e2e/
 ├─ playwright.config.ts
-├─ fixtures/auth.ts
-├─ specs/smoke.spec.ts
+├─ fixtures/
+│  ├─ auth.ts          # 多角色 API 登录 / storageState
+│  ├─ data.ts          # 请假样例实例、render 断言
+│  ├─ factories.ts     # 自建表单/流程/实例的 API 工厂
+│  └─ ui.ts            # 待办定位、同意/驳回等公共交互
+├─ specs/
+│  ├─ smoke.spec.ts
+│  ├─ design.spec.ts
+│  ├─ initiate.spec.ts
+│  ├─ approve.spec.ts
+│  ├─ reject-resubmit.spec.ts
+│  ├─ parallel-countersign.spec.ts
+│  ├─ condition-branch.spec.ts
+│  ├─ permissions.spec.ts
+│  ├─ lifecycle.spec.ts
+│  ├─ ext-field.spec.ts
+│  ├─ search-archive-export.spec.ts
+│  ├─ transfer-delegation.spec.ts
+│  ├─ notifications.spec.ts
+│  └─ mobile-print.spec.ts
 ├─ package.json
 └─ tsconfig.json
 ```
 
-## 首个里程碑
+## 当前状态
 
-先让 `smoke.spec.ts` 六条全绿：后端就绪、管理员 UI 登录、错误密码、普通用户菜单、设计者菜单、发起中心示例流程。然后按 `../plan/TEST-PLAN.md` §7.6 补 12 条旅程。
+- `bash scripts/e2e.sh @p0`：**35 passed**（2026-11-20，R17）。
+- TEST-PLAN §7.6 的 12 条核心旅程已全部有可重复执行的用例。
+- 打印只验证入口调用；A4 排版、图形化设计器的条件/并行/权限配置、跨浏览器仍待补。
