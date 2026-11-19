@@ -26,6 +26,14 @@ test.describe('@p0 设计者旅程', () => {
         timeout: 15_000,
       })
 
+      // 设计器预览：字段按发起阶段可见性渲染
+      await designer.page.getByRole('button', { name: '预览' }).click()
+      await expect(designer.page.getByText('表单预览')).toBeVisible()
+      await expect(designer.page.getByPlaceholder('请输入事由')).toBeVisible()
+      await designer.page.locator('.ant-drawer-close').click()
+      // Drawer 关闭后 DOM 仍保留，断言输入框不可见即可
+      await expect(designer.page.getByPlaceholder('请输入事由')).toBeHidden()
+
       await designer.page.getByRole('button', { name: buttonName('发布') }).click()
       await designer.page.getByRole('button', { name: buttonName('确定') }).click()
       await expect(designer.page.getByText('已发布')).toBeVisible()
