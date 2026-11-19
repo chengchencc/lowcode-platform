@@ -86,6 +86,7 @@ testing/e2e/
 ├─ specs/
 │  ├─ smoke.spec.ts
 │  ├─ design.spec.ts
+│  ├─ design-flow-complex.spec.ts
 │  ├─ initiate.spec.ts
 │  ├─ approve.spec.ts
 │  ├─ reject-resubmit.spec.ts
@@ -106,6 +107,6 @@ testing/e2e/
 
 ## 当前状态
 
-- `bash scripts/e2e.sh @p0`：**37 passed**（2026-11-20，R17）。
+- `bash scripts/e2e.sh @p0`：**41 passed**（2026-11-20，R17）。
 - TEST-PLAN §7.6 的 12 条核心旅程已全部有可重复执行的用例。
 - 打印只验证入口调用；A4 排版、图形化设计器的条件/并行/权限配置、跨浏览器仍待补。

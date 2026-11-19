@@ -34,6 +34,8 @@ jobs:
           npx --prefix testing/e2e playwright install --with-deps chromium
       - name: 全量浏览器旅程
         run: E2E_BROWSER_CHANNEL=bundled bash scripts/e2e.sh
+      - name: G3 引擎不变量（2,000 轮）
+        run: INVARIANT_ROUNDS=2000 bash scripts/invariants.sh
       - name: 上传失败现场
         if: always()
         uses: actions/upload-artifact@v4

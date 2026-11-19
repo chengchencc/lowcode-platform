@@ -44,10 +44,11 @@
 | `bash scripts/check.sh backend` | 全量 pytest + ruff | 约 1.5–2 分钟 |
 | `bash scripts/check.sh frontend` | vue-tsc + vitest + build | 约 1 分钟 |
 | `bash scripts/check.sh` | 全部五项 | 约 2.5 分钟 |
-| `bash scripts/api.sh` | 重置独立库 + 起后端 + 71 条 API | 约 50 秒 |
+| `bash scripts/api.sh` | 重置独立库 + 起后端 + 94 条 API | 约 50 秒 |
 | `bash scripts/api.sh -k hidden` | 只跑匹配用例 | 约 20 秒 |
 | `bash scripts/e2e.sh specs/approve.spec.ts` | 重置 + 起前后端 + 单文件 | 约 20–40 秒 |
-| `bash scripts/e2e.sh @p0` | 全量 P0 旅程（37 条） | 约 2 分钟 |
+| `bash scripts/e2e.sh @p0` | 全量 P0 旅程（41 条） | 约 2–2.5 分钟 |
+| `bash scripts/invariants.sh` | G3 随机序列（默认 200 轮） | 约 15 秒 |
 
 > `api.sh` 与 `e2e.sh` 共用 `testing/.runtime/e2e` 和 8000/5173 端口，**不要并行跑**。
 

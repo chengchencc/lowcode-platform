@@ -37,6 +37,9 @@ bash scripts/check.sh quick                     # ruff + vue-tsc + vitest，约 
 bash scripts/check.sh backend tests/test_x.py   # 只跑指定后端测试
 bash scripts/check.sh                           # 全量五项，约 2.5 分钟
 
+# G3：引擎不变量随机序列（默认 200 轮）
+bash scripts/invariants.sh
+
 # G1：API 黑盒（重置独立库 + 起后端 + pytest）
 bash scripts/api.sh
 bash scripts/api.sh -k hidden
@@ -94,7 +97,8 @@ bash scripts/e2e.sh @p0 --headed        # 可见方式运行
 
 ## 当前状态（2026-11-20）
 
-- G1 API 黑盒：71 passed + 1 MySQL-only skipped。
-- G2 浏览器旅程：37 passed（12 条 P0 核心旅程全覆盖）。
+- G1 API 黑盒：94 passed + 3 MySQL-only skipped。
+- G2 浏览器旅程：41 passed（12 条 P0 核心旅程全覆盖）。
+- G3 引擎不变量：200 轮随机序列通过。
 - 全量 `check.sh`：452 pytest + 128 vitest + ruff / vue-tsc / build 全绿。
 - 剩余：Docker MySQL/PG、迁移/时区、性能、UAT、A4 打印；详见 `docs/PROJECT-PLAN.md`。

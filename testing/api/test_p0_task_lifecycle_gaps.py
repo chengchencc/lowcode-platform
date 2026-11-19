@@ -146,6 +146,46 @@ def test_action_field_patch_is_recorded_in_timeline(
     assert agree["opinion"] == "调整金额"
 
 
+def test_snapshot_diff_shows_old_and_new_values(
+    admin_client: ApiClient, zhangsan_client: ApiClient, lisi_client: ApiClient
+) -> None:
+    users = admin_client.get("users?size=100").json()["items"]
+    lisi_id = next(user["id"] for user in users if user["username"] == "lisi")
+    form = create_form_and_publish(admin_client, name="E2E 快照对照表单")
+    node = _approval_node("a1", "审批", user_rule(lisi_id))
+    node["fields_permission"]["overrides"] = {"amount": "editable"}
+    flow = create_flow_and_publish(
+        admin_client,
+        form_template_id=form["id"],
+        name="E2E 快照对照流程",
+        definition={"steps": [node]},
+    )
+    instance_id = _submit(zhangsan_client, flow["id"], "快照对照", amount=100)
+    task = find_assignment(lisi_client, instance_id)
+    assert act(
+        lisi_client,
+        task["assignment_id"],
+        opinion="改金额",
+        field_patch={"amount": 200},
+    ).status_code == 200
+
+    timeline = zhangsan_client.get(f"instances/{instance_id}/timeline").json()
+    submit_snapshot = next(
+        row["snapshot_id"] for row in timeline if row["action"] == "SUBMIT"
+    )
+    agree_snapshot = next(
+        row["snapshot_id"] for row in timeline if row["action"] == "AGREE"
+    )
+    diff = zhangsan_client.get(
+        f"instances/{instance_id}/snapshots/diff",
+        params={"from": submit_snapshot, "to": agree_snapshot},
+    )
+    assert diff.status_code == 200, diff.text
+    row = next(item for item in diff.json() if item["key"] == "amount")
+    assert row["old"] == 100
+    assert row["new"] == 200
+
+
 def test_transfer_notifications_and_timeline(
     admin_client: ApiClient,
     zhangsan_client: ApiClient,

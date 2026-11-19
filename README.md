@@ -12,6 +12,7 @@
 > 二期增加流程可视化画布、表单布局/展示控件、字段联动规则、打印与移动端；
 > 三期增加按角色首页、工作量统计协作表格、实例业务字段检索、转办与委托、AI 生成
 > 表单/流程草稿。可交付内部试用 —— 部署看下面的「一键部署」，演示照着 `docs/DEMO.md` 走。
+> 内网 / 离线部署（预下载镜像、docker load）见 `docs/OFFLINE-DEPLOY.md`。
 >
 > - 需求：`docs/PRD-lowcode-form-approval.md`
 > - 设计：`docs/TECH-DESIGN.md`（含引擎设计、API 契约、里程碑排期、**已知陷阱**）

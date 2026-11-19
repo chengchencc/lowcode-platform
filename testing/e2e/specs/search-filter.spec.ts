@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { apiAs, openAs } from '../fixtures/auth'
 import { uniqueReason } from '../fixtures/data'
@@ -9,6 +9,15 @@ import {
   sequentialDefinition,
   submitFor,
 } from '../fixtures/factories'
+
+async function chooseFlow(page: Page, flowName: string): Promise<void> {
+  const picker = page.getByRole('combobox').first()
+  await picker.click()
+  await picker.fill(flowName)
+  const dropdown = page.locator('.ant-select-dropdown').filter({ visible: true }).last()
+  await expect(dropdown.getByText(flowName, { exact: true })).toBeVisible()
+  await dropdown.getByText(flowName, { exact: true }).click()
+}
 
 test.describe('@p0 业务字段筛选', () => {
   test('@p0 我发起的按业务字段筛选', async ({ browser }) => {
@@ -45,13 +54,12 @@ test.describe('@p0 业务字段筛选', () => {
       await initiator.page.goto('/workbench/mine')
 
       // 先选中流程，筛选器才会加载该表单的可检索字段
-      const flowPicker = initiator.page.getByRole('combobox').first()
-      await flowPicker.click()
-      await flowPicker.fill(flow.name)
-      await flowPicker.press('Enter')
+      await chooseFlow(initiator.page, flow.name)
       await expect(initiator.page.getByText('业务字段筛选')).toBeVisible()
 
-      await initiator.page.getByRole('button', { name: '添加条件' }).click()
+      const addCondition = initiator.page.getByRole('button', { name: '添加条件' })
+      await expect(addCondition).toBeEnabled()
+      await addCondition.click()
       const row = initiator.page.locator('.condition-row').first()
       const fieldPicker = row.getByRole('combobox').nth(0)
       // 点击下拉根节点：内部的搜索 input 被选中项 span 盖住，直接点 input 会被拦截
@@ -104,11 +112,10 @@ test.describe('@p0 业务字段筛选', () => {
     const initiator = await openAs(browser, 'zhangsan')
     try {
       await initiator.page.goto('/workbench/mine')
-      const flowPicker = initiator.page.getByRole('combobox').first()
-      await flowPicker.click()
-      await flowPicker.fill(flow.name)
-      await flowPicker.press('Enter')
-      await initiator.page.getByRole('button', { name: '添加条件' }).click()
+      await chooseFlow(initiator.page, flow.name)
+      const addCondition = initiator.page.getByRole('button', { name: '添加条件' })
+      await expect(addCondition).toBeEnabled()
+      await addCondition.click()
 
       const row = initiator.page.locator('.condition-row').first()
       const fieldPicker = row.getByRole('combobox').nth(0)
