@@ -160,6 +160,33 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
   （如 `http://127.0.0.1:7890`）；本项目实测配置镜像加速器也可用
 - 上线前请：改 `ADMIN_PASSWORD`、关掉 `SEED_DEMO_ACCOUNTS`、给 `JWT_SECRET` 一个好密钥
 
+### 构建加速
+
+首次构建要下依赖（pip / npm），之后不应该再慢。两个机制：
+
+1. **分层缓存**：两个 Dockerfile 都是先 `COPY requirements.txt` / `package*.json`
+   再装依赖，最后才拷源码。只改业务代码时依赖层直接命中缓存，重跑 `docker-up.sh`
+   通常十几秒。
+2. **BuildKit 缓存挂载**：依赖安装用 `RUN --mount=type=cache`，pip / npm 下过的包
+   留在 builder 的缓存里。即使 `requirements.txt` 或 `package-lock.json` 变了，
+   也只是解析变更部分，不会整包重下。缓存不进镜像，镜像体积不受影响。
+3. **国内镜像源**：`docker-compose.yml` 默认把依赖源指向清华 PyPI 与 npmmirror，
+   可在根目录 `.env` 覆盖（`.env.example` 里有说明）：
+
+   ```bash
+   PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+   NPM_REGISTRY=https://registry.npmmirror.com
+   ```
+
+   海外网络改成官方源：`PIP_INDEX_URL=https://pypi.org/simple`、
+   `NPM_REGISTRY=https://registry.npmjs.org`。注意这只是**依赖源**；
+   `python:3.12-slim` / `node:22-alpine` 等基础镜像仍从 Docker Hub 拉，
+   慢的话按上一条配代理或镜像加速器。
+
+看缓存占用 / 清理：`docker system df -v`、`docker builder prune`。
+需要在多台机器间复用构建缓存时，可用 `docker buildx build --cache-to type=local,...`
+把缓存导出到目录（本项目脚本未默认启用）。
+
 ---
 
 ## 脚本一览

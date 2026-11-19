@@ -38,7 +38,11 @@ services:
     # 需要本机连库排查时，临时加 ports: ["3306:3306"] 即可。
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # 依赖安装源：默认国内镜像，可在 .env 覆盖（海外环境改成 https://pypi.org/simple）
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     container_name: flowform-backend
     restart: unless-stopped
     environment:
@@ -69,7 +73,11 @@ services:
       start_period: 40s
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 同 PIP_INDEX_URL：默认 npmmirror，海外环境改成 https://registry.npmjs.org
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     container_name: flowform-frontend
     restart: unless-stopped
     ports:
