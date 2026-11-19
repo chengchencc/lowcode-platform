@@ -88,3 +88,20 @@ def filter_rules(rules: list[Any], permissions: PermissionMap) -> list[Any]:
     if not hidden_keys:
         return rules
     return [rule for rule in rules if not _rule_uses_hidden(rule, hidden_keys)]
+
+
+def filter_actions(
+    actions: list[dict[str, Any]], permissions: PermissionMap
+) -> list[dict[str, Any]]:
+    """时间线动作里的字段 diff 只保留可见字段（D-04）。"""
+    result: list[dict[str, Any]] = []
+    for action in actions:
+        changed = action.get("changed_fields")
+        if not changed:
+            result.append(action)
+            continue
+        filtered = [
+            row for row in changed if _keep(row.get("key"), permissions)
+        ]
+        result.append({**action, "changed_fields": filtered})
+    return result

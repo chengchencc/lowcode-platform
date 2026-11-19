@@ -63,7 +63,8 @@ def render_instance(
 
     `assignment_id` 指定「以哪个待办的身份查看」（会签时一个人可能有多条）；
     不给则自动找他当前在本实例上的待办。
-    `snapshot_id` 指定查看某个历史时点（F4.6），此时权限一律按归档视角。
+    `snapshot_id` 指定查看某个历史时点（F4.6）；运行中仍按查看者当前权限，
+    终态才按归档视角（D-04）。
     """
     instance_service.assert_can_view(db, instance, viewer)
 
@@ -94,19 +95,19 @@ def render_instance(
     # ---- 字段权限 ----
     base_permissions = _resolve_permissions(
         db, instance, compiled=compiled, form_schema=form_schema,
-        viewer=viewer, assignment=assignment, snapshot=snapshot_id is not None,
+        viewer=viewer, assignment=assignment,
     )
-    # 历史快照与终态归档一律全量只读，不应用联动规则；运行中才按规则收紧。
+    # 终态归档全量只读；运行中看历史快照按查看者当前权限，不按历史值重算联动规则。
     # permissions 供旧调用方直接使用，base_permissions + form_rules 供前端随输入重算。
-    archived = snapshot_id is not None or instance.status in TERMINAL_STATUSES
+    terminal = instance.status in TERMINAL_STATUSES
     form_rules = []
-    if not archived:
+    if terminal or snapshot_id is not None:
+        permissions = base_permissions
+    else:
         form_rules = [
             rule.model_dump(mode="json") for rule in getattr(form_schema, "rules", []) or []
         ]
         permissions = apply_form_rules(base_permissions, form_schema, values)
-    else:
-        permissions = base_permissions
 
     # ---- 可执行动作 ----
     allowed_actions: list[str] = []
@@ -127,8 +128,11 @@ def render_instance(
     base_map = {k: v.to_dict() for k, v in base_permissions.items()}
     schema_data = form_schema.model_dump(mode="json")
 
-    # D-04：运行中无权限视角只下发可见字段的 schema/权限/值；终态归档时
-    # permissions 已是全量 visible，过滤后自然保留全部。
+    # D-04：运行中无权限视角只下发可见字段的 schema/权限/值/时间线 diff；
+    # 终态归档时 permissions 已是全量 visible，过滤后自然保留全部。
+    actions = view_filter.filter_actions(
+        timeline_service.list_actions(db, instance), permission_map
+    )
     return {
         "instance": instance_service.to_out(db, instance, viewer=viewer),
         "my_role": my_role,
@@ -153,7 +157,7 @@ def render_instance(
         "base_permissions": view_filter.filter_permissions(base_map),
         "form_rules": view_filter.filter_rules(form_rules, permission_map),
         "progress": build_progress(db, instance, compiled),
-        "actions": timeline_service.list_actions(db, instance),
+        "actions": actions,
         "allowed_actions": allowed_actions,
         "return_targets": return_targets,
         "attachments": _instance_attachments(db, instance),
@@ -205,13 +209,8 @@ def _resolve_permissions(
     form_schema,
     viewer: User,
     assignment: TaskAssignment | None,
-    snapshot: bool,
 ) -> dict[str, FieldPermission]:
     ext_views = _ext_views(instance)
-
-    # 看历史快照 → 一律归档视角（历史没有「现在谁在处理」这回事）
-    if snapshot:
-        return resolve_view_permissions(form_schema)
 
     # 当前处理人 → 该节点的权限矩阵
     if assignment is not None:

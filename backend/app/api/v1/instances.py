@@ -176,11 +176,10 @@ def progress(instance_id: int, db: DbSession, user: CurrentUser) -> list[dict]:
 
 @router.get("/{instance_id}/timeline", summary="处理历史时间线（F4.6）")
 def timeline(instance_id: int, db: DbSession, user: CurrentUser) -> list[dict]:
-    from app.services import timeline_service
-
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
-    return timeline_service.list_actions(db, instance)
+    # 复用 render 的查看者视角：时间线里的字段 diff 也按 D-04 裁剪。
+    return render_service.render_instance(db, instance, viewer=user).get("actions", [])
 
 
 # ⚠️ 顺序要紧：`/snapshots/diff` 必须排在 `/snapshots/{snapshot_id}` **之前**。
@@ -196,7 +195,18 @@ def snapshot_diff(
 ) -> list[dict]:
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
-    return snapshot_service.compare(db, from_id, to_id)
+    rows = snapshot_service.compare(db, from_id, to_id)
+    # D-04：运行中查看历史对照时，hidden 字段的 key/旧值/新值都不下发。
+    rendered = render_service.render_instance(
+        db, instance, viewer=user, snapshot_id=to_id
+    )
+    # render 的 permissions 已裁剪为仅可见字段；不在其中即 hidden。
+    permissions = rendered.get("permissions", {})
+    return [
+        row
+        for row in rows
+        if permissions.get(row.get("key"), {}).get("visible", False)
+    ]
 
 
 @router.get("/{instance_id}/snapshots/{snapshot_id}", summary="历史时点快照")
@@ -210,7 +220,16 @@ def get_snapshot(
     snapshot = db.get(snapshot_service.DataSnapshot, snapshot_id)
     if snapshot is None or snapshot.instance_id != instance.id:
         raise NotFoundError("快照不存在", code="SNAPSHOT_NOT_FOUND")
-    return {**snapshot_service.to_out(db, snapshot), "data": snapshot.data}
+    # D-04：快照页与详情页共用查看者视角；运行中 hidden 字段的 key/值不下发。
+    rendered = render_service.render_instance(
+        db, instance, viewer=user, snapshot_id=snapshot_id
+    )
+    data = {
+        **snapshot.data,
+        "values": rendered.get("values", {}),
+        "ext_fields": rendered.get("ext_fields", []),
+    }
+    return {**snapshot_service.to_out(db, snapshot), "data": data}
 
 
 # --------------------------------------------------------------------------- 检索

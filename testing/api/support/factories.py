@@ -307,6 +307,277 @@ def approve_reimburse(
     return instance_id
 
 
+def simple_form_schema(*, title_field: str = "reason") -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "layout": {"label_position": "top", "columns": 1},
+        "title_field": title_field,
+        "rules": [],
+        "sections": [
+            {
+                "key": "sec_apply",
+                "title": "申请",
+                "stage": "apply",
+                "sort": 0,
+                "fields": [
+                    {
+                        "key": "reason",
+                        "label": "事由",
+                        "type": "text",
+                        "sort": 0,
+                        "required": True,
+                        "visible_at_start": True,
+                    },
+                    {
+                        "key": "amount",
+                        "label": "金额",
+                        "type": "number",
+                        "sort": 1,
+                        "required": False,
+                        "visible_at_start": True,
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def hidden_form_schema() -> dict[str, Any]:
+    schema = simple_form_schema()
+    schema["sections"][0]["fields"].append(
+        {
+            "key": "secret",
+            "label": "补充信息",
+            "type": "text",
+            "sort": 2,
+            "required": False,
+            "visible_at_start": False,
+        }
+    )
+    return schema
+
+
+def create_form_and_publish(
+    admin: ApiClient, *, name: str, schema: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    code = f"E2E_FORM_{uuid.uuid4().hex[:8].upper()}"
+    response = admin.post(
+        "form-templates",
+        json={"name": name, "code": code, "schema_data": schema or simple_form_schema()},
+    )
+    assert response.status_code in (200, 201), response.text
+    form = response.json()
+    versions = admin.get(f"form-templates/{form['id']}/versions")
+    assert versions.status_code == 200, versions.text
+    draft = next(v for v in versions.json() if v["status"] == "DRAFT")
+    published = admin.post(
+        f"form-versions/{draft['id']}/publish", json={"remark": "E2E 自动发布"}
+    )
+    assert published.status_code == 200, published.text
+    return form
+
+
+def _approval_node(
+    node_id: str,
+    name: str,
+    assignee: dict[str, Any],
+    *,
+    return_targets: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "name": name,
+        "type": "approval",
+        "assignee": assignee,
+        "reject_policy": "reject_to_initiator",
+        "return_targets": return_targets,
+        "timeout_hours": None,
+        "opinion_required": False,
+        "attachment_required": False,
+        "fields_permission": {
+            "base": "readonly",
+            "partitions": {},
+            "overrides": {},
+            "conditional_overrides": [],
+        },
+    }
+
+
+def dept_manager_rule() -> dict[str, Any]:
+    return {
+        "mode": "SINGLE",
+        "sources": [{"type": "dept_manager"}],
+        "on_empty": "to_admin",
+        "initiator_select": None,
+    }
+
+
+def user_rule(user_id: int) -> dict[str, Any]:
+    return {
+        "mode": "SINGLE",
+        "sources": [{"type": "user", "user_ids": [user_id]}],
+        "on_empty": "to_admin",
+        "initiator_select": None,
+    }
+
+
+def sequential_definition(approvals: list[tuple[str, str, int]]) -> dict[str, Any]:
+    """approvals: [(node_id, node_name, user_id), ...]，依次审批。"""
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            _approval_node(node_id, name, user_rule(user_id))
+            for node_id, name, user_id in approvals
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def dept_manager_chain_definition(count: int = 2) -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            _approval_node(f"a{index}", f"主管审批{index}", dept_manager_rule())
+            for index in range(1, count + 1)
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def parallel_any_definition(user_ids: list[int]) -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            {
+                "id": "p1",
+                "name": "或签",
+                "type": "parallel",
+                "mode": "any",
+                "members": [
+                    _approval_node(f"m{index}", f"或签成员{index}", user_rule(user_id))
+                    for index, user_id in enumerate(user_ids, start=1)
+                ],
+            }
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def parallel_return_definition(
+    *,
+    target_node_id: str,
+    member_user_ids: list[int],
+) -> dict[str, Any]:
+    """A → 并行组（all）→ end；组内成员可退回 A。"""
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            _approval_node("a1", "退回目标审批", user_rule(member_user_ids[0])),
+            {
+                "id": "p1",
+                "name": "并行组",
+                "type": "parallel",
+                "mode": "all",
+                "members": [
+                    _approval_node(
+                        f"m{index}",
+                        f"并行成员{index}",
+                        user_rule(user_id),
+                        return_targets=[target_node_id],
+                    )
+                    for index, user_id in enumerate(member_user_ids, start=1)
+                ],
+            },
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def create_flow_and_publish(
+    admin: ApiClient,
+    *,
+    form_template_id: int,
+    name: str,
+    definition: dict[str, Any],
+) -> dict[str, Any]:
+    code = f"E2E_FLOW_{uuid.uuid4().hex[:8].upper()}"
+    response = admin.post(
+        "flow-templates",
+        json={
+            "name": name,
+            "code": code,
+            "form_template_id": form_template_id,
+            "initiator_scope": {"type": "all"},
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+    flow = response.json()
+    versions = admin.get(f"flow-templates/{flow['id']}/versions")
+    assert versions.status_code == 200, versions.text
+    draft = next(v for v in versions.json() if v["status"] == "DRAFT")
+    saved = admin.put(
+        f"flow-versions/{draft['id']}", json={"definition": definition}
+    )
+    assert saved.status_code == 200, saved.text
+    published = admin.post(
+        f"flow-versions/{draft['id']}/publish", json={"remark": "E2E 自动发布"}
+    )
+    assert published.status_code == 200, published.text
+    return flow
+
+
+def _fill_node(
+    node_id: str,
+    name: str,
+    assignee: dict[str, Any],
+    *,
+    overrides: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "name": name,
+        "type": "fill",
+        "assignee": assignee,
+        "return_targets": None,
+        "timeout_hours": None,
+        "fields_permission": {
+            "base": "hidden",
+            "partitions": {},
+            "overrides": overrides or {},
+            "conditional_overrides": [],
+        },
+    }
+
+
+def fill_then_approval_definition(
+    *,
+    fill_user_id: int,
+    approver_user_id: int,
+) -> dict[str, Any]:
+    return {
+        "model_version": 1,
+        "start": {"id": "start", "name": "开始", "type": "start", "fields_permission": None},
+        "steps": [
+            _fill_node(
+                "f1",
+                "补充信息",
+                user_rule(fill_user_id),
+                overrides={"secret": "editable-required"},
+            ),
+            _approval_node("a1", "复核审批", user_rule(approver_user_id)),
+        ],
+        "end": {"id": "end", "name": "结束", "type": "end"},
+    }
+
+
+def simple_data(*, reason: str = "E2E 自建流程", amount: float = 100) -> dict[str, Any]:
+    return {"reason": reason, "amount": amount}
+
+
 def leave_data(*, reason: str = "E2E 请假") -> dict[str, Any]:
     return {
         "leaveType": "personal",
