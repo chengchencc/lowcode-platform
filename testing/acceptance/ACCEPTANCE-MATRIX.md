@@ -12,9 +12,9 @@
 | P0 场景 | 44 |
 | P1 场景 | 4 |
 | 已设计用例 | 132 条 + 38 项非功能检查 |
-| 已自动化 | 50 条 + 1 MySQL-only skipped（G1 API R1–R9） |
-| 最近一次执行通过率 | 50/50（100%），1 条 MySQL-only skipped |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..010 已修） |
+| 已自动化 | 57 条 + 1 MySQL-only skipped（G1 API R1–R11） |
+| 最近一次执行通过率 | 57/57（100%），1 条 MySQL-only skipped |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..012 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -51,8 +51,8 @@
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
 | FORM-01 | P0 | PRD F1.2–F1.7 | 全控件表单设计→发布→发起页渲染；子表/公式/级联/附件/人员正确 | API+E2E | 待建 | DESIGNED | — | — |
-| FORM-02 | P0 | PRD F1.5；F2.6 | 旧实例锁旧版；新流程锁最新已发布版；草稿不影响线上 | API+E2E | 待建 | DESIGNED | — | — |
-| FORM-03 | P0 | PRD F3.2；§7 安全 | 绕过前端直接调 API：hidden/必填/值规则仍被服务端拦截 | API | 待建 | DESIGNED | — | — |
+| FORM-02 | P0 | PRD F1.5；F2.6 | 旧实例锁旧版；新流程锁最新已发布版；草稿不影响线上 | API+E2E | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 版本发布/旧流程锁旧版/新流程锁新版 PASS；旧实例详情待执行 | — |
+| FORM-03 | P0 | PRD F3.2；§7 安全 | 绕过前端直接调 API：hidden/必填/值规则仍被服务端拦截 | API | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 必填缺失、草稿/提交伪造 hidden 值被拦 PASS；值规则/子表待执行 | BUG-API-012（已修） |
 | FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E | 待建 | DESIGNED | — | — |
 
 ## 3. 流程设计与发布
@@ -60,14 +60,14 @@
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
 | FLOW-01 | P0 | PRD F2.1–F2.4；§3.3 | 顺序/条件/嵌套/并行/会签/或签/填写/抄送/结束全部可配置、可发布、可运行 | API+E2E | 待建 | DESIGNED | — | — |
-| FLOW-02 | P0 | PRD F2.7 | 孤儿节点、无审批人、引用不存在字段、空分支等不可发布，错误可定位 | API | 待建 | DESIGNED | — | — |
+| FLOW-02 | P0 | PRD F2.7 | 孤儿节点、无审批人、引用不存在字段、空分支等不可发布，错误可定位 | API | `testing/api/test_flow_validation.py` | PARTIAL | R13: 无审批人发布拒绝 PASS；孤儿节点/字段引用/空分支待执行 | — |
 | FLOW-03 | P0 | PRD F2.7；§7 | 深嵌套/100 节点/重名/删除被引用字段：行为明确，不产生 500 | API+手工 | 待建 | DESIGNED | — | — |
 
 ## 4. 权限与可见性
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| PERM-01 | P0 | PRD F2.3；§3.4 | 节点×字段 hidden/readonly/editable/required 正确；分区批量+单字段覆盖 | API+E2E | 待建 | DESIGNED | — | — |
+| PERM-01 | P0 | PRD F2.3；§3.4 | 节点×字段 hidden/readonly/editable/required 正确；分区批量+单字段覆盖 | API+E2E | `testing/api/test_form_flow_design.py` | PARTIAL | R12: base hidden + 单字段 readonly/editable-required PASS；分区批量/条件覆盖待执行 | — |
 | PERM-02 | P0 | PRD §3.4；§7 安全；D-04 | hidden 字段不出现在响应/快照/导出/打印；伪造提交值被过滤 | API+E2E | `testing/api/test_snapshots.py` | PARTIAL | R7: hidden key/值、导出、快照/对照 PASS；打印/附件待执行 | BUG-API-001/004/008（已修） |
 | PERM-03 | P0 | PRD §2；§7；F6 | 参与者/管理员/设计者/无关人员四视角正确；越权 ID 返回 403/404 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R2: 无关人/设计者实例访问 PASS；快照/导出/任务 IDOR 待执行 | — |
 | PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策；D-04 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定；hidden 字段附件不可见 | API+E2E | `testing/api/test_hidden_attachment.py` | PARTIAL | R11: 临时/提交绑定/参与者/无关人/非法扩展名/hidden 附件元数据+下载 PASS；打印待执行 | BUG-API-009/010（已修） |
@@ -78,7 +78,7 @@
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
-| INIT-01 | P0 | PRD F2.5；F3.1 | 发起范围（全员/角色/部门）正确；无权限看不到入口，直接访问也被拒 | API+E2E | 待建 | DESIGNED | — | — |
+| INIT-01 | P0 | PRD F2.5；F3.1 | 发起范围（全员/角色/部门）正确；无权限看不到入口，直接访问也被拒 | API+E2E | `testing/api/test_initiate_scope.py` | PARTIAL | R13: 角色范围、部门范围（含子部门）、直接访问拒绝 PASS；全员范围已由样例流程覆盖 | — |
 | INIT-02 | P0 | PRD F3.2；F3.3；D-04 | 自动填充、标题字段、隐藏字段、只读字段、草稿保存/恢复正确 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R3: 发起页/草稿/提交 PASS；hidden schema 裁剪 PASS；其余待执行 | BUG-API-001（已修） |
 | INIT-03 | P0 | PRD F3.4；§7 一致性 | 连点/刷新/网络重试只产生一个实例和一套任务 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R2: 单会话重复提交 PASS；双会话并发待执行 | — |
 | INIT-04 | P0 | PRD F3.5；§3.3.2 | 表单人员/部门主管/指定部门/角色/发起人自审规则正确 | API+E2E | 待建 | DESIGNED | — | — |
@@ -91,7 +91,7 @@
 | TASK-02 | P0 | PRD F4.2/F4.3；§3.5.4 | 同意/驳回/退回/撤回/终止在合法与非法状态下的守卫、提示、通知 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R4: 同意/驳回/撤回/终止守卫 PASS；退回/通知待执行 | — |
 | TASK-03 | P0 | PRD §3.5.3；F4.3 | 会签 all/any：同时待办、分别操作、一人驳回、或签后取消其余 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: 会签 all 正向、或签 any 取消其余 PASS；组内驳回待执行 | — |
 | TASK-04 | P0 | PRD §3.5.3；D-03 | 并行组 all/any 汇合正确；不提前推进、不永久卡住；退回取消整组并重派 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: all/any 汇合、并行组退回整组重派 PASS；提前推进/卡死边界待执行 | — |
-| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕、附件权限正确 | API+E2E | 待建 | DESIGNED | — | — |
+| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕、附件权限正确 | API+E2E | `testing/api/test_task_notify.py` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；diff 展示/附件下载权限待执行 | — |
 | TASK-06 | P0 | PRD F4.3；§7 | 同一任务两人同时处理、同一人双击、多标签页：结果唯一且可解释 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R2: 重复提交/重复处理 PASS；双会话并发待执行 | — |
 | TASK-07 | P0 | PHASE3 M14 §4 | 转办/委托：派单、可见性、留痕、窗口边界/重叠/撤销正确 | API+E2E | `testing/api/test_delegation.py` | PARTIAL | R5: 转办推进、委托派单/委托人可见、自委托/重叠拒绝 PASS；通知/时间线/会签组转办待执行 | BUG-API-006/007（已修） |
 
@@ -105,14 +105,14 @@
 | TERMINATE-01 | P0 | PRD §3.5.4 | 有权限者才能终止；终止后不可处理；相关人收到通知 | API+E2E | `testing/api/test_lifecycle.py` | PARTIAL | R4: 管理员终止、任务取消、非管理员拒绝 PASS；通知/时间线待执行 | — |
 | CC-01 | P0 | PRD F4.1/F7.1；§3.5.2 | 抄送可见不可操作；通知生成；不阻塞主线 | API+E2E | `testing/api/test_lifecycle.py` | PARTIAL | R4: 抄送可读/标记已读、不可处理 PASS；附件/隐藏字段待执行 | — |
 | EXT-01 | P0 | PRD F5.1–F5.4 | 运行中追加字段：仅该实例生效；权限/必填/停用正确；进快照/归档 | API+E2E | 待建 | DESIGNED | — | — |
-| NOTIFY-01 | P0 | PRD F7.1/F7.2 | 新待办/结果/抄送/取消/驳回通知齐全；已读/跳转正确；≤10s 感知 | API+E2E | 待建 | DESIGNED | — | — |
+| NOTIFY-01 | P0 | PRD F7.1/F7.2 | 新待办/结果/抄送/取消/驳回通知齐全；已读/跳转正确；≤10s 感知 | API+E2E | `testing/api/test_task_notify.py` | PARTIAL | R13: 新待办/结果通知、未读角标、单条/全部已读 PASS；抄送/取消/驳回通知与轮询待执行 | — |
 
 ## 8. 检索、归档与首页
 
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
 | SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1；D-05 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | `testing/api/test_search_operators.py` | PARTIAL | R10: 文本/数字/日期/布尔/选项/多选/人员/部门/空值、AND、mine/all 权限 PASS；编号语义待执行 | — |
-| SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | `testing/api/test_search.py` | PARTIAL | R9: 配置+提交后索引可检索 PASS；重建脚本/配置删除/跨版本待执行 | — |
+| SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | `testing/api/test_search.py` | PARTIAL | R12: 提交后索引同步 PASS；重建脚本/配置删除/跨版本待执行 | BUG-API-011（已修） |
 | ARCHIVE-01 | P0 | PRD F8.1；M6；D-05 | 归档只含已通过；CSV 列完整（含动态字段）、中文不乱码；非管理员不可导出 | API+E2E | `testing/api/test_archive.py` | PARTIAL | R5: 仅 APPROVED、批量/单实例导出、BOM/转义 PASS；列序/动态字段待执行 | BUG-API-003/004/005（已修） |
 | DASH-01 | P0 | PHASE3 M11 §1；D-02 | 普通用户/设计者个人工作台；管理员额外概览；空状态不报错 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R3: 设计者 admin=null PASS；其余角色/口径待执行 | BUG-API-002（已修） |
 
@@ -167,6 +167,8 @@
 | R9 | 2026-11-19 | P0 G1 API 第七批（SEARCH 业务字段筛选） | Claude | 45/45（无新缺陷） | `testing/reports/2026-11-19-p0-api-r7.md` |
 | R10 | 2026-11-19 | P0 G1 API 第八批（SEARCH 其余操作符/并发竞态） | Claude | 49/49（无新缺陷） | `testing/reports/2026-11-19-p0-api-r8.md` |
 | R11 | 2026-11-19 | P0 G1 API 第九批（hidden 附件/转办竞态） | Claude | 50 passed + 1 skipped（BUG-API-010 已修） | `testing/reports/2026-11-19-p0-api-r9.md` |
+| R12 | 2026-11-19 | P0 G1 API 第十批（表单版本/服务端校验/权限矩阵） | Claude | 52 passed + 1 skipped（BUG-API-011/012 已修） | `testing/reports/2026-11-19-p0-api-r10.md` |
+| R13 | 2026-11-20 | P0 G1 API 第十一批（发起范围/发布校验/意见附件必填/通知） | Claude | 57 passed + 1 skipped（无新缺陷） | `testing/reports/2026-11-20-p0-api-r11.md` |
 
 ## 13. 变更记录
 
@@ -186,3 +188,5 @@
 | 2026-11-19 | G1 API R7：45/45；SEARCH 文本/数字/AND/权限与错误分支通过；无新缺陷 |
 | 2026-11-19 | G1 API R8：49/49；SEARCH 其余操作符、撤回/终止/或签并发竞态通过；无新缺陷 |
 | 2026-11-19 | G1 API R9：50 passed + 1 skipped；修复 BUG-API-010（hidden 附件元数据/下载泄露）；转办竞态需 MySQL |
+| 2026-11-19 | G1 API R10：52 passed + 1 skipped；修复 BUG-API-011（检索索引模板 id）、012（草稿 hidden 值落库） |
+| 2026-11-20 | G1 API R11：57 passed + 1 skipped；INIT-01/FLOW-02/TASK-05/NOTIFY-01 部分覆盖；无新缺陷 |

@@ -374,7 +374,11 @@ def sync_instance_index(
     )
     if instance.status == InstanceStatus.DRAFT:
         return
-    configs = configs if configs is not None else _load_configs(db, instance.flow_template_id)
+    if configs is None:
+        # 检索配置存在 **form_template_id** 上；flow_template_id 通常不等于它。
+        flow = db.get(FlowTemplate, instance.flow_template_id)
+        form_template_id = flow.form_template_id if flow is not None else None
+        configs = _load_configs(db, form_template_id) if form_template_id else []
     if not configs:
         return
     values = instance.current_data or {}

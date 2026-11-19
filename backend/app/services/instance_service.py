@@ -269,8 +269,25 @@ def create_draft(
     form_schema = parse_form_schema(form_version.schema) if form_version else None
     values = dict(data or {})
     if form_schema is not None:
-        # 自动填充字段以服务端值为准，覆盖客户端传值；默认值只在空值时带入
-        values.update(auto_fill_values(form_schema, user_id=actor.id, dept_id=dept_id))
+        # 自动填充字段以服务端值为准；默认值只在空值时带入
+        filled = auto_fill_values(form_schema, user_id=actor.id, dept_id=dept_id)
+        # 草稿也只接受发起节点可编辑的字段：hidden/只读字段的客户端传值直接丢弃，
+        # 避免它们从草稿一路带进提交（FORM-03）。
+        permissions = resolve_field_permissions(
+            form_schema=form_schema,
+            node_type="start",
+            rule=compile_definition(current.definition).definition.start.fields_permission,
+            values={**values, **filled},
+        )
+        from app.engine.fields import apply_field_patch
+
+        values, _ = apply_field_patch(
+            current={},
+            patch=values,
+            permissions=permissions,
+            form_schema=form_schema,
+        )
+        values.update(filled)
         for key, value in default_values(
             form_schema, user_id=actor.id, dept_id=dept_id
         ).items():

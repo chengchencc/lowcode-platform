@@ -187,6 +187,7 @@ def act(
     *,
     action: str = "AGREE",
     opinion: str = "",
+    attachment_ids: list[int] | None = None,
     field_patch: dict[str, Any] | None = None,
     return_target: str | None = None,
     request_id: str | None = None,
@@ -195,7 +196,7 @@ def act(
     body: dict[str, Any] = {
         "action": action,
         "opinion": opinion,
-        "attachment_ids": [],
+        "attachment_ids": attachment_ids or [],
         "field_patch": field_patch or {},
         "return_target": return_target,
     }
@@ -655,6 +656,7 @@ def create_flow_and_publish(
     form_template_id: int,
     name: str,
     definition: dict[str, Any],
+    initiator_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     code = f"E2E_FLOW_{uuid.uuid4().hex[:8].upper()}"
     response = admin.post(
@@ -663,7 +665,7 @@ def create_flow_and_publish(
             "name": name,
             "code": code,
             "form_template_id": form_template_id,
-            "initiator_scope": {"type": "all"},
+            "initiator_scope": initiator_scope or {"type": "all"},
         },
     )
     assert response.status_code in (200, 201), response.text
