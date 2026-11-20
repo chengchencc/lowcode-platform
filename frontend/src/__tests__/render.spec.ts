@@ -1122,12 +1122,7 @@ describe('驳回重提与快照对照', () => {
     const wrapper = await mountView(InstanceDetailView, '/instance/1')
     await flushPromises()
 
-    // 时间线条目要展开才看得到快照入口
-    const toggle = wrapper.findAll('a.toggle')[0]
-    expect(toggle, '时间线应有「详情」展开入口').toBeTruthy()
-    await toggle.trigger('click')
-    await flushPromises()
-
+    // 处理历史默认展开，快照入口直接可见
     const link = wrapper
       .findAll('a')
       .find((a) => a.text().includes('查看当时的表单快照'))
