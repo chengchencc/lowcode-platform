@@ -26,7 +26,9 @@ test.describe('@p0 发起人旅程', () => {
         // 用底部「今天」按钮更稳定。
         const panel = page.locator('.ant-picker-dropdown').filter({ visible: true }).last()
         await expect(panel).toBeVisible()
-        await panel.getByText('今天', { exact: true }).click()
+        // 面板有开合动画，Playwright 的可操作性检查会误判「不稳定/不可见」；
+        // 直接派发 click，让 antd 自己完成日期选择。
+        await panel.locator('a.ant-picker-today-btn').dispatchEvent('click')
         await expect(dates.nth(index)).not.toHaveValue('')
       }
 
