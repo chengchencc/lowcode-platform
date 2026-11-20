@@ -282,7 +282,8 @@ class TestLeaveScenario:
         ).json()
         assert mgr_detail["my_role"] == "CURRENT_HANDLER"
         assert mgr_detail["permissions"]["reason"]["editable"] is False   # 申请区只读
-        assert mgr_detail["allowed_actions"] == ["AGREE", "REJECT", "RETURN"]
+        # 上一节点是发起节点，没有可退回的前序审批节点 → 不提供 RETURN
+        assert mgr_detail["allowed_actions"] == ["AGREE", "REJECT"]
 
         # 发起人：运行中只看到「发起阶段能看到的」
         emp_detail = client.get(
@@ -438,7 +439,8 @@ class TestTaskActions:
         detail = client.get(
             f"{BASE}/instances/{instance['id']}/render", headers=approver_h
         ).json()
-        assert detail["allowed_actions"] == ["AGREE", "REJECT", "RETURN"]
+        # 单审批节点、上一节点为发起节点 → 不提供 RETURN
+        assert detail["allowed_actions"] == ["AGREE", "REJECT"]
         assert detail["my_role"] == "CURRENT_HANDLER"
 
     def test_reject_requires_opinion(self, db, client):

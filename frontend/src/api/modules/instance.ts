@@ -76,6 +76,10 @@ export const instanceApi = {
     return request.post<InstanceItem>('/instances/drafts', payload)
   },
 
+  copyInstance(id: number) {
+    return request.post<InstanceItem>(`/instances/${id}/copy`)
+  },
+
   listDrafts() {
     return request.get<InstanceItem[]>('/instances/drafts')
   },

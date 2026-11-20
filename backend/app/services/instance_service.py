@@ -317,6 +317,61 @@ def create_draft(
     return instance
 
 
+def _copyable_values(
+    values: Mapping[str, Any], schema: FormSchema | None
+) -> dict[str, Any]:
+    """复制为新申请时的表单值：附件不复制，其余按 schema 过滤。
+
+    自动编号由 `create_draft` 重新生成；附件 ID 属于原实例，不能带到新单。
+    """
+    if schema is None:
+        return dict(values)
+    out = dict(values)
+    for section in schema.sections:
+        for field in section.fields:
+            if field.type == "attachment":
+                out.pop(field.key, None)
+            elif field.type == "subtable" and isinstance(out.get(field.key), list):
+                allowed = {
+                    column.key
+                    for column in (field.columns or [])
+                    if column.type != "attachment"
+                }
+                out[field.key] = [
+                    {key: value for key, value in row.items() if key in allowed}
+                    for row in out[field.key]
+                    if isinstance(row, dict)
+                ]
+    return out
+
+
+def copy_to_draft(
+    db: Session,
+    instance: FlowInstance,
+    *,
+    actor: User,
+) -> FlowInstance:
+    """把已撤回/已驳回的实例复制成一张新草稿（不迁移原单状态）。"""
+    if instance.initiator_id != actor.id and not is_admin(actor):
+        raise ForbiddenError("只有发起人或管理员可以复制该申请", code="COPY_FORBIDDEN")
+    if instance.status not in {InstanceStatus.REJECTED, InstanceStatus.WITHDRAWN}:
+        raise UnprocessableError(
+            "只有已驳回或已撤回的申请可以复制为新申请", code="COPY_STATUS_INVALID"
+        )
+
+    template = db.get(FlowTemplate, instance.flow_template_id)
+    if template is None:
+        raise NotFoundError("流程模板不存在", code="FLOW_TEMPLATE_NOT_FOUND")
+
+    schema = form_schema_of(db, instance)
+    return create_draft(
+        db,
+        template=template,
+        actor=actor,
+        data=_copyable_values(instance.current_data or {}, schema),
+    )
+
+
 def update_draft(
     db: Session,
     instance: FlowInstance,

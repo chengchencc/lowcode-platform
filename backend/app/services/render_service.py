@@ -121,6 +121,10 @@ def render_instance(
                     compiled, Cursor(current_node.id, tuple(assignment.task.gates), instance.round)
                 )
             ]
+            # 没有前序审批/填写节点时（上一节点就是发起人），退回无目标可退。
+            # 保留按钮只会弹出一个空列表；这种情况用「驳回」表达退回发起人。
+            if not return_targets:
+                allowed_actions = [a for a in allowed_actions if a != "RETURN"]
 
     # ---- 我在这张单上的角色 ----
     my_role = _viewer_role(db, instance, viewer, assignment)

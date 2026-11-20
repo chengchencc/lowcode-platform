@@ -74,6 +74,20 @@ def create_draft(
     return instance_service.to_out(db, instance, viewer=user)
 
 
+@router.post(
+    "/{instance_id}/copy",
+    response_model=InstanceOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="复制为新申请（已驳回/已撤回）",
+)
+def copy_instance(
+    instance_id: int, db: DbSession, user: CurrentUser, ip: ClientIp
+) -> dict:
+    instance = instance_service.get_or_404(db, instance_id)
+    copied = instance_service.copy_to_draft(db, instance, actor=user)
+    return instance_service.to_out(db, copied, viewer=user)
+
+
 @router.get("/drafts", response_model=list[InstanceOut], summary="我的草稿箱")
 def list_drafts(db: DbSession, user: CurrentUser) -> list[dict]:
     return [
