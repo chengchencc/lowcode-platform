@@ -62,6 +62,7 @@ bash scripts/check.sh
 - G1 API 黑盒已执行 94 条（另有 3 条 MySQL-only skipped），累计修复 16 个缺陷（BUG-API-001..015 + BUG-UI-001，含 1 个 S1 转办卡死）；已覆盖表单/流程设计、全域权限、发起范围、审批人来源、扩展字段、安全、SEARCH、附件、快照、并发、通知、首页口径。
 - G2 浏览器旅程 R17：**41/41 通过**，TEST-PLAN §7.6 的 12 条核心旅程全部落地（含设计器复杂配置/委托创建/业务筛选/快照/移动/打印）。
 - G3 引擎不变量：随机流程 + 随机动作 200 轮通过（`bash scripts/invariants.sh`）。
+- UAT 第一轮（R19）：3 个问题已修复（退回空列表、驳回/撤回入口、导出选项标签）；A4 打印待最终确认。
 - 剩余 P0 主要是 Docker/MySQL/PG、迁移/时区、性能、UAT、打印排版；转办/双会话并发需 MySQL；ARCHIVE 列序属界面/格式验收。
 - E2E 未覆盖项与观察见 [reports/2026-11-20-p0-e2e-r17.md](reports/2026-11-20-p0-e2e-r17.md)。
 - 详见 [plan/TEST-PLAN.md](plan/TEST-PLAN.md)、[acceptance/P0-DECISIONS.md](acceptance/P0-DECISIONS.md) 与 [acceptance/ACCEPTANCE-MATRIX.md](acceptance/ACCEPTANCE-MATRIX.md)。
