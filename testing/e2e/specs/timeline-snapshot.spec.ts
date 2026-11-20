@@ -49,8 +49,8 @@ test.describe('@p0 处理历史与快照回放', () => {
       await initiator.page.goto(`/instance/${instance.id}`)
       await expect(initiator.page.getByText('已通过').first()).toBeVisible()
 
-      // 展开第一条处理记录，进入当时快照
-      await initiator.page.getByText('详情', { exact: true }).first().click()
+      // 处理历史默认展开，直接进入当时快照
+      await expect(initiator.page.getByText(/查看当时的表单快照/).first()).toBeVisible()
       await initiator.page.getByText(/查看当时的表单快照/).first().click()
 
       await expect(initiator.page.getByText('正在查看历史快照')).toBeVisible()

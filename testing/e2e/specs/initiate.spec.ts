@@ -20,12 +20,13 @@ test.describe('@p0 发起人旅程', () => {
 
       // 起止日期：输入框只读，走日期面板；选「今天」保持用例与运行日期无关
       const dates = page.getByPlaceholder('请选择日期')
-      const panel = page.locator('.ant-picker-dropdown').filter({ visible: true }).last()
       for (const index of [0, 1]) {
         await dates.nth(index).click()
+        // 每次重新取当前可见面板；日期单元格在 Linux 动画期间会短暂不可见，
+        // 用底部「今天」按钮更稳定。
+        const panel = page.locator('.ant-picker-dropdown').filter({ visible: true }).last()
         await expect(panel).toBeVisible()
-        // 只点当前打开面板里的「今天」，避免上一块面板关闭动画期间点到隐藏元素
-        await panel.locator('td.ant-picker-cell-today').first().click()
+        await panel.getByText('今天', { exact: true }).click()
         await expect(dates.nth(index)).not.toHaveValue('')
       }
 
