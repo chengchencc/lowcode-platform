@@ -97,3 +97,10 @@ jobs:
         env:
           E2E_DATABASE_URL: ${{ matrix.db == 'mysql' && 'mysql+pymysql://flowform:flowform@127.0.0.1:3306/flowform?charset=utf8mb4' || 'postgresql+psycopg://flowform:flowform@127.0.0.1:5432/flowform' }}
         run: bash scripts/api.sh testing/api/test_concurrency.py testing/api/test_custom_flows.py
+      - name: 上传后端日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-backend-${{ matrix.db }}
+          path: testing/.runtime/e2e/api-backend.log
+          retention-days: 7
