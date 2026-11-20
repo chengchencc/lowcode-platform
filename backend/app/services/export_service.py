@@ -124,31 +124,25 @@ def build_csv(db: Session, instances: Sequence[FlowInstance]) -> str:
 
     # 列 = 各实例「模板字段 ⊕ 动态字段」的并集，按模板里的出现顺序排列
     columns: list[tuple[str, str]] = []
+    label_maps: dict[str, dict[str, str]] = {}
     seen: set[str] = set()
     for instance in instances:
-        schema = _schema_of(db, instance)
-        for section in schema.sections:
-            for field in section.fields:
-                if field.type in DISPLAY_FIELD_TYPES:
-                    # 展示控件不是数据列
-                    continue
-                if field.key in seen:
-                    continue
-                seen.add(field.key)
-                columns.append((field.key, field.label))
-                for column in getattr(field, "columns", []) or []:
-                    ref = f"{field.key}.{column.key}"
-                    if ref in seen:
-                        continue
-                    seen.add(ref)
-                    columns.append((ref, f"{field.label} · {column.label}"))
+        schema = _schema_of(db, instance).model_dump(mode="json")
+        instance_columns, instance_maps = _schema_columns(schema)
+        for key, label in instance_columns:
+            if key in seen:
+                continue
+            seen.add(key)
+            columns.append((key, label))
+        for key, mapping in instance_maps.items():
+            label_maps.setdefault(key, mapping)
 
     table_rows: list[list[Any]] = []
     for row in rows:
         values = row["values"]
         line = [row[key] for key, _ in META_COLUMNS]
         for key, _ in columns:
-            line.append(_cell(values, key))
+            line.append(_cell(values, key, label_maps.get(key)))
         table_rows.append(line)
     return _write_table(table_rows, columns)
 
@@ -162,20 +156,7 @@ def build_csv_from_render(render: dict[str, Any]) -> str:
     schema = render.get("schema_data") or {}
     values = render.get("values") or {}
 
-    columns: list[tuple[str, str]] = []
-    for section in schema.get("sections", []) or []:
-        for field in section.get("fields", []) or []:
-            field_type = field.get("type")
-            if field_type in DISPLAY_FIELD_TYPES:
-                continue
-            key = field.get("key")
-            label = field.get("label") or key
-            if not key:
-                continue
-            columns.append((key, label))
-            for column in field.get("columns") or []:
-                ref = f"{key}.{column.get('key')}"
-                columns.append((ref, f"{label} · {column.get('label') or column.get('key')}"))
+    columns, label_maps = _schema_columns(schema)
 
     from app.core.constants import INSTANCE_STATUS_LABELS
 
@@ -190,36 +171,103 @@ def build_csv_from_render(render: dict[str, Any]) -> str:
         _stamp_any(info.get("started_at")),
         _stamp_any(info.get("finished_at")),
     ]
-    line = [*meta, *(_cell(values, key) for key, _ in columns)]
+    line = [
+        *meta,
+        *(_cell(values, key, label_maps.get(key)) for key, _ in columns),
+    ]
     return _write_table([line], columns)
 
 
-def _cell(values: dict[str, Any], ref: str) -> str:
+def _option_map(options: Any) -> dict[str, str]:
+    """{选项 value: 展示 label}，兼容 schema 里的 dict / 字符串选项。"""
+    mapping: dict[str, str] = {}
+    for option in options or []:
+        if isinstance(option, dict):
+            value = option.get("value")
+            if value is None:
+                continue
+            label = option.get("label")
+            mapping[str(value)] = str(label if label is not None else value)
+        else:
+            mapping[str(option)] = str(option)
+    return mapping
+
+
+def _field_label_map(field: dict[str, Any]) -> dict[str, str]:
+    """选项类字段的 code → label；级联字段把各父级下的选项一起展开。"""
+    labels = _option_map(field.get("options"))
+    cascader = field.get("cascader") or {}
+    if isinstance(cascader, dict):
+        for options in (cascader.get("options_by_parent") or {}).values():
+            labels.update(_option_map(options))
+    return labels
+
+
+def _schema_columns(
+    schema: dict[str, Any],
+) -> tuple[list[tuple[str, str]], dict[str, dict[str, str]]]:
+    """从 schema 生成导出列与「选项 code → label」映射。"""
+    columns: list[tuple[str, str]] = []
+    label_maps: dict[str, dict[str, str]] = {}
+    for section in schema.get("sections", []) or []:
+        for field in section.get("fields", []) or []:
+            field_type = field.get("type")
+            if field_type in DISPLAY_FIELD_TYPES:
+                continue
+            key = field.get("key")
+            if not key:
+                continue
+            label = field.get("label") or key
+            columns.append((key, label))
+            mapping = _field_label_map(field)
+            if mapping:
+                label_maps[key] = mapping
+            for column in field.get("columns") or []:
+                column_key = column.get("key")
+                if not column_key:
+                    continue
+                ref = f"{key}.{column_key}"
+                columns.append(
+                    (ref, f"{label} · {column.get('label') or column_key}")
+                )
+                column_map = _field_label_map(column)
+                if column_map:
+                    label_maps[ref] = column_map
+    return columns, label_maps
+
+
+def _cell(
+    values: dict[str, Any], ref: str, labels: dict[str, str] | None = None
+) -> str:
     """取一个字段的值。子表列（`items.amount`）展开成多行，便于在 Excel 里读。"""
     if "." not in ref:
-        return _text(values.get(ref))
+        return _text(values.get(ref), labels)
 
     table_key, column_key = ref.split(".", 1)
     rows = values.get(table_key)
     if not isinstance(rows, list):
         return ""
     parts = [
-        _text(row.get(column_key))
+        _text(row.get(column_key), labels)
         for row in rows
         if isinstance(row, dict) and row.get(column_key) not in (None, "", [])
     ]
     return " | ".join(parts)
 
 
-def _text(value: Any) -> str:
+def _text(value: Any, labels: dict[str, str] | None = None) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
         return "是" if value else "否"
     if isinstance(value, (list, tuple)):
-        return "、".join(_text(v) for v in value)
+        return "、".join(_text(v, labels) for v in value)
     if isinstance(value, dict):
-        return ", ".join(f"{k}={_text(v)}" for k, v in value.items())
+        return ", ".join(f"{k}={_text(v, labels)}" for k, v in value.items())
+    if labels is not None:
+        mapped = labels.get(str(value))
+        if mapped is not None:
+            return mapped
     return str(value)
 
 
