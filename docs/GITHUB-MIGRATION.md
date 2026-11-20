@@ -1,5 +1,11 @@
 # GitHub 双远端与代理配置
 
+> 当前状态（2026-11-20）：双远端已建立。
+> - `origin`：`git@gitee.com:Chaphets/lowcode-platform.git`（主仓）
+> - `github`：`git@github.com:chengchencc/lowcode-platform.git`
+> - `master` / `f_aitest` 已推送；日常默认跟踪仍是 `origin`，GitHub 用 `git push github <branch>` 或 `scripts/push-all.sh`。
+> - 待确认：GitHub Actions 首次运行结果、分支保护、nightly。
+
 > 目标：保留 Gitee 为 `origin`，新增 GitHub 为 `github`；两边可独立推送，互不阻塞。
 > 前置：本机代理已启动（默认 `127.0.0.1:7890`），GitHub 仓库已创建。
 

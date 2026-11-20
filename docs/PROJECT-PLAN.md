@@ -2,7 +2,7 @@
 
 > 建立：2026-11-20
 > 定位：功能开发完成后的**验证收尾、测试补强、GitHub 迁移与 CI 落地**计划。
-> 2026-11-20 产品确认：GitHub 迁移暂缓（继续 Gitee）；Docker 环境今日暂不验证；条件分支允许为空。
+> 2026-11-20：GitHub 双远端已建立（Gitee 仍为 origin）；Docker 环境已在 MacBook 验证，部署由产品负责人执行；条件分支允许为空。
 > 测试战略见 `testing/plan/TEST-PLAN.md`；日常测试流程见 `testing/plan/TEST-WORKFLOW.md`；验收状态以 `testing/acceptance/ACCEPTANCE-MATRIX.md` 为准。
 
 ## 0. 当前状态
