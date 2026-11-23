@@ -74,6 +74,20 @@ def create_draft(
     return instance_service.to_out(db, instance, viewer=user)
 
 
+@router.post(
+    "/{instance_id}/copy",
+    response_model=InstanceOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="复制为新申请（已驳回/已撤回）",
+)
+def copy_instance(
+    instance_id: int, db: DbSession, user: CurrentUser, ip: ClientIp
+) -> dict:
+    instance = instance_service.get_or_404(db, instance_id)
+    copied = instance_service.copy_to_draft(db, instance, actor=user)
+    return instance_service.to_out(db, copied, viewer=user)
+
+
 @router.get("/drafts", response_model=list[InstanceOut], summary="我的草稿箱")
 def list_drafts(db: DbSession, user: CurrentUser) -> list[dict]:
     return [
@@ -176,11 +190,10 @@ def progress(instance_id: int, db: DbSession, user: CurrentUser) -> list[dict]:
 
 @router.get("/{instance_id}/timeline", summary="处理历史时间线（F4.6）")
 def timeline(instance_id: int, db: DbSession, user: CurrentUser) -> list[dict]:
-    from app.services import timeline_service
-
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
-    return timeline_service.list_actions(db, instance)
+    # 复用 render 的查看者视角：时间线里的字段 diff 也按 D-04 裁剪。
+    return render_service.render_instance(db, instance, viewer=user).get("actions", [])
 
 
 # ⚠️ 顺序要紧：`/snapshots/diff` 必须排在 `/snapshots/{snapshot_id}` **之前**。
@@ -196,7 +209,18 @@ def snapshot_diff(
 ) -> list[dict]:
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
-    return snapshot_service.compare(db, from_id, to_id)
+    rows = snapshot_service.compare(db, from_id, to_id)
+    # D-04：运行中查看历史对照时，hidden 字段的 key/旧值/新值都不下发。
+    rendered = render_service.render_instance(
+        db, instance, viewer=user, snapshot_id=to_id
+    )
+    # render 的 permissions 已裁剪为仅可见字段；不在其中即 hidden。
+    permissions = rendered.get("permissions", {})
+    return [
+        row
+        for row in rows
+        if permissions.get(row.get("key"), {}).get("visible", False)
+    ]
 
 
 @router.get("/{instance_id}/snapshots/{snapshot_id}", summary="历史时点快照")
@@ -210,7 +234,16 @@ def get_snapshot(
     snapshot = db.get(snapshot_service.DataSnapshot, snapshot_id)
     if snapshot is None or snapshot.instance_id != instance.id:
         raise NotFoundError("快照不存在", code="SNAPSHOT_NOT_FOUND")
-    return {**snapshot_service.to_out(db, snapshot), "data": snapshot.data}
+    # D-04：快照页与详情页共用查看者视角；运行中 hidden 字段的 key/值不下发。
+    rendered = render_service.render_instance(
+        db, instance, viewer=user, snapshot_id=snapshot_id
+    )
+    data = {
+        **snapshot.data,
+        "values": rendered.get("values", {}),
+        "ext_fields": rendered.get("ext_fields", []),
+    }
+    return {**snapshot_service.to_out(db, snapshot), "data": data}
 
 
 # --------------------------------------------------------------------------- 检索
@@ -294,7 +327,7 @@ def list_archive(
     user: CurrentUser,
     paging: Annotated[PageParams, Depends()],
     instance_status: Annotated[
-        str | None, Query(alias="status", description="默认 APPROVED；可传多个逗号分隔")
+        str | None, Query(alias="status", description="归档仅支持 APPROVED")
     ] = None,
     flow_template_id: Annotated[int | None, Query()] = None,
     initiator_id: Annotated[int | None, Query()] = None,
@@ -374,12 +407,14 @@ def export_instance(instance_id: int, db: DbSession, user: CurrentUser) -> Respo
     """发起人/处理人/管理员都能导出**自己看得见**的单据。
 
     导出等于把整张单据的数据一次性拿走，可见性校验不能省 ——
-    它和详情页用的是同一条规则（PRD §2）。
+    它和详情页用的是同一条规则（PRD §2）。单实例导出复用 render 的
+    查看者视角：运行中只导出可见字段，终态导出归档全量（D-04）。
     """
     instance = instance_service.get_or_404(db, instance_id)
     instance_service.assert_can_view(db, instance, user)
+    rendered = render_service.render_instance(db, instance, viewer=user)
     return _csv_response(
-        export_service.build_csv(db, [instance]),
+        export_service.build_csv_from_render(rendered),
         export_service.csv_filename(f"flowform-{instance.code or instance.id}"),
     )
 
@@ -388,6 +423,13 @@ def _status_list(raw: str | None) -> list[str] | None:
     if not raw:
         return None
     values = [v.strip().upper() for v in raw.split(",") if v.strip()]
+    invalid = [value for value in values if value != "APPROVED"]
+    if invalid:
+        raise UnprocessableError(
+            "归档列表只支持 APPROVED",
+            code="ARCHIVE_STATUS_INVALID",
+            extra={"invalid": invalid},
+        )
     return values or None
 
 

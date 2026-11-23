@@ -2,11 +2,18 @@
 
 FROM node:22-alpine AS build
 
+# 依赖下载源。compose 会从 .env 的 NPM_REGISTRY 透传（默认国内镜像），
+# 单独 docker build 时走官方源；海外环境传 --build-arg NPM_REGISTRY=https://registry.npmjs.org
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
 WORKDIR /app
 
-# 依赖先于源码：只改业务代码时 npm ci 这一层直接命中缓存
 COPY package.json package-lock.json ./
-RUN npm ci
+
+# 依赖先于源码：只改业务代码时 npm ci 这一层直接命中缓存。
+# cache mount 让 npm 的下载缓存在构建之间复用（不进镜像），换 lockfile 时也不必重下。
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --registry="$NPM_REGISTRY" --no-audit --no-fund
 
 COPY . .
 RUN npm run build

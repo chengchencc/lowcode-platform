@@ -83,7 +83,7 @@ async function removeDraft(draft: InstanceItem): Promise<void> {
           </Space>
         </template>
         <div class="draft-list">
-          <div v-for="draft in drafts" :key="draft.id" class="draft-item">
+          <div v-for="draft in drafts" :key="draft.id" class="draft-item" data-testid="draft-item">
             <div class="draft-main">
               <a @click="resume(draft)">{{ draft.title }}</a>
               <span class="text-muted tiny">
@@ -114,7 +114,13 @@ async function removeDraft(draft: InstanceItem): Promise<void> {
         <div v-for="[category, items] in grouped" :key="category" class="category">
           <div class="category-title">{{ category }}</div>
           <div class="flow-grid">
-            <div v-for="flow in items" :key="flow.id" class="flow-card" @click="start(flow)">
+            <div
+              v-for="flow in items"
+              :key="flow.id"
+              class="flow-card"
+              data-testid="flow-card"
+              @click="start(flow)"
+            >
               <div class="flow-name">{{ flow.name }}</div>
               <div class="flow-desc text-muted">
                 {{ flow.description || `共 ${flow.node_count} 个审批节点` }}

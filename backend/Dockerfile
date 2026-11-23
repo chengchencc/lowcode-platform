@@ -5,16 +5,24 @@
 
 FROM python:3.12-slim
 
+# 依赖下载源。compose 会从 .env 的 PIP_INDEX_URL 透传（默认国内镜像），
+# 单独 docker build 时走官方源；海外环境传 --build-arg PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Asia/Shanghai
 
 WORKDIR /app
 
-# 依赖先于代码：改业务代码不会让这一层缓存失效，重建通常只剩几秒
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+
+# 依赖先于代码：改业务代码不会让这一层缓存失效，重建通常只剩几秒。
+# cache mount 把 pip 下载缓存留在 builder 里（不进镜像，镜像不会变大），
+# 即便 requirements.txt 变了，也不用重新从网络拉已经下过的 wheel。
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "$PIP_INDEX_URL" -r requirements.txt
 
 COPY alembic.ini ./
 COPY alembic ./alembic

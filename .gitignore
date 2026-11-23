@@ -9,6 +9,7 @@ venv/
 .ruff_cache/
 htmlcov/
 .coverage
+coverage.json
 
 # ---- Node ----
 node_modules/
@@ -35,6 +36,10 @@ coverage/
 uploads/
 logs/
 *.log
+
+# ---- 验收 / E2E ----
+# Spec Pack、E2E 数据库/附件、Playwright 报告全部集中在 testing/.runtime/
+testing/.runtime/
 
 # ---- 编辑器 / 系统 ----
 .idea/

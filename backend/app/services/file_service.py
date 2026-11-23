@@ -178,13 +178,14 @@ def _attachment_ids(value: object) -> list[int]:
     return out
 
 
-def collect_attachment_ids(form_schema, values: dict) -> list[int]:
-    """收集表单值里所有附件/图片 id（含子表行内）。"""
-    found: set[int] = set()
+def collect_attachment_fields(form_schema, values: dict) -> dict[int, str]:
+    """收集表单值里的附件 id → 所属字段权限 key（含子表列）。"""
+    found: dict[int, str] = {}
     for section in form_schema.sections:
         for field in section.fields:
             if field.type in {FieldType.ATTACHMENT, FieldType.IMAGE}:
-                found.update(_attachment_ids(values.get(field.key)))
+                for attachment_id in _attachment_ids(values.get(field.key)):
+                    found.setdefault(attachment_id, field.key)
             if field.type is FieldType.SUBTABLE:
                 rows = values.get(field.key)
                 if not isinstance(rows, list):
@@ -194,10 +195,18 @@ def collect_attachment_ids(form_schema, values: dict) -> list[int]:
                     if col.type in {FieldType.ATTACHMENT, FieldType.IMAGE}
                 ]
                 for row in rows:
-                    if isinstance(row, dict):
-                        for key in file_cols:
-                            found.update(_attachment_ids(row.get(key)))
-    return list(found)
+                    if not isinstance(row, dict):
+                        continue
+                    for key in file_cols:
+                        field_key = f"{field.key}[].{key}"
+                        for attachment_id in _attachment_ids(row.get(key)):
+                            found.setdefault(attachment_id, field_key)
+    return found
+
+
+def collect_attachment_ids(form_schema, values: dict) -> list[int]:
+    """收集表单值里所有附件/图片 id（含子表行内）。"""
+    return list(collect_attachment_fields(form_schema, values))
 
 
 def bind_instance_attachments(
@@ -208,19 +217,28 @@ def bind_instance_attachments(
     *,
     extra_ids: list[int] | None = None,
 ) -> None:
-    """把表单/意见里的 TEMP 附件绑定到实例，供发起人与审批参与者下载。"""
-    ids = collect_attachment_ids(form_schema, values)
-    if extra_ids:
-        ids.extend(extra_ids)
-    if not ids:
-        return
-    attach_to(
-        db,
-        list(dict.fromkeys(ids)),
-        biz_type="INSTANCE",
-        biz_id=instance.id,
-        instance_id=instance.id,
-    )
+    """把表单/意见里的 TEMP 附件绑定到实例，并记录所属字段。
+
+    记录 `field_key` 是 D-04 的前提：只有知道附件属于哪个字段，
+    才能按字段权限隐藏元数据并拒绝下载。
+    """
+    fields: dict[int, str | None] = dict(collect_attachment_fields(form_schema, values))
+    for attachment_id in extra_ids or ():
+        fields.setdefault(attachment_id, None)  # 意见/说明附件：不挂字段
+
+    groups: dict[str | None, list[int]] = {}
+    for attachment_id, field_key in fields.items():
+        groups.setdefault(field_key, []).append(attachment_id)
+
+    for field_key, ids in groups.items():
+        attach_to(
+            db,
+            list(dict.fromkeys(ids)),
+            biz_type="INSTANCE",
+            biz_id=instance.id,
+            instance_id=instance.id,
+            field_key=field_key,
+        )
 
 
 def describe(attachment: Attachment) -> dict:

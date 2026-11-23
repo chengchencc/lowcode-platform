@@ -282,7 +282,8 @@ class TestLeaveScenario:
         ).json()
         assert mgr_detail["my_role"] == "CURRENT_HANDLER"
         assert mgr_detail["permissions"]["reason"]["editable"] is False   # 申请区只读
-        assert mgr_detail["allowed_actions"] == ["AGREE", "REJECT", "RETURN"]
+        # 上一节点是发起节点，没有可退回的前序审批节点 → 不提供 RETURN
+        assert mgr_detail["allowed_actions"] == ["AGREE", "REJECT"]
 
         # 发起人：运行中只看到「发起阶段能看到的」
         emp_detail = client.get(
@@ -438,7 +439,8 @@ class TestTaskActions:
         detail = client.get(
             f"{BASE}/instances/{instance['id']}/render", headers=approver_h
         ).json()
-        assert detail["allowed_actions"] == ["AGREE", "REJECT", "RETURN"]
+        # 单审批节点、上一节点为发起节点 → 不提供 RETURN
+        assert detail["allowed_actions"] == ["AGREE", "REJECT"]
         assert detail["my_role"] == "CURRENT_HANDLER"
 
     def test_reject_requires_opinion(self, db, client):
@@ -821,19 +823,22 @@ class TestExtFieldApi:
 
         data, key = self._append(client, instance["id"], designer_h, required=True)
 
-        # 返回体就是详情页数据：动态字段已并进 schema，前端不必自己拼
+        # 设计者是发起人、不是处理人 → 运行中看不到这个新字段（D-04：key 也不下发）
         keys = [f["key"] for s in data["schema_data"]["sections"] for f in s["fields"]]
-        assert key in keys
+        assert key not in keys
+        assert key not in data["permissions"]
         assert key.startswith("ext_1_")
+        # 结构定义仍保留，管理员才能管理它
         assert data["ext_fields"][0]["label"] == "合同编号"
 
-        # 设计者是发起人、不是处理人 → 看不到（追加点之后才可见）
-        assert data["permissions"][key]["visible"] is False
-
-        # 处理人：看得见、可编辑、必填
+        # 处理人：schema 已并入动态字段，且可见、可编辑、必填
         render = client.get(
             f"{BASE}/instances/{instance['id']}/render", headers=approver_h
         ).json()
+        approver_keys = [
+            f["key"] for s in render["schema_data"]["sections"] for f in s["fields"]
+        ]
+        assert key in approver_keys
         assert render["permissions"][key]["editable"] is True
         assert render["permissions"][key]["required"] is True
 
@@ -970,15 +975,23 @@ class TestArchive:
         assert resp.json()["detail"]["code"] == "ADMIN_REQUIRED"
         assert instance  # 用一下，避免未使用告警
 
-    def test_archive_can_widen_status(self, db, client, admin_headers):
-        """查历史时可以放开到其他终态（撤回/终止），默认只看已通过。"""
+    def test_archive_rejects_non_approved_status(self, db, client, admin_headers):
+        """D-05：归档列表只允许 APPROVED；其他终态走管理员实例管理。"""
         instance, _init_h, _approver_h = self._finished_instance(db, client)
-        resp = client.get(
+
+        approved = client.get(
+            f"{BASE}/instances/archive", headers=admin_headers,
+            params={"status": "APPROVED"},
+        )
+        assert approved.status_code == 200, approved.text
+        assert instance["id"] in {row["id"] for row in approved.json()["items"]}
+
+        rejected = client.get(
             f"{BASE}/instances/archive", headers=admin_headers,
             params={"status": "APPROVED,TERMINATED"},
         )
-        assert resp.status_code == 200, resp.text
-        assert instance["id"] in {row["id"] for row in resp.json()["items"]}
+        assert rejected.status_code == 422, rejected.text
+        assert rejected.json()["detail"]["code"] == "ARCHIVE_STATUS_INVALID"
 
     def test_export_csv_has_bom_and_labels(self, db, client, admin_headers):
         instance, _init_h, _approver_h = self._finished_instance(db, client)

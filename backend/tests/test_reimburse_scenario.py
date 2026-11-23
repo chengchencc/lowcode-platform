@@ -197,8 +197,15 @@ class TestReimburseScenario:
         render = self._render(client, headers["employee"], instance_id)
         assert render["values"]["total"] == 3000
         assert [row["subtotal"] for row in render["values"]["items"]] == [2000, 1000]
-        # 申请阶段：补充区字段完全不可见（PRD 验收点）
-        assert render["permissions"]["actualAmount"]["visible"] is False
+        # D-04：申请阶段补充区字段的 key/标签/值都不下发（不只是 visible=false）
+        assert "actualAmount" not in render["permissions"]
+        schema_keys = [
+            field["key"]
+            for section in render["schema_data"]["sections"]
+            for field in section["fields"]
+        ]
+        assert "actualAmount" not in schema_keys
+        assert "actualAmount" not in render["values"]
 
         # 总额 > 2000 → 走双签分支，两人**同时**收到任务
         self._act(client, headers["manager"], self._todo_id(client, headers["manager"]), "AGREE")
@@ -266,7 +273,7 @@ class TestReimburseScenario:
         assert fin_render["current_node"]["name"] == "财务核销"
         assert fin_render["permissions"]["actualAmount"]["editable"] is True
         emp_render = self._render(client, headers["employee"], instance_id)
-        assert emp_render["permissions"]["actualAmount"]["visible"] is False
+        assert "actualAmount" not in emp_render["permissions"]
 
         # 运行中追加「合同编号」：仅当前节点（财务核销）可编辑
         added = client.post(
@@ -282,10 +289,8 @@ class TestReimburseScenario:
         fin_render = self._render(client, headers["finance"], instance_id)
         assert fin_render["permissions"][ext_key]["editable"] is True
         assert fin_render["permissions"][ext_key]["required"] is True
-        # 发起人在运行中看不到这个新字段
-        assert self._render(client, headers["employee"], instance_id)["permissions"][ext_key][
-            "visible"
-        ] is False
+        # 发起人在运行中看不到这个新字段：key 也不应下发
+        assert ext_key not in self._render(client, headers["employee"], instance_id)["permissions"]
 
         fin_task = self._todo_id(client, headers["finance"])
         missing = client.post(

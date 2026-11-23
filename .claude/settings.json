@@ -3,5 +3,9 @@
     "allow": [
       "Bash(./.venv/Scripts/python.exe -c ' *)"
     ]
+  },
+    "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }

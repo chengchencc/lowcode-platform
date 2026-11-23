@@ -11,11 +11,16 @@
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
-require_venv
-require_node
-
 SCOPE="${1:-all}"
 shift 2>/dev/null || true
+
+# 只要求当前 scope 真正需要的运行时：
+# backend 不需要前端 node_modules，frontend 也不需要 Python venv。
+case "$SCOPE" in
+  all|quick) require_venv; require_node ;;
+  backend)   require_venv ;;
+  frontend)  require_node ;;
+esac
 
 declare -a NAMES=()
 declare -a STATUSES=()

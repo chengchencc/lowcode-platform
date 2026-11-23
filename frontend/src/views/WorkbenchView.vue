@@ -73,7 +73,7 @@ const instanceColumns = [
   { title: '当前节点', key: 'current_node_keys', width: 170 },
   { title: '提交时间', key: 'started_at', width: 130 },
   { title: '状态', key: 'status', width: 120 },
-  { title: '操作', key: 'action', width: 90, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 180, fixed: 'right' as const },
 ]
 
 async function load(): Promise<void> {
@@ -164,6 +164,17 @@ function openTask(row: TaskRow): void {
 
 function openInstance(row: InstanceItem): void {
   void router.push({ name: 'instance-detail', params: { id: row.id } })
+}
+
+/** 撤回/驳回后把原单数据复制成一张新草稿，再进发起页确认提交。 */
+async function copyApplication(row: InstanceItem): Promise<void> {
+  const draft = await instanceApi.copyInstance(row.id)
+  feedback.success('已复制为新草稿，请确认后提交')
+  await router.push({
+    name: 'start-form',
+    params: { flowTemplateId: draft.flow_template_id },
+    query: { draftId: draft.id },
+  })
 }
 
 function openTransfer(row: TaskRow): void {
@@ -356,10 +367,28 @@ function statusMeta(status?: string | null) {
           </template>
 
           <template v-else-if="column.key === 'action'">
-            <Button type="link" size="small" @click="openInstance(record as InstanceItem)">
-              <template #icon><EyeOutlined /></template>
-              查看
-            </Button>
+            <Space :size="2">
+              <Button
+                v-if="record.status === 'REJECTED'"
+                type="link"
+                size="small"
+                @click="openInstance(record as InstanceItem)"
+              >
+                修改并重提
+              </Button>
+              <Button
+                v-else-if="record.status === 'WITHDRAWN'"
+                type="link"
+                size="small"
+                @click="copyApplication(record as InstanceItem)"
+              >
+                复制为新申请
+              </Button>
+              <Button type="link" size="small" @click="openInstance(record as InstanceItem)">
+                <template #icon><EyeOutlined /></template>
+                查看
+              </Button>
+            </Space>
           </template>
         </template>
       </Table>

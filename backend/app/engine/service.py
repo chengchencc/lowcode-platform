@@ -794,8 +794,11 @@ class EngineService:
             patch=values_in,
             forced=forced,
         )
-        if initiator_select is not None:
-            values["__initiator_select__"] = initiator_select
+        # 发起人指定审批人的选择结果不是表单字段，会被 apply_field_patch 过滤；
+        # 但派发首个节点时必须让 initiator_select 来源读到它。派发后再移除。
+        select_picks = values_in.get("__initiator_select__")
+        if select_picks is not None:
+            values["__initiator_select__"] = select_picks
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
         # 谁填的值谁负责：只校验发起阶段可编辑的那些字段
@@ -803,7 +806,10 @@ class EngineService:
 
         now = self.clock()
         from_status = instance.status
-        instance.current_data = values
+        clean_values = {
+            key: value for key, value in values.items() if key != "__initiator_select__"
+        }
+        instance.current_data = clean_values
         instance.status = assert_transition(instance.status, event)
         instance.started_at = instance.started_at or now
         instance.last_action_at = now
@@ -830,7 +836,11 @@ class EngineService:
         result.snapshot_id = snap.id
 
         cursors = plan_start(compiled, values)
+        # 内部选择键只用于派单，不进入表单数据/快照/导出。
+        if select_picks is not None:
+            instance.current_data = values
         self._dispatch(instance, compiled, cursors, actor, result)
+        instance.current_data = clean_values
         action_row.to_status = instance.status
 
         self._persist_notifications(result.notifications)
@@ -1652,6 +1662,9 @@ class EngineService:
         return merge_ext_fields(self._form_schema(instance), list(instance.ext_fields))
 
     def _approver_context(self, instance: FlowInstance, compiled: CompiledFlow) -> ApproverContext:
+        # 会话是 autoflush=False：刚刚完成的节点必须先 flush，否则
+        # prev_node_actors 查不到它，会误退回管理员。
+        self.db.flush()
         completed = list(
             self.db.scalars(
                 select(Task)
@@ -1716,9 +1729,15 @@ class EngineService:
 
     @staticmethod
     def _assignment_views(task: Task) -> list[AssignmentView]:
+        # 转办留下的原指派是 CANCELLED/TRANSFERRED，不参与节点聚合；
+        # 否则 SINGLE/ALL 会认为「还有人未完成」，节点永远 OPEN。
         return [
             AssignmentView(user_id=a.user_id, status=a.status, result=a.result, seq=a.seq)
             for a in task.assignments
+            if not (
+                a.status == AssignmentStatus.CANCELLED
+                and a.cancel_reason == CancelReason.TRANSFERRED
+            )
         ]
 
     @staticmethod

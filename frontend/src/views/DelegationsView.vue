@@ -64,8 +64,12 @@ async function load(): Promise<void> {
 }
 
 async function loadOptions(): Promise<void> {
+  // 流程模板列表需要设计者权限；普通用户创建委托时不应因此连人员选项都加载失败。
+  const flowListPromise = auth.isDesigner
+    ? flowApi.listTemplates().catch(() => [] as FlowTemplate[])
+    : Promise.resolve([] as FlowTemplate[])
   const [flowList, userList] = await Promise.all([
-    flowApi.listTemplates(),
+    flowListPromise,
     userApi.options({ limit: 200 }),
   ])
   flows.value = flowList

@@ -34,17 +34,21 @@ async function downloadAttachment(att: { id: number; file_name: string }): Promi
   }
 }
 
-const expanded = ref<Set<number>>(new Set())
+/**
+ * 处理历史默认全部展开：争议追溯时不必逐条点「详情」。
+ * 记录的是**被收起**的动作，新增动作也自然保持展开。
+ */
+const collapsed = ref<Set<number>>(new Set())
 
 function toggle(actionId: number): void {
-  const next = new Set(expanded.value)
+  const next = new Set(collapsed.value)
   if (next.has(actionId)) next.delete(actionId)
   else next.add(actionId)
-  expanded.value = next
+  collapsed.value = next
 }
 
 function isExpanded(actionId: number): boolean {
-  return expanded.value.has(actionId)
+  return !collapsed.value.has(actionId)
 }
 
 /** 动作 → 时间线节点的颜色 */
@@ -94,7 +98,7 @@ function hasDetail(action: ActionEntry): boolean {
             {{ formatDateTime(action.created_at) }}
           </span>
           <a v-if="hasDetail(action)" class="toggle" @click="toggle(action.action_id)">
-            {{ isExpanded(action.action_id) ? '收起' : '详情' }}
+            {{ isExpanded(action.action_id) ? '收起' : '展开' }}
           </a>
         </div>
 
