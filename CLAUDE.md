@@ -108,6 +108,7 @@ UAT 期间尤其如此：每次修复只重启本地服务、交给你复测；�
 - **数据隔离**：API/E2E 只连 `testing/.runtime/e2e`，绝不碰 `backend/flowform.db`；测试数据用唯一前缀。
 - **不拿单测全绿当验收**：验收只认需求矩阵 + 真实旅程。
 - **提交**：信息用中文，沿用 `type(scope): 摘要`；只在你确认的检查点提交，推送前确认。
+- **提交信息**：禁止添加 `Co-Authored-By: Claude ...` 等 AI 共同作者尾注；仓库 Contributors 只保留人类账号。
 - **测试优先级**：P0 业务链路优先；P1/P2 按 `docs/PROJECT-PLAN.md` 排期。
 
 ## 代码结构速记
