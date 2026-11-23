@@ -167,6 +167,25 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
   （如 `http://127.0.0.1:7890`）；本项目实测配置镜像加速器也可用
 - 上线前请：改 `ADMIN_PASSWORD`、关掉 `SEED_DEMO_ACCOUNTS`、给 `JWT_SECRET` 一个好密钥
 
+### 在环境间搬运组织测试数据
+
+想把自己在测试环境里手工建的用户、部门、角色复制到另一套环境（不用重新点一遍）：
+
+```bash
+# 源环境（仓库根目录，compose 已启动）
+bash scripts/org-sync.sh export                 # 默认导出到 ./org-data.json
+
+# 把 org-data.json 拷到目标机器后，在目标环境执行
+bash scripts/org-sync.sh import org-data.json --dry-run   # 先演练
+bash scripts/org-sync.sh import org-data.json             # 只补缺失
+```
+
+文件里用**用户名 / 部门编码 / 角色编码**做自然键，导入时按目标环境的自增 id 重新落位，
+部门树、部门主管、用户角色都会重新接好。密码以 bcrypt hash 原样搬运，复制后原密码直接可登录。
+
+默认**不覆盖**目标环境已有的角色 / 部门 / 用户；确实要覆盖时加 `--update`，
+连密码一起覆盖再加 `--update-passwords`。头像文件本身不迁移（只搬 `avatar` 路径字段）。
+
 ### 构建加速
 
 首次构建要下依赖（pip / npm），之后不应该再慢。两个机制：
@@ -209,6 +228,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
 | `scripts/e2e.sh` | 浏览器 E2E（真实实现 `testing/scripts/e2e.sh`） |
 | `scripts/build-spec-pack.sh` | 生成独立验收设计用 Spec Pack |
 | `scripts/migrate.sh` | Alembic 助手，缺省 = `upgrade head` |
+| `scripts/org-sync.sh` | 组织数据（用户 / 部门 / 角色）跨环境导出导入 |
 | `scripts/_common.sh` | 公共函数，被上面各脚本 source，不单独执行 |
 
 > Windows 上 `setup` / `dev-backend` / `dev-frontend` 另有 `scripts\*.cmd`
