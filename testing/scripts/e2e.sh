@@ -141,7 +141,7 @@ for arg in "${ARGS[@]+"${ARGS[@]}"}"; do
 done
 
 printf '\n'
-info "运行 Playwright（$E2E_BASE_URL）"
+info "运行 Playwright（${E2E_BASE_URL}）"
 rc=0
 cd "$ROOT/testing/e2e"
 if [ "$UI" = 1 ]; then

@@ -103,7 +103,7 @@ if [ "$NO_SERVER" = 0 ]; then
 fi
 
 printf '\n'
-info "运行 API 黑盒验收（$API_BASE_URL）"
+info "运行 API 黑盒验收（${API_BASE_URL}）"
 rc=0
 if [ ${#ARGS[@]} -gt 0 ]; then
   "$VENV_PY" -m pytest testing/api "${ARGS[@]}" || rc=$?

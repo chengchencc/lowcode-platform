@@ -13,7 +13,7 @@ require_venv
 
 info "重置 E2E 环境：$E2E_DIR"
 if ! rm -rf "$E2E_DIR" 2>/dev/null; then
-  fail "无法清空 $E2E_DIR：可能有 E2E 服务仍在运行并占用数据库"
+  fail "无法清空 ${E2E_DIR}：可能有 E2E 服务仍在运行并占用数据库"
   for port in "$E2E_BACKEND_PORT" "$E2E_FRONTEND_PORT"; do
     pid="$(port_holder "$port")"
     [ -n "$pid" ] && printf '    端口 %s 被 PID %s 占用\n' "$port" "$pid" >&2

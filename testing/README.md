@@ -37,11 +37,14 @@
 bash scripts/api.sh
 bash scripts/api.sh -k hidden
 
-# 带界面跑 P0 冒烟（会打开 Edge）
+# 带界面跑 P0 冒烟（会打开系统浏览器）
 bash scripts/e2e.sh @p0 --headed
 
 # 无头回归
 bash scripts/e2e.sh @p0
+
+# 用本机 Chrome（macOS/Linux 未安装 Playwright 自带浏览器时）
+E2E_BROWSER_CHANNEL=chrome bash scripts/e2e.sh @p0
 
 # 构建独立设计用的 Spec Pack
 bash scripts/build-spec-pack.sh
