@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001..002 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -54,6 +54,7 @@
 | FORM-02 | P0 | PRD F1.5；F2.6 | 旧实例锁旧版；新流程锁最新已发布版；草稿不影响线上 | API+E2E | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 版本发布/旧流程锁旧版/新流程锁新版 PASS；旧实例详情待执行 | — |
 | FORM-03 | P0 | PRD F3.2；§7 安全 | 绕过前端直接调 API：hidden/必填/值规则仍被服务端拦截 | API | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 必填缺失、草稿/提交伪造 hidden 值被拦 PASS；值规则/子表待执行 | BUG-API-012（已修） |
 | FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E | `testing/api/test_form_rules.py` | PARTIAL | R15: 布局列数/分区折叠/展示控件/联动规则隐藏+清空 PASS；设计器预览待执行 | — |
+| FORM-05 | P0 | PRD F1.5；F2.6 | 发布后不自动产生空草稿；打开设计器默认只读查看已发布版本；可显式新建草稿，也可删除未发布草稿 | E2E | `testing/e2e/specs/design.spec.ts` | PASS | 本轮：表单/流程发布后无新草稿，新建→删除草稿链路通过 | BUG-UI-002（已修） |
 
 ## 3. 流程设计与发布
 
@@ -71,6 +72,7 @@
 | PERM-02 | P0 | PRD §3.4；§7 安全；D-04 | hidden 字段不出现在响应/快照/导出/打印；伪造提交值被过滤 | API+E2E | `testing/api/test_snapshots.py` | PARTIAL | R7: hidden key/值、导出、快照/对照 PASS；打印/附件待执行 | BUG-API-001/004/008（已修） |
 | PERM-03 | P0 | PRD §2；§7；F6 | 参与者/管理员/设计者/无关人员四视角正确；越权 ID 返回 403/404 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R2: 无关人/设计者实例访问 PASS；快照/导出/任务 IDOR 待执行 | — |
 | PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策；D-04 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定；hidden 字段附件不可见 | API+E2E | `testing/api/test_hidden_attachment.py` | PARTIAL | R11: 临时/提交绑定/参与者/无关人/非法扩展名/hidden 附件元数据+下载 PASS；打印待执行 | BUG-API-009/010（已修） |
+| PERM-05 | P0 | PRD F8.1；§3.4 | 流程级 `history_view` 可配置已办处理人打开运行中单据的字段范围：`own_nodes` 本人节点并集（默认）/ `full` 全部只读 / `start` 仅发起阶段；均只读，发起人视角不泄露补充字段；终态仍按归档视角 | API+E2E | `backend/tests/test_instances_api.py`、`testing/e2e/specs/permissions.spec.ts`、`testing/e2e/specs/design.spec.ts` | PASS | 本轮：三种策略后端单测、已办入口 E2E、设计器设置持久化 E2E 均通过 | — |
 | SEC-01 | P0 | PRD §7 安全 | IDOR：实例/任务/附件/模板/审计/导出接口逐一用无关用户访问 | API | `testing/api/test_security_extra.py` | PARTIAL | R14: 任务/模板/审计/终止/快照 IDOR PASS；附件/导出全接口待执行 | — |
 | SEC-02 | P0 | PRD §7 安全；PHASE2 M10 | 富文本 XSS、CSV 注入、上传白名单/大小/路径穿越 | API+手工 | `testing/api/test_security_extra.py` | PARTIAL | R14: 富文本原始 HTML 拒绝、CSV 注入转义、上传白名单 PASS；路径穿越/大小待执行 | — |
 

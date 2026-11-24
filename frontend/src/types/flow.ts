@@ -23,6 +23,9 @@ export type AssigneeSourceType =
 
 export type RejectPolicy = 'reject_to_initiator' | 'reject_forbidden'
 
+/** 运行中实例里，已办处理人再次打开时的字段范围（终态仍按归档视角）。 */
+export type HistoryView = 'own_nodes' | 'full' | 'start'
+
 // --------------------------------------------------------------------------- 条件
 
 import type { Comparison, ConditionGroup } from '@/types/conditions'
@@ -132,6 +135,8 @@ export interface EndNode extends NodeBase {
 
 export interface FlowDefinition {
   model_version: number
+  /** 已办处理人打开运行中实例时的字段范围；旧版定义可能没有，按默认值处理 */
+  history_view?: HistoryView
   start: StartNode
   steps: StepNode[]
   end: EndNode

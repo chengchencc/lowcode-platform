@@ -37,6 +37,21 @@ LEAVE_SCHEMA = {
     ]
 }
 
+#: 两个分区的表单：申请区发起可见，财务区由填写节点逐步打开
+SECTION_SCHEMA = {
+    "sections": [
+        {"key": "sec_apply", "title": "申请信息", "stage": "apply", "fields": [
+            {"key": "reason", "label": "事由", "type": "text", "required": True},
+        ]},
+        {"key": "sec_finance", "title": "财务补充", "stage": "supplement", "fields": [
+            {"key": "actualAmount", "label": "实际金额", "type": "number",
+             "visible_at_start": False},
+            {"key": "invoiceNo", "label": "发票号", "type": "text",
+             "visible_at_start": False},
+        ]},
+    ]
+}
+
 
 def _setup_leave_flow(db, *, director_id: int, hr_id: int) -> tuple:
     """建一条请假流程并发布，返回 (模板, 版本, 表单版本)。"""
@@ -293,6 +308,187 @@ class TestLeaveScenario:
         assert emp_detail["allowed_actions"] == []
 
 
+class TestHistoricalHandlerVisibility:
+    """已办处理人：办完自己的节点后，仍按本节点权限只读查看。"""
+
+    def test_finished_handler_keeps_own_node_fields(self, db, client, admin_headers):
+        manager = _user(db)
+        finance = _user(db)
+        director = _user(db)
+        employee = _user(db)
+        template = _make_section_flow(
+            db, manager_id=manager.id, finance_id=finance.id, director_id=director.id
+        )
+        db.commit()
+        emp_h = login_as(client, employee.username, PASSWORD)
+        mgr_h = login_as(client, manager.username, PASSWORD)
+        fin_h = login_as(client, finance.username, PASSWORD)
+        dir_h = login_as(client, director.username, PASSWORD)
+
+        draft = client.post(
+            f"{BASE}/instances/drafts", headers=emp_h,
+            json={"flow_template_id": template.id},
+        ).json()
+        submitted = client.post(
+            f"{BASE}/instances/{draft['id']}/submit", headers=emp_h,
+            json={"data": {"reason": "采购报销"}},
+        )
+        assert submitted.status_code == 200, submitted.text
+
+        # 经理审批通过 → 财务补充节点
+        aid = client.get(f"{BASE}/tasks/todo", headers=mgr_h).json()["items"][0][
+            "assignment_id"
+        ]
+        assert client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=mgr_h,
+            json={"action": "AGREE"},
+        ).status_code == 200
+
+        # 财务节点上追加动态字段：只有当前节点可见可填
+        added = client.post(
+            f"{BASE}/instances/{draft['id']}/ext-fields", headers=admin_headers,
+            json={"label": "合同编号", "type": "text"},
+        )
+        assert added.status_code == 200, added.text
+        ext_key = added.json()["ext_fields"][0]["field_key"]
+
+        aid = client.get(f"{BASE}/tasks/todo", headers=fin_h).json()["items"][0][
+            "assignment_id"
+        ]
+        acted = client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=fin_h,
+            json={
+                "action": "SUBMIT",
+                "field_patch": {
+                    "actualAmount": 2800,
+                    "invoiceNo": "FP-2026-0001",
+                    ext_key: "HT-001",
+                },
+            },
+        )
+        assert acted.status_code == 200, acted.text
+
+        # 财务已办、流程仍在总监节点：财务仍能看到自己节点开放的字段（只读）
+        fin_detail = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=fin_h
+        ).json()
+        assert fin_detail["instance"]["status"] == "RUNNING"
+        assert fin_detail["my_role"] == "PARTICIPANT"
+        assert fin_detail["allowed_actions"] == []
+        for key in ("reason", "actualAmount", "invoiceNo", ext_key):
+            assert fin_detail["permissions"][key]["visible"] is True, key
+            assert fin_detail["permissions"][key]["editable"] is False, key
+
+        # 已办经理只按经理节点权限：申请区可见，财务区与动态字段仍隐藏
+        mgr_detail = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=mgr_h
+        ).json()
+        assert mgr_detail["permissions"]["reason"]["visible"] is True
+        for key in ("actualAmount", "invoiceNo", ext_key):
+            assert key not in mgr_detail["permissions"], key
+
+        # 发起人依旧看不到补充区与动态字段
+        emp_detail = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=emp_h
+        ).json()
+        for key in ("actualAmount", "invoiceNo", ext_key):
+            assert key not in emp_detail["permissions"], key
+
+        # 当前处理人（总监）看不到模板补充区；动态字段按 L5「追加点之后可见」只读
+        dir_detail = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=dir_h
+        ).json()
+        assert dir_detail["my_role"] == "CURRENT_HANDLER"
+        for key in ("actualAmount", "invoiceNo"):
+            assert key not in dir_detail["permissions"], key
+        assert dir_detail["permissions"][ext_key]["visible"] is True
+        assert dir_detail["permissions"][ext_key]["editable"] is False
+
+
+def _finance_done_instance(db, client, *, history_view: str):
+    """财务节点办完、流程停在总监时返回 (实例, 发起人/经理/财务 headers)。"""
+    manager, finance, director, employee = _user(db), _user(db), _user(db), _user(db)
+    template = _make_section_flow(
+        db,
+        manager_id=manager.id,
+        finance_id=finance.id,
+        director_id=director.id,
+        history_view=history_view,
+    )
+    db.commit()
+    emp_h = login_as(client, employee.username, PASSWORD)
+    mgr_h = login_as(client, manager.username, PASSWORD)
+    fin_h = login_as(client, finance.username, PASSWORD)
+
+    draft = client.post(
+        f"{BASE}/instances/drafts", headers=emp_h,
+        json={"flow_template_id": template.id},
+    ).json()
+    submitted = client.post(
+        f"{BASE}/instances/{draft['id']}/submit", headers=emp_h,
+        json={"data": {"reason": "采购报销"}},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    aid = client.get(f"{BASE}/tasks/todo", headers=mgr_h).json()["items"][0][
+        "assignment_id"
+    ]
+    assert client.post(
+        f"{BASE}/tasks/assignments/{aid}/act", headers=mgr_h,
+        json={"action": "AGREE"},
+    ).status_code == 200
+
+    aid = client.get(f"{BASE}/tasks/todo", headers=fin_h).json()["items"][0][
+        "assignment_id"
+    ]
+    acted = client.post(
+        f"{BASE}/tasks/assignments/{aid}/act", headers=fin_h,
+        json={
+            "action": "SUBMIT",
+            "field_patch": {"actualAmount": 2800, "invoiceNo": "FP-2026-0001"},
+        },
+    )
+    assert acted.status_code == 200, acted.text
+    return draft, emp_h, mgr_h, fin_h
+
+
+class TestHistoryViewPolicy:
+    """流程级 history_view 控制已办处理人打开运行中单据的字段范围。"""
+
+    def test_full_policy_shows_all_fields_to_handlers(self, db, client):
+        draft, emp_h, mgr_h, fin_h = _finance_done_instance(
+            db, client, history_view="full"
+        )
+
+        for headers in (fin_h, mgr_h):
+            detail = client.get(
+                f"{BASE}/instances/{draft['id']}/render", headers=headers
+            ).json()
+            for key in ("reason", "actualAmount", "invoiceNo"):
+                assert detail["permissions"][key]["visible"] is True, key
+                assert detail["permissions"][key]["editable"] is False, key
+
+        # 发起人仍只看到发起阶段字段
+        emp_detail = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=emp_h
+        ).json()
+        for key in ("actualAmount", "invoiceNo"):
+            assert key not in emp_detail["permissions"], key
+
+    def test_start_policy_hides_fields_opened_after_start(self, db, client):
+        draft, emp_h, mgr_h, fin_h = _finance_done_instance(
+            db, client, history_view="start"
+        )
+
+        for headers in (fin_h, mgr_h):
+            detail = client.get(
+                f"{BASE}/instances/{draft['id']}/render", headers=headers
+            ).json()
+            assert detail["permissions"]["reason"]["visible"] is True
+            for key in ("actualAmount", "invoiceNo"):
+                assert key not in detail["permissions"], key
+
+
 def _first_available_id(client, headers) -> int:
     available = client.get(f"{BASE}/instances/available-flows", headers=headers).json()
     assert available, "至少应有一个可发起流程"
@@ -395,6 +591,58 @@ def _submit_simple(client, headers, template_id: int) -> dict:
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def _make_section_flow(
+    db,
+    *,
+    manager_id: int,
+    finance_id: int,
+    director_id: int,
+    history_view: str | None = None,
+):
+    """经理审批 → 财务补充（打开财务区）→ 总监审批。
+
+    财务补充完成后流程继续运行，用于验证「已办人仍能看到自己处理过的区域」。
+    `history_view` 不传即走默认 `own_nodes`。
+    """
+    owner = _user(db)
+    form = _published_form(db, owner)
+    form.schema = SECTION_SCHEMA
+    db.flush()
+    definition = {
+        **({"history_view": history_view} if history_view else {}),
+        "steps": [
+            {"id": "s1", "type": "approval", "name": "经理审批",
+             "assignee": {"mode": "SINGLE",
+                          "sources": [{"type": "user", "user_ids": [manager_id]}]},
+             "fields_permission": {
+                 "base": "hidden",
+                 "partitions": {"sec_apply": "readonly"},
+             }},
+            {"id": "s2", "type": "fill", "name": "财务补充",
+             "assignee": {"mode": "SINGLE",
+                          "sources": [{"type": "user", "user_ids": [finance_id]}]},
+             "fields_permission": {
+                 "base": "readonly",
+                 "partitions": {"sec_finance": "editable"},
+                 "overrides": {"actualAmount": "editable-required"},
+             }},
+            {"id": "s3", "type": "approval", "name": "总监审批",
+             "assignee": {"mode": "SINGLE",
+                          "sources": [{"type": "user", "user_ids": [director_id]}]},
+             "fields_permission": {
+                 "base": "hidden",
+                 "partitions": {"sec_apply": "readonly"},
+             }},
+        ],
+    }
+    version = _published_flow(db, owner, form, definition)
+    template = db.get(FlowTemplate, version.template_id)
+    assert template is not None
+    template.status = FlowStatus.PUBLISHED
+    db.flush()
+    return template
 
 
 def _pending_instance(db, client):

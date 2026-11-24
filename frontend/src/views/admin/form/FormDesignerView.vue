@@ -80,6 +80,8 @@ const titleFieldOptions = computed(() =>
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
+const creatingDraft = ref(false)
+const deletingDraft = ref(false)
 const lastSavedAt = ref<Date | null>(null)
 const dirty = ref(false)
 
@@ -140,24 +142,80 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     template.value = await formApi.getTemplate(templateId.value)
-    // 有草稿就编辑草稿，否则从当前发布版本 fork 一个草稿
     let target: FormVersion
     if (template.value.draft_version_id) {
       target = await formApi.getVersion(template.value.draft_version_id)
+    } else if (template.value.current_version_id != null) {
+      // 没有草稿时默认查看已发布版本，**不要**因为打开设计器就凭空造草稿
+      target = await formApi.getVersion(template.value.current_version_id)
     } else {
-      target = await formApi.createVersion(templateId.value, template.value.current_version_id)
+      // 新建模板还没有任何版本，才需要先建草稿才能配置
+      target = await formApi.createVersion(templateId.value, null)
     }
-    version.value = target
-    schema.value = normalizeSchema(target.schema_data)
-    if (schema.value.sections.length) {
-      selected.value = {
-        sectionKey: schema.value.sections[0].key,
-        fieldKey: schema.value.sections[0].fields[0]?.key ?? '',
-      }
-      if (!selectedField.value) selected.value = null
-    }
+    applyVersion(target)
   } finally {
     loading.value = false
+  }
+}
+
+function applyVersion(target: FormVersion): void {
+  version.value = target
+  schema.value = normalizeSchema(target.schema_data)
+  selected.value = null
+  if (schema.value.sections.length) {
+    selected.value = {
+      sectionKey: schema.value.sections[0].key,
+      fieldKey: schema.value.sections[0].fields[0]?.key ?? '',
+    }
+    if (!selectedField.value) selected.value = null
+  }
+}
+
+/** 从当前查看的版本新建一份草稿，进入可编辑状态。 */
+async function createDraft(): Promise<void> {
+  if (!template.value) return
+  creatingDraft.value = true
+  try {
+    const draft = await formApi.createVersion(
+      templateId.value,
+      version.value?.id ?? template.value.current_version_id,
+    )
+    applyVersion(draft)
+    dirty.value = false
+    lastSavedAt.value = null
+    feedback.success('已新建草稿，可以继续编辑')
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    creatingDraft.value = false
+  }
+}
+
+/** 删除当前草稿；已有发布版本时回到只读的发布版本视图。 */
+async function deleteDraft(): Promise<void> {
+  if (!version.value || version.value.status !== 'DRAFT') return
+  const ok = await feedback.confirm({
+    title: `删除草稿 v${version.value.version_no}？`,
+    content: '只删除未发布的草稿，已发布版本和运行中实例不受影响。',
+    danger: true,
+  })
+  if (!ok) return
+
+  deletingDraft.value = true
+  try {
+    // 取消尚未触发的自动保存，避免删除后又把请求打到已删除的版本
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    dirty.value = false
+    await formApi.deleteVersion(version.value.id)
+    feedback.success('草稿已删除')
+    await load()
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    deletingDraft.value = false
   }
 }
 
@@ -512,6 +570,21 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
             <template v-else-if="dirty">有未保存的改动</template>
             <template v-else-if="lastSavedAt">已保存</template>
           </span>
+          <Button
+            v-if="readonly && template?.current_version_id"
+            :loading="creatingDraft"
+            @click="createDraft"
+          >
+            新建草稿
+          </Button>
+          <Button
+            v-if="!readonly && template?.current_version_id"
+            danger
+            :loading="deletingDraft"
+            @click="deleteDraft"
+          >
+            删除草稿
+          </Button>
           <Button :disabled="readonly" :loading="saving" @click="save">
             <template #icon><SaveOutlined /></template>
             保存

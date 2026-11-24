@@ -7,6 +7,7 @@
 
     {
       "model_version": 1,
+      "history_view": "own_nodes",  // own_nodes | full | start
       "start": {"id": "start", "type": "start", ...},
       "steps": [
         {"id": "s1", "type": "approval",  ...},
@@ -64,6 +65,12 @@ OnEmptyPolicy = Literal["to_admin", "block_publish"]
 
 #: 驳回策略
 RejectPolicy = Literal["reject_to_initiator", "reject_forbidden"]
+
+#: 运行中实例里，已办处理人再次打开时的字段可见范围（PRD §3.4 机制 B）
+#: own_nodes：本人已办填写/审批节点权限的并集（默认）
+#: full：全部字段只读
+#: start：仅发起节点视角
+HistoryView = Literal["own_nodes", "full", "start"]
 
 
 # --------------------------------------------------------------------------- 审批人
@@ -237,6 +244,9 @@ class EndNode(NodeBase):
 
 class FlowDefinition(BaseModel):
     model_version: int = 1
+    #: 已办处理人打开运行中实例时的字段范围（详见 HistoryView）。
+    #: 终态实例仍按归档视角全量只读，不受此配置影响。
+    history_view: HistoryView = "own_nodes"
     start: StartNode = Field(default_factory=lambda: StartNode(id="start", name="发起"))
     steps: list[StepNode] = Field(default_factory=list)
     end: EndNode = Field(default_factory=lambda: EndNode(id="end", name="结束"))

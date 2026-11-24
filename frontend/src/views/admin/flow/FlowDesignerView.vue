@@ -18,6 +18,7 @@ import {
   PlusOutlined,
   RobotOutlined,
   SaveOutlined,
+  SettingOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Card, Empty, Space, Tag, Tooltip } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -46,6 +47,7 @@ import type {
   FlowTemplate,
   FlowValidateResult,
   FlowVersion,
+  HistoryView,
   ParallelNode,
   ReturnTarget,
   StepNode,
@@ -68,11 +70,14 @@ const formSchema = ref<FormSchema | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
+const creatingDraft = ref(false)
+const deletingDraft = ref(false)
 const dirty = ref(false)
 const lastSavedAt = ref<Date | null>(null)
 
 const selectedId = ref<string | null>(null)
 const viewMode = ref<'canvas' | 'list'>('canvas')
+const settingsOpen = ref(false)
 const returnTargets = ref<ReturnTarget[]>([])
 const userOptions = ref<Array<{ value: number; label: string }>>([])
 
@@ -86,21 +91,77 @@ async function load(): Promise<void> {
     let target: FlowVersion
     if (template.value.draft_version_id) {
       target = await flowApi.getVersion(template.value.draft_version_id)
+    } else if (template.value.current_version_id != null) {
+      // 没有草稿时默认查看已发布版本，**不要**因为打开设计器就凭空造草稿
+      target = await flowApi.getVersion(template.value.current_version_id)
     } else {
+      // 新建流程还没有任何版本，才需要先建草稿才能配置
       target = await flowApi.createVersion(templateId.value)
     }
     if (target.status === 'DRAFT') target = await bindLatestFormVersion(target)
-    version.value = target
-    definition.value = normalizeDefinition(target.definition)
+    applyVersion(target)
 
     // 绑定的表单 schema —— 字段权限矩阵与条件编辑器都要用
     const formVersion = await formApi.getVersion(target.locked_form_version_id)
     formSchema.value = formVersion.schema_data
 
     await Promise.all([org.loadRoles(), org.loadDeptTree(), loadUserOptions()])
-    selectedId.value = definition.value.steps[0]?.id ?? null
   } finally {
     loading.value = false
+  }
+}
+
+function applyVersion(target: FlowVersion): void {
+  version.value = target
+  definition.value = normalizeDefinition(target.definition)
+  selectedId.value = definition.value.steps[0]?.id ?? null
+}
+
+/** 从当前查看的版本新建一份草稿，进入可编辑状态。 */
+async function createDraft(): Promise<void> {
+  if (!template.value) return
+  creatingDraft.value = true
+  try {
+    const draft = await flowApi.createVersion(templateId.value)
+    // 草稿可能锁定比当前查看版本更新的表单，先把字段列表切过去
+    const formVersion = await formApi.getVersion(draft.locked_form_version_id)
+    formSchema.value = formVersion.schema_data
+    applyVersion(draft)
+    dirty.value = false
+    lastSavedAt.value = null
+    feedback.success('已新建草稿，可以继续编辑')
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    creatingDraft.value = false
+  }
+}
+
+/** 删除当前草稿；已有发布版本时回到只读的发布版本视图。 */
+async function deleteDraft(): Promise<void> {
+  if (!version.value || version.value.status !== 'DRAFT') return
+  const ok = await feedback.confirm({
+    title: `删除草稿 v${version.value.version_no}？`,
+    content: '只删除未发布的草稿，已发布版本和运行中实例不受影响。',
+    danger: true,
+  })
+  if (!ok) return
+
+  deletingDraft.value = true
+  try {
+    // 取消尚未触发的自动保存，避免删除后又把请求打到已删除的版本
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    dirty.value = false
+    await flowApi.deleteVersion(version.value.id)
+    feedback.success('草稿已删除')
+    await load()
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    deletingDraft.value = false
   }
 }
 
@@ -153,6 +214,7 @@ function doApplyAiDefinition(data: FlowDefinition): void {
 function normalizeDefinition(input: FlowDefinition): FlowDefinition {
   const def: FlowDefinition = {
     model_version: input.model_version ?? 1,
+    history_view: input.history_view ?? 'own_nodes',
     start: input.start ?? { id: 'start', type: 'start', name: '发起', fields_permission: null },
     steps: (input.steps ?? []).map(normalizeStep),
     end: input.end ?? { id: 'end', type: 'end', name: '结束' },
@@ -419,6 +481,26 @@ async function publish(): Promise<void> {
 
 const readonly = computed(() => version.value?.status !== 'DRAFT')
 
+const historyView = computed<HistoryView>({
+  get: () => definition.value?.history_view ?? 'own_nodes',
+  set: (value) => {
+    if (!definition.value || readonly.value) return
+    definition.value.history_view = value
+    scheduleSave()
+  },
+})
+
+const historyViewHint = computed(() => {
+  switch (historyView.value) {
+    case 'full':
+      return '已办处理人可看到全部字段（只读），包括后续节点才补充的内容。'
+    case 'start':
+      return '已办处理人只看得到发起阶段的字段；办完后本节点补充的区域将不可见。'
+    default:
+      return '已办处理人按本人办过的填写/审批节点权限并集查看（只读）；后续节点新开放的区域仍不可见。'
+  }
+})
+
 const versionLabel = computed(() => {
   if (!version.value) return ''
   const status = version.value.status
@@ -481,9 +563,28 @@ const treeItems = computed<TreeItem[]>(() => {
             <template v-else-if="dirty">有未保存的改动</template>
             <template v-else-if="lastSavedAt">已保存</template>
           </span>
+          <Button
+            v-if="readonly && template?.current_version_id"
+            :loading="creatingDraft"
+            @click="createDraft"
+          >
+            新建草稿
+          </Button>
+          <Button
+            v-if="!readonly && template?.current_version_id"
+            danger
+            :loading="deletingDraft"
+            @click="deleteDraft"
+          >
+            删除草稿
+          </Button>
           <Button :disabled="readonly" :loading="saving" @click="save">
             <template #icon><SaveOutlined /></template>
             保存
+          </Button>
+          <Button @click="settingsOpen = true">
+            <template #icon><SettingOutlined /></template>
+            流程设置
           </Button>
           <Button @click="runValidate">
             <template #icon><CheckCircleOutlined /></template>
@@ -513,6 +614,29 @@ const treeItems = computed<TreeItem[]>(() => {
       :form-schema="formSchema"
       @generated="applyAiDefinition"
     />
+
+    <a-modal
+      v-model:open="settingsOpen"
+      title="流程设置"
+      :footer="null"
+      :width="560"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="已办处理人打开运行中单据时">
+          <a-radio-group v-model:value="historyView" :disabled="readonly">
+            <a-space direction="vertical" size="middle">
+              <a-radio value="own_nodes">仅本人处理过的区域（推荐）</a-radio>
+              <a-radio value="full">全部区域只读</a-radio>
+              <a-radio value="start">仅发起阶段可见</a-radio>
+            </a-space>
+          </a-radio-group>
+          <div class="text-muted tiny settings-hint">{{ historyViewHint }}</div>
+          <div class="text-muted tiny">
+            实例办结后仍按归档视角全量只读展示，不受此设置影响。
+          </div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <a-row :gutter="16" class="designer-body">
       <!-- ------------------------------------------------ 左侧：画布 / 节点清单 -->
@@ -818,5 +942,10 @@ const treeItems = computed<TreeItem[]>(() => {
 
 .path {
   font-size: 11px;
+}
+
+.settings-hint {
+  margin-top: 8px;
+  line-height: 1.6;
 }
 </style>

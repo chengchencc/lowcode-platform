@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import { openAs } from '../fixtures/auth'
 import { renderAs, uniqueReason } from '../fixtures/data'
 import {
+  actAs,
   approvalNode,
   approveViaApi,
   createFlowAndPublish,
@@ -72,6 +73,83 @@ test.describe('@p0 字段与实例权限', () => {
       await expect(outsider.page.getByText('你没有权限查看该单据').first()).toBeVisible()
     } finally {
       await outsider.context.close()
+    }
+  })
+
+  test('@p0 已办处理人重新打开运行中单据仍能看到本人处理过的区域', async ({ browser }) => {
+    const users = await seedUsers()
+    const schema = simpleFormSchema()
+    const sections = schema.sections as Array<Record<string, unknown>>
+    sections.push({
+      key: 'sec_supplement',
+      title: '补充资料',
+      stage: 'supplement',
+      sort: 1,
+      fields: [
+        {
+          key: 'secret',
+          label: SECRET_LABEL,
+          type: 'text',
+          sort: 0,
+          required: false,
+          visible_at_start: false,
+        },
+      ],
+    })
+    const form = await createFormAndPublish('E2E 分区放开表单', schema)
+    const flow = await createFlowAndPublish(form.id, 'E2E 分区放开流程', {
+      model_version: 1,
+      start: { id: 'start', name: '开始', type: 'start', fields_permission: null },
+      steps: [
+        approvalNode('a1', '初审', users.lisi.id, {
+          base: 'hidden',
+          overrides: { reason: 'readonly', amount: 'readonly', secret: 'editable' },
+        }),
+        approvalNode('a2', '终审', users.wangwu.id, {
+          base: 'hidden',
+          overrides: { reason: 'readonly' },
+        }),
+      ],
+      end: { id: 'end', name: '结束', type: 'end' },
+    })
+    const secretValue = uniqueReason('补充内容')
+    const instance = await submitFor('zhangsan', flow.id, {
+      reason: uniqueReason('E2E 分区'),
+      amount: 200,
+    })
+
+    // 初审节点才放开补充资料分区；李四填写后流转到终审。
+    const assignment = await findAssignment('lisi', instance.id)
+    await actAs('lisi', assignment.assignment_id, 'AGREE', {
+      opinion: '补齐资料',
+      fieldPatch: { secret: secretValue },
+    })
+
+    // 李四已办：本人节点开放过的区域仍在，且只读。
+    const handled = await renderAs('lisi', instance.id)
+    expect(handled.values.secret).toBe(secretValue)
+    expect(handled.values.reason).toBeTruthy()
+    expect(handled.allowed_actions).toEqual([])
+
+    // 尚未到达该区域的终审人与发起人仍看不到补充资料。
+    expect((await renderAs('wangwu', instance.id)).values.secret).toBeUndefined()
+    expect((await renderAs('zhangsan', instance.id)).values.secret).toBeUndefined()
+
+    const approver = await openAs(browser, 'lisi')
+    try {
+      await approver.page.goto('/workbench/done')
+      const search = approver.page.getByPlaceholder('标题或实例单号')
+      await search.fill(instance.code)
+      await search.press('Enter')
+      const row = approver.page.locator('tbody tr').filter({ hasText: instance.code })
+      await expect(row).toBeVisible()
+      await row.getByRole('button', { name: '查看' }).click()
+      await expect(approver.page).toHaveURL(new RegExp(`/instance/${instance.id}`))
+      await expect(approver.page.getByText(SECRET_LABEL).first()).toBeVisible()
+      await expect(approver.page.getByText(secretValue).first()).toBeVisible()
+      await expect(approver.page.getByText('事由').first()).toBeVisible()
+    } finally {
+      await approver.context.close()
     }
   })
 

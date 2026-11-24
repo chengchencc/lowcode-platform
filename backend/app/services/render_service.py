@@ -9,10 +9,12 @@
 |---|---|---|
 | 当前处理人（有待办） | 该节点的权限矩阵 | 可编辑本节点开放的字段 |
 | 任意人看已终态实例 | 归档视角（全可见只读） | 补充字段此时才揭晓 |
-| 其他（发起人 / 历史处理人 / 运行中） | **发起节点**权限 | 补充字段仍隐藏 |
+| 运行中的历史处理人 | 按流程级 `history_view` 配置：本人已办节点并集 / 全量只读 / 仅发起视角 | 默认保留自己处理过的区域 |
+| 其他（发起人 / 抄送人 / 无关参与者） | **发起节点**权限 | 补充字段仍隐藏 |
 
-第三档是 PRD 验收点的关键：「申请人全程看不到实际核销金额，直至通过后归档可见」。
-早期若用「全可见只读」兜底，就会把这个字段提前泄露给发起人。
+后两档是 PRD 验收点的关键：「申请人全程看不到实际核销金额，直至通过后归档可见」。
+默认策略下历史处理人只按自己参与过的节点取可见性，后续节点新开放的区域仍不会
+泄露给已办人；发起人始终按发起节点降级，不会因为已办视角调整而提前看到补充字段。
 """
 
 from __future__ import annotations
@@ -241,8 +243,25 @@ def _resolve_permissions(
     if instance.status in TERMINAL_STATUSES:
         return resolve_view_permissions(form_schema)
 
-    # 运行中的其他相关人（发起人 / 已完成的历史处理人）→ 严格按发起阶段能看到的来，
-    # 避免补充字段提前泄露给申请人
+    # 运行中的历史处理人 → 按流程级 history_view 决定可见范围
+    policy = compiled.definition.history_view
+    if policy != "start":
+        historical = _historical_permissions(
+            db,
+            instance,
+            compiled=compiled,
+            form_schema=form_schema,
+            viewer=viewer,
+            ext_views=ext_views,
+        )
+        if historical is not None:
+            if policy == "full":
+                # 流程显式要求「已办人看全量」：只读展示全部字段
+                return resolve_view_permissions(form_schema)
+            return historical
+
+    # 发起人 / 抄送人 / 无关参与者（以及 history_view=start 的已办人）
+    # → 严格按发起阶段能看到的来，避免补充字段提前泄露给申请人
     start_id = compiled.definition.start.id
     permissions = resolve_field_permissions(
         form_schema=form_schema,
@@ -254,6 +273,72 @@ def _resolve_permissions(
     return apply_ext_fields(
         permissions, ext_views, node_id=start_id, node_ancestors=[start_id]
     )
+
+
+def _historical_permissions(
+    db: Session,
+    instance: FlowInstance,
+    *,
+    compiled: CompiledFlow,
+    form_schema,
+    viewer: User,
+    ext_views: list[ExtFieldView],
+) -> dict[str, FieldPermission] | None:
+    """已办填写/审批人：取本人各节点权限的并集，统一压成只读。
+
+    只看 `DONE` 且节点类型为填写/审批的 assignment —— 抄送不是「办理」，
+    仍走发起节点视角。同一个人可能在多轮/多个节点上办过，取并集才不会
+    因为最近一个节点权限更窄而丢掉此前看到的内容。
+
+    返回 `None` 表示没有已办记录，由调用方回落到发起节点权限。
+    """
+    rows = db.execute(
+        select(Task.node_key, Task.gates)
+        .join(TaskAssignment, TaskAssignment.task_id == Task.id)
+        .where(
+            TaskAssignment.instance_id == instance.id,
+            TaskAssignment.user_id == viewer.id,
+            TaskAssignment.status == AssignmentStatus.DONE,
+            Task.node_type.in_((TaskType.APPROVAL, TaskType.FILL)),
+        )
+        .order_by(Task.id)
+    ).all()
+    if not rows:
+        return None
+
+    # 同一节点多轮执行时以最后一次的 gates 为准（分支祖先链可能不同）
+    gates_by_node: dict[str, tuple[str, ...]] = {}
+    for node_key, gates in rows:
+        gates_by_node[node_key] = tuple(gates or ())
+
+    merged: dict[str, FieldPermission] = {}
+    for node_key, gates in gates_by_node.items():
+        node = compiled.nodes.get(node_key)
+        if node is None:
+            continue
+        permissions = resolve_field_permissions(
+            form_schema=form_schema,
+            node_type=node.type,
+            rule=getattr(node.raw, "fields_permission", None),
+            values=instance.current_data or {},
+        )
+        permissions = apply_ext_fields(
+            permissions,
+            ext_views,
+            node_id=node.id,
+            node_ancestors=compiled.ancestors(
+                Cursor(node.id, gates, instance.round)
+            ),
+        )
+        for key, permission in permissions.items():
+            previous = merged.get(key)
+            merged[key] = FieldPermission(
+                permission.visible or bool(previous and previous.visible),
+                False,
+                False,
+                "历史处理人视角：本人处理节点只读",
+            )
+    return merged or None
 
 
 def _ext_views(instance: FlowInstance) -> list[ExtFieldView]:

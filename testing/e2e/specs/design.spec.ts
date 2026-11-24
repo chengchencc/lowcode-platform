@@ -36,7 +36,25 @@ test.describe('@p0 设计者旅程', () => {
 
       await designer.page.getByRole('button', { name: buttonName('发布') }).click()
       await designer.page.getByRole('button', { name: buttonName('确定') }).click()
-      await expect(designer.page.getByText('已发布')).toBeVisible()
+      await expect(designer.page.getByText('已发布', { exact: true })).toBeVisible()
+
+      // 发布后停留在已发布版本，不应凭空多出一个草稿
+      await expect(designer.page.getByText('已冻结，不可编辑')).toBeVisible()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
+      await expect(designer.page.getByText(/· 草稿/)).toHaveCount(0)
+
+      // 再次打开设计器也只是查看发布版，不会又冒出一个草稿
+      await designer.page.reload()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
+      await expect(designer.page.getByText(/· 草稿/)).toHaveCount(0)
+
+      // 需要继续编辑时显式新建草稿；不需要时可以删除
+      await designer.page.getByRole('button', { name: '新建草稿' }).click()
+      await expect(designer.page.getByText(/v2 · 草稿/)).toBeVisible()
+      await designer.page.getByRole('button', { name: '删除草稿' }).click()
+      await designer.page.getByRole('button', { name: buttonName('确定') }).click()
+      await expect(designer.page.getByRole('button', { name: '新建草稿' })).toBeVisible()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
     } finally {
       await designer.context.close()
     }
@@ -62,13 +80,46 @@ test.describe('@p0 设计者旅程', () => {
       await dialog.getByRole('button', { name: buttonName('保存') }).click()
 
       await expect(designer.page).toHaveURL(/\/admin\/flows\/\d+\/design/)
+
+      // 流程级设置：已办处理人打开运行中单据时可见全部区域，且能持久化
+      await designer.page.getByRole('button', { name: '流程设置' }).click()
+      const settings = designer.page.getByRole('dialog')
+      await expect(settings.getByText('已办处理人打开运行中单据时')).toBeVisible()
+      await settings.getByRole('radio', { name: '全部区域只读' }).click()
+      await expect(designer.page.getByText('已保存', { exact: true })).toBeVisible({
+        timeout: 15_000,
+      })
+      await settings.locator('.ant-modal-close').click()
+      await designer.page.reload()
+      await designer.page.getByRole('button', { name: '流程设置' }).click()
+      await expect(
+        designer.page.getByRole('dialog').getByRole('radio', { name: '全部区域只读' }),
+      ).toBeChecked()
+      await designer.page.getByRole('dialog').locator('.ant-modal-close').click()
+
       // 新建流程自带一个「部门经理审批」节点；从默认配置出发核对处理人来源
       await designer.page.getByRole('tab', { name: '处理人' }).click()
       await expect(designer.page.getByText('部门主管').first()).toBeVisible()
 
       await designer.page.getByRole('button', { name: buttonName('发布') }).click()
       await designer.page.getByRole('button', { name: buttonName('确定') }).click()
-      await expect(designer.page.getByText('已发布')).toBeVisible()
+      await expect(designer.page.getByText('已发布', { exact: true })).toBeVisible()
+
+      // 发布后停留在已发布版本，不应凭空多出一个草稿
+      await expect(designer.page.getByText('已冻结，不可编辑')).toBeVisible()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
+      await expect(designer.page.getByText(/· 草稿/)).toHaveCount(0)
+
+      await designer.page.reload()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
+      await expect(designer.page.getByText(/· 草稿/)).toHaveCount(0)
+
+      await designer.page.getByRole('button', { name: '新建草稿' }).click()
+      await expect(designer.page.getByText(/v2 · 草稿/)).toBeVisible()
+      await designer.page.getByRole('button', { name: '删除草稿' }).click()
+      await designer.page.getByRole('button', { name: buttonName('确定') }).click()
+      await expect(designer.page.getByRole('button', { name: '新建草稿' })).toBeVisible()
+      await expect(designer.page.getByText(/v1 · 已发布/)).toBeVisible()
     } finally {
       await designer.context.close()
     }
