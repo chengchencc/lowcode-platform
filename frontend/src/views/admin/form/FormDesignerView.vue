@@ -94,16 +94,39 @@ const selectedSection = computed<SectionDef | null>(
 
 const selectedField = computed<FieldDef | null>(() => {
   const sel = selected.value
-  if (!sel) return null
-  const section = selectedSection.value
-  if (!section) return null
-  const field = section.fields.find((f) => f.key === sel.fieldKey)
-  if (!field) return null
-  if (sel.columnKey) {
-    return (field.columns ?? []).find((c) => c.key === sel.columnKey) ?? null
+  if (!sel) {
+    _cachedSelectedField.value = null
+    return null
   }
-  return field
+  const section = selectedSection.value
+  if (!section) {
+    _cachedSelectedField.value = null
+    return null
+  }
+  let field: FieldDef | null
+  if (sel.columnKey) {
+    const parent = section.fields.find((f) => f.key === sel.fieldKey)
+    field = parent ? ((parent.columns ?? []).find((c) => c.key === sel.columnKey) ?? null) : null
+  } else {
+    field = section.fields.find((f) => f.key === sel.fieldKey) ?? null
+  }
+  if (field) {
+    _cachedSelectedField.value = field
+    return field
+  }
+  // find 失败 —— id 刚改了还没同步 / 临时冲突 —— 回退到缓存的引用
+  const cached = _cachedSelectedField.value
+  if (cached) {
+    if (section.fields.some((f) => f === cached)) return cached
+    for (const f of section.fields) {
+      if ((f.columns ?? []).some((c) => c === cached)) return cached
+    }
+  }
+  return null
 })
+
+/** find 失败时回退的字段引用（同 FlowDesignerView 的 _cachedSelectedNode） */
+const _cachedSelectedField = ref<FieldDef | null>(null)
 
 /** 选中字段所在的子表（若它是列） */
 const selectedParentSubtable = computed<FieldDef | null>(() => {
@@ -205,12 +228,26 @@ function scheduleSave(): void {
   saveTimer = setTimeout(() => void save(), 1500)
 }
 
+/** 分区标识被修改时，同步更新 selected 中保存的 sectionKey */
+function onSectionKeyChange(): void {
+  if (selected.value && selectedSection.value) {
+    selected.value.sectionKey = selectedSection.value.key
+  }
+  scheduleSave()
+}
+
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
 })
 
 async function save(): Promise<boolean> {
   if (!version.value || !dirty.value) return true
+
+  // 轻量形状预检 —— 后端 Pydantic 硬拒空 section.key / field.key。
+  // 设计期把 key 删空属于"正在编辑中"，不该触发保存、更不该弹 toast。
+  const shapeError = checkSchemaShape(schema.value)
+  if (shapeError) return true
+
   saving.value = true
   try {
     const updated = await formApi.saveVersion(version.value.id, schema.value)
@@ -227,8 +264,27 @@ async function save(): Promise<boolean> {
   }
 }
 
-/** 属性面板的任何改动都会回调这里 */
-function onFieldChange(): void {
+/** 后端 form_schema.py Pydantic 形状校验的前端兜底预查。 */
+function checkSchemaShape(s: FormSchema): string | null {
+  for (const sec of s.sections) {
+    if (!sec.key?.trim()) return `分区标识不能为空`
+    if (!sec.title?.trim()) return `分区标题不能为空`
+    for (const f of sec.fields) {
+      if (!f.key?.trim()) return `字段标识不能为空`
+      if (!f.label?.trim()) return `字段标签不能为空`
+      for (const c of (f.columns ?? [])) {
+        if (!c.key?.trim()) return `列标识不能为空`
+      }
+    }
+  }
+  return null
+}
+
+/** 属性面板的任何改动都会回调这里；传入当前 field 引用以便保存刷新。 */
+function onFieldChange(field: FieldDef): void {
+  // 绝对不要在这里手动同步 selected.value 的 key ——
+  //   - 改 key 时同容器 find 可能找不到（空字符串）或找错（临时冲突）
+  //   - selectedField computed 里的缓存回退已经能处理这些中间态
   resequence(selectedSection.value?.fields ?? [])
   scheduleSave()
 }
@@ -723,7 +779,7 @@ const readonly = computed(() => version.value?.status !== 'DRAFT')
               <a-input v-model:value="selectedSection.title" @change="scheduleSave" />
             </a-form-item>
             <a-form-item label="分区标识" help="流程的字段权限矩阵按分区批量设置时会引用它">
-              <a-input v-model:value="selectedSection.key" class="text-mono" @change="scheduleSave" />
+              <a-input v-model:value="selectedSection.key" class="text-mono" @change="onSectionKeyChange" />
             </a-form-item>
             <a-form-item label="阶段标签">
               <a-select

@@ -782,6 +782,11 @@ class EngineService:
         for key, value in defaults.items():
             if values_in.get(key) in (None, "", []):
                 values_in[key] = value
+        # `__initiator_select__` 是引擎专用的发起人指定审批人选择结果，
+        # 不在表单 schema 里 —— 必须在 schema 过滤之外额外保留，
+        # 否则 approver_context.values 里拿不到，initiator_select 来源就会空解析。
+        initiator_select = values_in.pop("__initiator_select__", None)
+
         values, diffs, permissions = self._apply_patch_with_rules(
             instance=instance,
             form_schema=form_schema,

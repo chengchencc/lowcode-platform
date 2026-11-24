@@ -105,6 +105,7 @@ export const flowApi = {
   returnTargets(versionId: number, nodeId: string) {
     return request.get<ReturnTarget[]>(`/flow-versions/${versionId}/return-targets`, {
       params: { node_id: nodeId },
+      silent: true, // 编辑过程中 definition 还没保存，后端可能找不到新改的 node id —— 不该弹 toast
     })
   },
 }
