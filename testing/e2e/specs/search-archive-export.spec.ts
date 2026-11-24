@@ -42,11 +42,11 @@ async function readDownload(page: import('@playwright/test').Page, trigger: () =
 }
 
 test.describe('@p0 检索、归档与导出', () => {
-  test('@p0 归档只列已通过实例，可按单号检索', async ({ browser }) => {
+  test('@p0 归档台账只列办结实例，可按单号检索', async ({ browser }) => {
     const { approved, running } = await setup()
     const admin = await openAs(browser, 'admin')
     try {
-      await admin.page.goto('/admin/instances')
+      await admin.page.goto('/admin/archive')
       const search = admin.page.getByPlaceholder('标题 / 实例单号')
 
       await search.fill(approved.code)
@@ -61,11 +61,32 @@ test.describe('@p0 检索、归档与导出', () => {
     }
   })
 
+  test('@p0 实例管理同时列出运行中与办结，且不提供导出', async ({ browser }) => {
+    const { approved, running } = await setup()
+    const admin = await openAs(browser, 'admin')
+    try {
+      await admin.page.goto('/admin/instances')
+      const search = admin.page.getByPlaceholder('标题 / 实例单号')
+
+      await search.fill(running.code)
+      await admin.page.getByRole('button', { name: buttonName('查询') }).click()
+      await expect(admin.page.locator('tbody tr').filter({ hasText: running.code })).toBeVisible()
+
+      await search.fill(approved.code)
+      await admin.page.getByRole('button', { name: buttonName('查询') }).click()
+      await expect(admin.page.locator('tbody tr').filter({ hasText: approved.code })).toBeVisible()
+
+      await expect(admin.page.getByRole('button', { name: '导出 CSV' })).toHaveCount(0)
+    } finally {
+      await admin.context.close()
+    }
+  })
+
   test('@p0 归档 CSV 按当前筛选导出且包含动态列', async ({ browser }) => {
     const { approved } = await setup()
     const admin = await openAs(browser, 'admin')
     try {
-      await admin.page.goto('/admin/instances')
+      await admin.page.goto('/admin/archive')
       const search = admin.page.getByPlaceholder('标题 / 实例单号')
       await search.fill(approved.code)
       await admin.page.getByRole('button', { name: buttonName('查询') }).click()

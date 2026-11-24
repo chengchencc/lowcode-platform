@@ -75,9 +75,12 @@ export function buildMenuItems(ctx: MenuContext): MenuItem[] {
       children: [
         { key: 'form-templates', label: '表单模板', icon: () => h(FormOutlined) },
         { key: 'flow-templates', label: '流程模板', icon: () => h(PartitionOutlined) },
-        // 实例管理只给管理员：它是全组织单据的检索入口，不是「与我相关的」
+        // 实例管理与归档台账只给管理员：它们是全组织单据的入口，不是「与我相关的」
         ...(ctx.isAdmin
-          ? [{ key: 'instances', label: '实例管理', icon: () => h(FolderOpenOutlined) }]
+          ? [
+              { key: 'instances', label: '实例管理', icon: () => h(FolderOpenOutlined) },
+              { key: 'instance-archive', label: '归档台账', icon: () => h(FolderOpenOutlined) },
+            ]
           : []),
       ],
     })

@@ -15,7 +15,7 @@ interface Condition {
 
 const props = defineProps<{
   flowTemplateId: number | null | undefined
-  scope: 'mine' | 'archive'
+  scope: 'mine' | 'archive' | 'manage'
   modelValue: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -233,7 +233,10 @@ function onValueChange(): void {
         「编号」指表单内编号；列表里的实例单号请用上方关键词搜索。
       </template>
       <template v-if="scope === 'archive'">
-        归档默认只查已通过，运行中/已终止的单据请先切换状态。
+        台账收录全部办结单据（通过 / 驳回 / 撤回 / 终止）。
+      </template>
+      <template v-else-if="scope === 'manage'">
+        管理列表包含运行中与全部办结单据，草稿不在其中。
       </template>
     </div>
 

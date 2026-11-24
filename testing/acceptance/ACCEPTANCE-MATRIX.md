@@ -113,7 +113,8 @@
 |---|---|---|---|---|---|---|---|---|
 | SEARCH-01 | P0 | PHASE3 M13 §3；PRD F8.1；D-05 | 文本包含/等于、数字范围、日期、选项操作符正确；表单编号与实例单号不混用 | API+E2E | `testing/api/test_search_operators.py` | PARTIAL | R10: 文本/数字/日期/布尔/选项/多选/人员/部门/空值、AND、mine/all 权限 PASS；编号语义待执行 | — |
 | SEARCH-02 | P0 | PHASE3 M13 §3；SEARCH-FILTER-PLAN | 新增/修改后可检索；重建索引与在线数据一致；权限范围正确 | API | `testing/api/test_search.py` | PARTIAL | R15: 提交索引同步、重建、配置删除 PASS；跨版本/编号语义待执行 | BUG-API-011（已修） |
-| ARCHIVE-01 | P0 | PRD F8.1；M6；D-05 | 归档只含已通过；CSV 列完整（含动态字段）、中文不乱码；非管理员不可导出 | API+E2E | `testing/api/test_archive.py` | PARTIAL | R14: 仅 APPROVED、批量/单实例导出、BOM/转义、动态字段列 PASS；列序待执行 | BUG-API-003/004/005（已修） |
+| ARCHIVE-01 | P0 | PRD F8.1；M6；D-05 | 归档台账含全部办结状态（通过/驳回/撤回/终止），不含运行中/草稿；CSV 列完整（含动态字段）、中文不乱码；非管理员不可导出 | API+E2E | `testing/api/test_archive.py` | PARTIAL | R14: 批量/单实例导出、BOM/转义、动态字段列 PASS；本轮全部办结状态 PASS，列序待执行 | BUG-API-003/004/005（已修） |
+| MANAGE-01 | P0 | PRD F8.1 | 实例管理含运行中+全部办结状态、不含草稿；按最后活动时间倒序；可检索/筛状态；非管理员不可访问 | API+E2E | `testing/api/test_archive.py`、`testing/e2e/specs/search-archive-export.spec.ts` | PASS | 本轮：manage 接口/页面/权限/排序，API 6 条 + E2E 4 条通过 | — |
 | DASH-01 | P0 | PHASE3 M11 §1；D-02 | 普通用户/设计者个人工作台；管理员额外概览；空状态不报错 | API+E2E | `testing/api/test_task_notify.py` | PARTIAL | R15: 设计者 admin=null、个人待办/我发起/管理员计数 PASS；空状态/轮询待执行 | BUG-API-002（已修） |
 
 ## 9. 并发、环境与性能

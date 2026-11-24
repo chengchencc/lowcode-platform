@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 实例管理 / 归档检索（PRD F8.1 / §5「审批管理 → 实例管理」）。
+ * 归档流程台账（PRD F8.1 / §5「审批管理 → 归档台账」）。
  *
- * 管理员视角的**全组织单据**：默认只看已归档（已通过），
- * 也可以放开到撤回/终止/驳回等终态去查历史。
+ * 管理员视角的**已办结单据**：通过 / 驳回 / 撤回 / 终止，默认全部查出来。
+ * 运行中的单据去「实例管理」看，草稿不在任何台账里。
  *
  * 与工作台的分工：工作台是「与我相关的」，这里是「全部的」——
  * 所以这里严格限管理员（后端也会拦）。
@@ -38,19 +38,19 @@ const filters = ref('')
 
 const query = reactive({
   keyword: '',
-  status: 'APPROVED',
+  status: '',
   flow_template_id: undefined as number | undefined,
   range: undefined as [string, string] | undefined,
 })
 const paging = reactive({ page: 1, size: 20, total: 0 })
 
-/** 终态选项 —— 归档表的意义就在于「事后翻得出来」 */
+/** 办结状态选项 —— 台账的意义就在于「事后翻得出来」 */
 const STATUS_OPTIONS = [
+  { value: '', label: '全部办结' },
   { value: 'APPROVED', label: '已通过' },
   { value: 'REJECTED', label: '已驳回' },
   { value: 'WITHDRAWN', label: '已撤回' },
   { value: 'TERMINATED', label: '已终止' },
-  { value: 'APPROVED,REJECTED,WITHDRAWN,TERMINATED', label: '全部终态' },
 ]
 
 const columns = [
@@ -215,7 +215,12 @@ function statusMeta(status: string) {
             <span v-else class="text-muted">1</span>
           </template>
           <template v-else-if="column.key === 'finished_at'">
-            {{ record.finished_at ? formatDateTime(record.finished_at) : '—' }}
+            <!-- 驳回不写 finished_at，取最后一次动作时间 -->
+            {{
+              record.finished_at || record.last_action_at
+                ? formatDateTime((record.finished_at ?? record.last_action_at) as string)
+                : '—'
+            }}
           </template>
           <template v-else-if="column.key === 'status'">
             <Tag :color="statusMeta(record.status)?.color">

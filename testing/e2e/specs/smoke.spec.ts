@@ -59,6 +59,7 @@ test.describe('@p0 冒烟与角色可见性', () => {
       await expect(menu.getByText('表单模板')).toBeVisible()
       await expect(menu.getByText('流程模板')).toBeVisible()
       await expect(menu.getByText('实例管理')).toHaveCount(0)
+      await expect(menu.getByText('归档台账')).toHaveCount(0)
       await expect(menu.getByText('组织管理')).toHaveCount(0)
     } finally {
       await context.close()

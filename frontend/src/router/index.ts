@@ -122,8 +122,14 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'admin/instances',
         name: 'instances',
-        component: () => import('@/views/admin/InstanceArchiveView.vue'),
+        component: () => import('@/views/admin/InstanceManageView.vue'),
         meta: { title: '实例管理', adminOnly: true, icon: 'folder' },
+      },
+      {
+        path: 'admin/archive',
+        name: 'instance-archive',
+        component: () => import('@/views/admin/InstanceArchiveView.vue'),
+        meta: { title: '归档流程台账', adminOnly: true, icon: 'folder' },
       },
       {
         path: 'admin/org/users',

@@ -215,6 +215,7 @@ vi.mock('@/api/modules/instance', () => {
       snapshotDiff: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue(emptyPage),
       withdraw: vi.fn(), abandon: vi.fn(), terminate: vi.fn(),
+      manage: vi.fn().mockResolvedValue(emptyPage),
       archive: vi.fn().mockResolvedValue(emptyPage),
       archiveExportUrl: vi.fn().mockReturnValue('/api/v1/instances/archive/export'),
       instanceExportUrl: vi.fn().mockReturnValue('/api/v1/instances/1/export'),
@@ -483,6 +484,7 @@ vi.mock('@/api/modules/form', () => {
 
 import AuditLogView from '@/views/admin/AuditLogView.vue'
 import InstanceArchiveView from '@/views/admin/InstanceArchiveView.vue'
+import InstanceManageView from '@/views/admin/InstanceManageView.vue'
 import FlowDesignerView from '@/views/admin/flow/FlowDesignerView.vue'
 import FlowTemplateListView from '@/views/admin/flow/FlowTemplateListView.vue'
 import FormDesignerView from '@/views/admin/form/FormDesignerView.vue'
@@ -517,6 +519,7 @@ function makeRouter(initialPath = '/'): Router {
       { path: '/admin/org/roles', name: 'org-roles', component: STUB },
       { path: '/admin/audit', name: 'audit', component: STUB },
       { path: '/admin/instances', name: 'instances', component: STUB },
+      { path: '/admin/archive', name: 'instance-archive', component: STUB },
       { path: '/admin/forms', name: 'form-templates', component: STUB },
       { path: '/admin/forms/:id/design', name: 'form-designer', component: STUB },
       { path: '/admin/flows', name: 'flow-templates', component: STUB },
@@ -580,7 +583,8 @@ const MOUNTED_VIEWS: Array<[string, unknown, string?]> = [
   ['WorkbenchView', WorkbenchView, '/workbench/todo'],
   ['InstanceDetailView', InstanceDetailView, '/instance/1'],
   ['NotificationCenterView', NotificationCenterView],
-  ['InstanceArchiveView', InstanceArchiveView, '/admin/instances'],
+  ['InstanceManageView', InstanceManageView, '/admin/instances'],
+  ['InstanceArchiveView', InstanceArchiveView, '/admin/archive'],
   ['DelegationsView', DelegationsView, '/delegations'],
   ['SpreadsheetsView', SpreadsheetsView, '/spreadsheets'],
 ]
@@ -646,7 +650,7 @@ describe('表单渲染器（三态）', () => {
     wrapper.unmount()
   })
 
-  it('只读态下所有字段都渲染且没有输入框', async () => {
+  it('只读态下所有字段都渲染且没有可编辑输入框', async () => {
     const router = makeRouter()
     await router.push('/')
     await router.isReady()
@@ -657,7 +661,12 @@ describe('表单渲染器（三态）', () => {
     expect(wrapper.text()).toContain('事由')
     expect(wrapper.text()).toContain('发票号')
     expect(wrapper.text()).toContain('INV-1')
-    expect(wrapper.findAll('input').length).toBe(0)
+    // 数字控件只读时仍保留 disabled 的 input（保持正常外观），
+    // 关键是没有任何可编辑的输入框。
+    const editable = wrapper
+      .findAll('input')
+      .filter((el) => !(el.element as HTMLInputElement).disabled)
+    expect(editable).toHaveLength(0)
     wrapper.unmount()
   })
 })
@@ -820,6 +829,7 @@ describe('工作台路由可达性', () => {
     )
 
     expect(keys, '菜单里应能找到实例管理').toContain('instances')
+    expect(keys, '菜单里应能找到归档台账').toContain('instance-archive')
     for (const name of keys) {
       const resolved = router.resolve({ name, params: MENU_DEFAULT_PARAMS[name] })
       expect(resolved.matched.length, `${name} 应能解析到路由`).toBeGreaterThan(0)
@@ -841,18 +851,20 @@ describe('菜单按角色显示', () => {
     expect(keys).not.toContain('form-templates')
     expect(keys).not.toContain('flow-templates')
     expect(keys).not.toContain('instances')
+    expect(keys).not.toContain('instance-archive')
   })
 
   it('设计者能看到表单/流程模板，但看不到实例管理', () => {
     const keys = keysFor(false, true)
     expect(keys).toEqual(expect.arrayContaining(['form-templates', 'flow-templates']))
     expect(keys).not.toContain('instances')
+    expect(keys).not.toContain('instance-archive')
   })
 
   it('管理员能看到全部审批管理菜单', () => {
     const keys = keysFor(true, false)
     expect(keys).toEqual(
-      expect.arrayContaining(['form-templates', 'flow-templates', 'instances']),
+      expect.arrayContaining(['form-templates', 'flow-templates', 'instances', 'instance-archive']),
     )
   })
 })

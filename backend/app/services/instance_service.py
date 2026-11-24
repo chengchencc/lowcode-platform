@@ -648,6 +648,76 @@ def build_query(
     return stmt.order_by(FlowInstance.id.desc())
 
 
+#: 归档台账包含的办结状态。驳回也在内：本轮流程已结束，只是发起人还能重新提交。
+ARCHIVE_STATUSES: tuple[str, ...] = (
+    InstanceStatus.APPROVED,
+    InstanceStatus.REJECTED,
+    InstanceStatus.WITHDRAWN,
+    InstanceStatus.TERMINATED,
+)
+
+#: 实例管理包含的状态。草稿是自动暂存的未提交数据，不属于「审批流程」。
+MANAGE_STATUSES: tuple[str, ...] = (
+    InstanceStatus.RUNNING,
+    *ARCHIVE_STATUSES,
+)
+
+
+def _activity_expr():
+    """实例列表的「最后活动时间」，排序与筛选都用它。
+
+    SQLite/MySQL 的 `ORDER BY ... DESC` 都把 NULL 放最后，PostgreSQL 默认放最前；
+    统一用 COALESCE 兜底，避免不同库上顺序不一致。
+    """
+    return func.coalesce(
+        FlowInstance.last_action_at,
+        FlowInstance.started_at,
+        FlowInstance.created_at,
+        FlowInstance.updated_at,
+    )
+
+
+def _finished_expr():
+    """办结时间。驳回不写 `finished_at`，用最后一次动作时间代替。"""
+    return func.coalesce(
+        FlowInstance.finished_at, FlowInstance.last_action_at, FlowInstance.updated_at
+    )
+
+
+def build_manage_query(
+    db: Session,
+    *,
+    statuses: Sequence[str] | None = None,
+    flow_template_id: int | None = None,
+    keyword: str | None = None,
+    initiator_id: int | None = None,
+    active_from: datetime | None = None,
+    active_to: datetime | None = None,
+) -> Select:
+    """实例管理（运维视角）：运行中 + 全部办结状态，按最后活动时间倒序。
+
+    与 `build_archive_query` 的区别：台账只关心办结与完成时间，这里关心
+    「最近动过的单子」，运行中的也要在列表里。不参权限 —— 调用方必须先确认
+    调用者是管理员。
+    """
+    stmt = select(FlowInstance).where(
+        FlowInstance.status.in_(list(statuses) if statuses else list(MANAGE_STATUSES))
+    )
+    if flow_template_id is not None:
+        stmt = stmt.where(FlowInstance.flow_template_id == flow_template_id)
+    if initiator_id is not None:
+        stmt = stmt.where(FlowInstance.initiator_id == initiator_id)
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))
+    activity = _activity_expr()
+    if active_from is not None:
+        stmt = stmt.where(activity >= active_from)
+    if active_to is not None:
+        stmt = stmt.where(activity <= active_to)
+    return stmt.order_by(activity.desc(), FlowInstance.id.desc())
+
+
 def build_archive_query(
     db: Session,
     *,
@@ -658,13 +728,13 @@ def build_archive_query(
     finished_from: datetime | None = None,
     finished_to: datetime | None = None,
 ) -> Select:
-    """归档检索（F8.1）。默认只看**已通过**；管理员查历史时可放开到其他终态。
+    """归档台账检索（F8.1）。默认包含全部办结状态（通过/驳回/撤回/终止）。
 
     与 `build_query` 分开：那个是「我的/相关的单据」，语义是权限视角；
     这个不参权限 —— 调用方必须先确认调用者是管理员。
     """
     stmt = select(FlowInstance).where(
-        FlowInstance.status.in_(list(statuses) if statuses else [InstanceStatus.APPROVED])
+        FlowInstance.status.in_(list(statuses) if statuses else list(ARCHIVE_STATUSES))
     )
     if flow_template_id is not None:
         stmt = stmt.where(FlowInstance.flow_template_id == flow_template_id)
@@ -673,11 +743,12 @@ def build_archive_query(
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(FlowInstance.title.like(like) | FlowInstance.code.like(like))
+    done_at = _finished_expr()
     if finished_from is not None:
-        stmt = stmt.where(FlowInstance.finished_at >= finished_from)
+        stmt = stmt.where(done_at >= finished_from)
     if finished_to is not None:
-        stmt = stmt.where(FlowInstance.finished_at <= finished_to)
-    return stmt.order_by(FlowInstance.finished_at.desc(), FlowInstance.id.desc())
+        stmt = stmt.where(done_at <= finished_to)
+    return stmt.order_by(done_at.desc(), FlowInstance.id.desc())
 
 
 def to_out(db: Session, instance: FlowInstance, *, viewer: User | None = None) -> dict[str, Any]:

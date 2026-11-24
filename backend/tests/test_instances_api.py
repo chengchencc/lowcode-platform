@@ -397,6 +397,51 @@ def _submit_simple(client, headers, template_id: int) -> dict:
     return resp.json()
 
 
+def _pending_instance(db, client):
+    """提交一张单到审批节点，返回 (instance, 发起人 headers, 审批人 headers, assignment_id)。"""
+    initiator = _user(db)
+    approver = _user(db)
+    template, _form = _make_single_node_flow(
+        db, node_type="approval", approver_id=approver.id
+    )
+    db.commit()
+    init_h = login_as(client, initiator.username, PASSWORD)
+    approver_h = login_as(client, approver.username, PASSWORD)
+    instance = _submit_simple(client, init_h, template.id)
+    aid = client.get(f"{BASE}/tasks/todo", headers=approver_h).json()["items"][0][
+        "assignment_id"
+    ]
+    return instance, init_h, approver_h, aid
+
+
+def _instance_in_status(db, client, admin_headers, status: str) -> dict:
+    """走真实接口把一张单推到指定状态。草稿的造法不同，不走这里。"""
+    instance, init_h, approver_h, aid = _pending_instance(db, client)
+    if status == "RUNNING":
+        return instance
+    if status in ("APPROVED", "REJECTED"):
+        payload = {"action": "AGREE" if status == "APPROVED" else "REJECT"}
+        if status == "REJECTED":
+            payload["opinion"] = "材料不全"
+        resp = client.post(
+            f"{BASE}/tasks/assignments/{aid}/act", headers=approver_h, json=payload
+        )
+    elif status == "WITHDRAWN":
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/withdraw", headers=init_h, json={}
+        )
+    elif status == "TERMINATED":
+        resp = client.post(
+            f"{BASE}/instances/{instance['id']}/terminate",
+            headers=admin_headers,
+            json={"reason": "测试终止"},
+        )
+    else:  # pragma: no cover - 传错状态是测试自身的问题
+        raise AssertionError(f"unsupported status {status}")
+    assert resp.status_code == 200, resp.text
+    return instance
+
+
 class TestTaskActions:
     def test_fill_node_rejects_agree(self, db, client):
         """填写节点不接受「同意」这类动作。"""
@@ -911,11 +956,74 @@ class TestExtFieldApi:
         ]
 
 
-# --------------------------------------------------------------------------- 归档与导出（F8）
+# --------------------------------------------------------------------------- 实例管理与归档台账（F8）
+
+
+class TestManage:
+    """实例管理：运行中 + 办结状态，不含草稿，按最后活动时间倒序。"""
+
+    def test_manage_lists_all_statuses_except_draft(self, db, client, admin_headers):
+        expected = {
+            status: _instance_in_status(db, client, admin_headers, status)["id"]
+            for status in ("RUNNING", "APPROVED", "REJECTED", "WITHDRAWN", "TERMINATED")
+        }
+
+        # 草稿不属于审批实例，不该出现在管理列表
+        initiator = _user(db)
+        template, _form = _make_single_node_flow(
+            db, node_type="approval", approver_id=_user(db).id
+        )
+        db.commit()
+        draft = client.post(
+            f"{BASE}/instances/drafts",
+            headers=login_as(client, initiator.username, PASSWORD),
+            json={"flow_template_id": template.id},
+        ).json()
+
+        resp = client.get(f"{BASE}/instances/manage", headers=admin_headers)
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["items"]
+        ids = {row["id"] for row in rows}
+        assert set(expected.values()) <= ids
+        assert draft["id"] not in ids
+        # 最后创建的终止单最近动过，排在第一位
+        assert rows[0]["id"] == expected["TERMINATED"]
+
+    def test_manage_filters_by_status_and_keyword(self, db, client, admin_headers):
+        running = _instance_in_status(db, client, admin_headers, "RUNNING")
+        approved = _instance_in_status(db, client, admin_headers, "APPROVED")
+
+        only_approved = client.get(
+            f"{BASE}/instances/manage", headers=admin_headers,
+            params={"status": "APPROVED"},
+        )
+        assert only_approved.status_code == 200, only_approved.text
+        assert {row["id"] for row in only_approved.json()["items"]} == {approved["id"]}
+
+        by_code = client.get(
+            f"{BASE}/instances/manage", headers=admin_headers,
+            params={"keyword": running["code"]},
+        )
+        assert [row["id"] for row in by_code.json()["items"]] == [running["id"]]
+
+    def test_manage_rejects_draft_and_unknown_status(self, db, client, admin_headers):
+        resp = client.get(
+            f"{BASE}/instances/manage", headers=admin_headers, params={"status": "DRAFT"}
+        )
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["code"] == "MANAGE_STATUS_INVALID"
+
+    def test_manage_requires_admin(self, db, client):
+        instance, init_h, _approver_h, _aid = _pending_instance(db, client)
+
+        resp = client.get(f"{BASE}/instances/manage", headers=init_h)
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"]["code"] == "ADMIN_REQUIRED"
+        assert instance
 
 
 class TestArchive:
-    """F8.1 归档列表 + F8.2 导出 CSV。"""
+    """F8.1 归档台账 + F8.2 导出 CSV。"""
 
     def _finished_instance(self, db, client):
         """跑完一张单子（提交 → 同意），返回 (instance, headers)。"""
@@ -939,33 +1047,29 @@ class TestArchive:
         assert resp.status_code == 200, resp.text
         return instance, init_h, approver_h
 
-    def test_archive_lists_approved_only(self, db, client, admin_headers):
-        instance, _init_h, _approver_h = self._finished_instance(db, client)
-
-        # 另有一张还在跑的，不该出现在归档里
-        other, _h, approver_h = self._finished_instance(db, client)
-        # other 已通过；再造一张运行中的
-        initiator2 = _user(db)
-        approver2 = _user(db)
-        template2, _f = _make_single_node_flow(
-            db, node_type="approval", approver_id=approver2.id
-        )
-        db.commit()
-        running = _submit_simple(client, login_as(client, initiator2.username, PASSWORD), template2.id)
+    def test_archive_lists_all_finished_statuses(self, db, client, admin_headers):
+        """台账默认收全部办结状态：通过、驳回、撤回、终止。"""
+        finished = {
+            status: _instance_in_status(db, client, admin_headers, status)["id"]
+            for status in ("APPROVED", "REJECTED", "WITHDRAWN", "TERMINATED")
+        }
+        running = _instance_in_status(db, client, admin_headers, "RUNNING")
 
         resp = client.get(f"{BASE}/instances/archive", headers=admin_headers)
         assert resp.status_code == 200, resp.text
         ids = {row["id"] for row in resp.json()["items"]}
-        assert instance["id"] in ids
-        assert other["id"] in ids
+        assert set(finished.values()) <= ids
         assert running["id"] not in ids
 
-        # 关键字/发起人筛选
+        # 关键字筛选
+        approved_code = next(
+            row["code"] for row in resp.json()["items"] if row["id"] == finished["APPROVED"]
+        )
         by_code = client.get(
             f"{BASE}/instances/archive", headers=admin_headers,
-            params={"keyword": instance["code"]},
+            params={"keyword": approved_code},
         ).json()
-        assert [row["id"] for row in by_code["items"]] == [instance["id"]]
+        assert [row["id"] for row in by_code["items"]] == [finished["APPROVED"]]
 
     def test_archive_requires_admin(self, db, client):
         instance, init_h, _approver_h = self._finished_instance(db, client)
@@ -975,23 +1079,26 @@ class TestArchive:
         assert resp.json()["detail"]["code"] == "ADMIN_REQUIRED"
         assert instance  # 用一下，避免未使用告警
 
-    def test_archive_rejects_non_approved_status(self, db, client, admin_headers):
-        """D-05：归档列表只允许 APPROVED；其他终态走管理员实例管理。"""
-        instance, _init_h, _approver_h = self._finished_instance(db, client)
+    def test_archive_status_filter_and_validation(self, db, client, admin_headers):
+        approved = _instance_in_status(db, client, admin_headers, "APPROVED")
+        rejected = _instance_in_status(db, client, admin_headers, "REJECTED")
 
-        approved = client.get(
-            f"{BASE}/instances/archive", headers=admin_headers,
-            params={"status": "APPROVED"},
-        )
-        assert approved.status_code == 200, approved.text
-        assert instance["id"] in {row["id"] for row in approved.json()["items"]}
-
-        rejected = client.get(
+        filtered = client.get(
             f"{BASE}/instances/archive", headers=admin_headers,
             params={"status": "APPROVED,TERMINATED"},
         )
-        assert rejected.status_code == 422, rejected.text
-        assert rejected.json()["detail"]["code"] == "ARCHIVE_STATUS_INVALID"
+        assert filtered.status_code == 200, filtered.text
+        ids = {row["id"] for row in filtered.json()["items"]}
+        assert approved["id"] in ids
+        assert rejected["id"] not in ids
+
+        # 运行中不属于办结状态
+        invalid = client.get(
+            f"{BASE}/instances/archive", headers=admin_headers,
+            params={"status": "RUNNING"},
+        )
+        assert invalid.status_code == 422, invalid.text
+        assert invalid.json()["detail"]["code"] == "ARCHIVE_STATUS_INVALID"
 
     def test_export_csv_has_bom_and_labels(self, db, client, admin_headers):
         instance, _init_h, _approver_h = self._finished_instance(db, client)

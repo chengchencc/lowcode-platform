@@ -25,10 +25,25 @@ export interface InstanceListQuery {
   filters?: string
 }
 
+export interface ManageQuery {
+  page?: number
+  size?: number
+  /** 逗号分隔；缺省为除草稿外的全部状态 */
+  status?: string
+  flow_template_id?: number
+  initiator_id?: number
+  keyword?: string
+  /** 最后活动时间起止 */
+  active_from?: string
+  active_to?: string
+  /** 业务字段筛选 JSON（M13） */
+  filters?: string
+}
+
 export interface ArchiveQuery {
   page?: number
   size?: number
-  /** 逗号分隔，默认 APPROVED */
+  /** 逗号分隔，缺省为全部办结状态 */
   status?: string
   flow_template_id?: number
   initiator_id?: number
@@ -55,7 +70,7 @@ export const instanceApi = {
   },
 
   /** 业务字段筛选：当前流程模板允许筛的字段（M13） */
-  searchFields(flowTemplateId: number, scope: 'mine' | 'archive' = 'mine') {
+  searchFields(flowTemplateId: number, scope: 'mine' | 'archive' | 'manage' = 'mine') {
     return request.get<SearchFieldMeta[]>('/instances/search-fields', {
       params: { flow_template_id: flowTemplateId, scope },
     })
@@ -122,8 +137,13 @@ export const instanceApi = {
     return request.get<Page<InstanceItem>>('/instances', { params })
   },
 
-  // ---- 归档检索与导出（F8）----
-  /** 归档列表（默认只看已通过；管理员专属） */
+  // ---- 实例管理 / 归档台账（F8）----
+  /** 实例管理：运行中 + 全部办结状态（管理员专属，不含草稿） */
+  manage(params: ManageQuery) {
+    return request.get<Page<InstanceItem>>('/instances/manage', { params })
+  },
+
+  /** 归档台账（默认全部办结状态；管理员专属） */
   archive(params: ArchiveQuery) {
     return request.get<Page<InstanceItem>>('/instances/archive', { params })
   },

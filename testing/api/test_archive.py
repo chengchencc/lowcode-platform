@@ -42,7 +42,7 @@ def _rejected_leave(client: ApiClient, approver: ApiClient, flow_id: int, reason
     return instance_id
 
 
-def test_archive_only_approved_and_rejects_other_status(
+def test_archive_includes_all_finished_and_rejects_running_status(
     zhangsan_client: ApiClient,
     lisi_client: ApiClient,
     admin_client: ApiClient,
@@ -60,14 +60,43 @@ def test_archive_only_approved_and_rejects_other_status(
     assert response.status_code == 200, response.text
     ids = {item["id"] for item in response.json()["items"]}
     assert approved in ids
+    assert rejected in ids
     assert running not in ids
-    assert rejected not in ids
 
-    # D-05：归档列表只含 APPROVED，非 APPROVED 查询应被拒绝。
+    # 运行中不是办结状态，显式过滤应被拒绝。
     other = archive(admin_client, {"status": "RUNNING"})
     assert other.status_code in (400, 422), other.text
 
     forbidden = archive(zhangsan_client)
+    assert forbidden.status_code in (403, 404), forbidden.text
+
+
+def test_manage_lists_running_and_finished_except_draft(
+    zhangsan_client: ApiClient,
+    lisi_client: ApiClient,
+    admin_client: ApiClient,
+    seed: dict[str, Any],
+) -> None:
+    approved = _approved_leave(
+        zhangsan_client, lisi_client, seed["leave_flow"]["id"], "MANAGE-01 已通过"
+    )
+    running = _submit_leave(zhangsan_client, seed["leave_flow"]["id"], "MANAGE-01 运行中")
+    draft = create_draft(zhangsan_client, seed["leave_flow"]["id"], leave_data(reason="MANAGE-01 草稿"))
+
+    response = admin_client.get("/instances/manage", params={"size": 100})
+    assert response.status_code == 200, response.text
+    ids = {item["id"] for item in response.json()["items"]}
+    assert approved in ids
+    assert running in ids
+    assert draft["id"] not in ids
+
+    only_running = admin_client.get("/instances/manage", params={"status": "RUNNING"})
+    assert only_running.status_code == 200, only_running.text
+    running_ids = {item["id"] for item in only_running.json()["items"]}
+    assert running in running_ids
+    assert approved not in running_ids
+
+    forbidden = zhangsan_client.get("/instances/manage")
     assert forbidden.status_code in (403, 404), forbidden.text
 
 

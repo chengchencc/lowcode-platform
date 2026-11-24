@@ -294,10 +294,10 @@ def search_fields(
     db: DbSession,
     user: CurrentUser,
     flow_template_id: Annotated[int, Query()],
-    scope: Annotated[str, Query(pattern="^(mine|archive)$")] = "mine",
+    scope: Annotated[str, Query(pattern="^(mine|archive|manage)$")] = "mine",
 ) -> list[dict]:
-    if scope == "archive" and not is_admin(user):
-        raise ForbiddenError("只有平台管理员可以筛选归档", code="ADMIN_REQUIRED")
+    if scope in ("archive", "manage") and not is_admin(user):
+        raise ForbiddenError("只有平台管理员可以筛选归档/全部实例", code="ADMIN_REQUIRED")
     configs = search_service.allowed_fields(
         db, flow_template_id, start_only=scope == "mine" and not is_admin(user)
     )
@@ -318,16 +318,73 @@ def my_flow_templates(db: DbSession, user: CurrentUser) -> list[dict]:
     return instance_service.list_available_flows(db, user)
 
 
-# --------------------------------------------------------------------------- 归档检索与导出（F8）
+# --------------------------------------------------------------------------- 实例管理 / 归档台账（F8）
 
 
-@router.get("/archive", response_model=Page[InstanceOut], summary="归档列表（F8.1）")
+@router.get("/manage", response_model=Page[InstanceOut], summary="实例管理（运行中 + 办结）")
+def list_manage(
+    db: DbSession,
+    user: CurrentUser,
+    paging: Annotated[PageParams, Depends()],
+    instance_status: Annotated[
+        str | None,
+        Query(
+            alias="status",
+            description="仅限办结状态与 RUNNING；缺省为除草稿外的全部状态",
+        ),
+    ] = None,
+    flow_template_id: Annotated[int | None, Query()] = None,
+    initiator_id: Annotated[int | None, Query()] = None,
+    keyword: Annotated[str | None, Query(description="标题/编号模糊匹配")] = None,
+    active_from: Annotated[datetime | None, Query(description="最后活动时间起（含）")] = None,
+    active_to: Annotated[datetime | None, Query(description="最后活动时间止（含）")] = None,
+    filters: Annotated[str | None, Query(description="业务字段筛选 JSON（M13）")] = None,
+) -> dict:
+    """全组织审批实例的监控视图（运行中 + 已办结，不含草稿）。
+
+    管理员专属；按最后活动时间倒序，方便盯住最近还在流转的单据。
+    """
+    if not is_admin(user):
+        raise ForbiddenError("只有平台管理员可以查看实例管理", code="ADMIN_REQUIRED")
+
+    stmt = instance_service.build_manage_query(
+        db,
+        statuses=_status_list(
+            instance_status,
+            allowed=instance_service.MANAGE_STATUSES,
+            code="MANAGE_STATUS_INVALID",
+            message="实例管理只支持 RUNNING 与办结状态",
+        ),
+        flow_template_id=flow_template_id,
+        initiator_id=initiator_id,
+        keyword=keyword,
+        active_from=active_from,
+        active_to=active_to,
+    )
+    if filters:
+        if flow_template_id is None:
+            raise UnprocessableError(
+                "按业务字段筛选时必须指定流程模板", code="FLOW_TEMPLATE_REQUIRED"
+            )
+        configs = search_service.allowed_fields(db, flow_template_id, start_only=False)
+        stmt = search_service.apply_filters(stmt, search_service.parse_filters(filters, configs))
+    rows, total = paginate(db, stmt, paging)
+    return build_page(
+        [instance_service.to_out(db, r, viewer=user) for r in rows], total, paging
+    )
+
+
+@router.get("/archive", response_model=Page[InstanceOut], summary="归档台账（F8.1）")
 def list_archive(
     db: DbSession,
     user: CurrentUser,
     paging: Annotated[PageParams, Depends()],
     instance_status: Annotated[
-        str | None, Query(alias="status", description="归档仅支持 APPROVED")
+        str | None,
+        Query(
+            alias="status",
+            description="仅限办结状态：APPROVED/REJECTED/WITHDRAWN/TERMINATED；缺省全部",
+        ),
     ] = None,
     flow_template_id: Annotated[int | None, Query()] = None,
     initiator_id: Annotated[int | None, Query()] = None,
@@ -346,7 +403,12 @@ def list_archive(
 
     stmt = instance_service.build_archive_query(
         db,
-        statuses=_status_list(instance_status),
+        statuses=_status_list(
+            instance_status,
+            allowed=instance_service.ARCHIVE_STATUSES,
+            code="ARCHIVE_STATUS_INVALID",
+            message="归档台账只支持办结状态",
+        ),
         flow_template_id=flow_template_id,
         initiator_id=initiator_id,
         keyword=keyword,
@@ -384,7 +446,12 @@ def export_archive(
 
     stmt = instance_service.build_archive_query(
         db,
-        statuses=_status_list(instance_status),
+        statuses=_status_list(
+            instance_status,
+            allowed=instance_service.ARCHIVE_STATUSES,
+            code="ARCHIVE_STATUS_INVALID",
+            message="归档台账只支持办结状态",
+        ),
         flow_template_id=flow_template_id,
         initiator_id=initiator_id,
         keyword=keyword,
@@ -419,16 +486,22 @@ def export_instance(instance_id: int, db: DbSession, user: CurrentUser) -> Respo
     )
 
 
-def _status_list(raw: str | None) -> list[str] | None:
+def _status_list(
+    raw: str | None,
+    *,
+    allowed: tuple[str, ...],
+    code: str,
+    message: str,
+) -> list[str] | None:
     if not raw:
         return None
     values = [v.strip().upper() for v in raw.split(",") if v.strip()]
-    invalid = [value for value in values if value != "APPROVED"]
+    invalid = [value for value in values if value not in allowed]
     if invalid:
         raise UnprocessableError(
-            "归档列表只支持 APPROVED",
-            code="ARCHIVE_STATUS_INVALID",
-            extra={"invalid": invalid},
+            message,
+            code=code,
+            extra={"invalid": invalid, "allowed": list(allowed)},
         )
     return values or None
 

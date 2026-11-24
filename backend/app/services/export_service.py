@@ -76,7 +76,8 @@ def _instance_rows(db: Session, instances: Sequence[FlowInstance]) -> list[dict[
             "status_label": INSTANCE_STATUS_LABELS.get(instance.status, instance.status),
             "round": instance.round,
             "started_at": _stamp(instance.started_at),
-            "finished_at": _stamp(instance.finished_at),
+            # 驳回不写 finished_at，台账的「完成时间」取最后一次动作时间
+            "finished_at": _stamp(instance.finished_at or instance.last_action_at),
             "values": instance.current_data or {},
         })
     return out
