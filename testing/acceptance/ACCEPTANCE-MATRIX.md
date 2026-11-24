@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-20（G1 API R18 补测 94+3 skipped；G2 E2E 41/41；G3 200 轮）
+> 最近更新：2026-11-24（修复 BUG-UI-003：处理历史/快照对照的字段值可读化；G1/G2/G3 计数沿用 R18/R17）
 
 ## 0. 汇总
 
@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001..002 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001..003 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -93,7 +93,7 @@
 | TASK-02 | P0 | PRD F4.2/F4.3；§3.5.4 | 同意/驳回/退回/撤回/终止在合法与非法状态下的守卫、提示、通知 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R4: 同意/驳回/撤回/终止守卫 PASS；退回/通知待执行 | — |
 | TASK-03 | P0 | PRD §3.5.3；F4.3 | 会签 all/any：同时待办、分别操作、一人驳回、或签后取消其余 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: 会签 all 正向、或签 any 取消其余 PASS；组内驳回待执行 | — |
 | TASK-04 | P0 | PRD §3.5.3；D-03 | 并行组 all/any 汇合正确；不提前推进、不永久卡住；退回取消整组并重派 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: all/any 汇合、并行组退回整组重派 PASS；提前推进/卡死边界待执行 | — |
-| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕、附件权限正确 | API+E2E | `testing/api/test_task_notify.py` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；diff 展示/附件下载权限待执行 | — |
+| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；附件下载权限待执行 | BUG-UI-003（已修） |
 | TASK-06 | P0 | PRD F4.3；§7 | 同一任务两人同时处理、同一人双击、多标签页：结果唯一且可解释 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R2: 重复提交/重复处理 PASS；双会话并发待执行 | — |
 | TASK-07 | P0 | PHASE3 M14 §4 | 转办/委托：派单、可见性、留痕、窗口边界/重叠/撤销正确 | API+E2E | `testing/api/test_delegation.py` | PARTIAL | R5: 转办推进、委托派单/委托人可见、自委托/重叠拒绝 PASS；通知/时间线/会签组转办待执行 | BUG-API-006/007（已修） |
 

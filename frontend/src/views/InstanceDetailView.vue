@@ -416,6 +416,7 @@ async function doExport(): Promise<void> {
           :snapshot-id="activeSnapshotId"
           :actions="data.actions"
           :schema="data.schema_data"
+          :attachments="data.attachments"
         />
 
         <!-- ------------------------------------------------ 进度 + 处理历史 -->
@@ -431,6 +432,8 @@ async function doExport(): Promise<void> {
             <TimelineList
               :actions="data.actions"
               :active-snapshot-id="activeSnapshotId"
+              :schema="data.schema_data"
+              :attachments="data.attachments"
               @view-snapshot="viewSnapshot"
             />
           </Card>

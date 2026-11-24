@@ -12,8 +12,10 @@ import { Table } from 'ant-design-vue'
 import { computed, ref, watch } from 'vue'
 
 import { instanceApi } from '@/api/modules/instance'
+import { useOrgStore } from '@/stores/org'
 import type { FormSchema } from '@/types/form'
 import type { ActionEntry } from '@/types/instance'
+import { buildFieldIndex, formatReadableValue } from '@/utils/fieldValueDisplay'
 
 const props = defineProps<{
   instanceId: number
@@ -21,9 +23,15 @@ const props = defineProps<{
   snapshotId: number
   actions: ActionEntry[]
   schema: FormSchema
+  attachments?: Array<{ id: number; file_name: string }>
 }>()
 
 const ATable = Table
+const org = useOrgStore()
+const fields = computed(() => buildFieldIndex(props.schema))
+const attachmentNames = computed(
+  () => new Map((props.attachments ?? []).map((att) => [att.id, att.file_name])),
+)
 
 export interface SnapshotOption {
   id: number
@@ -95,12 +103,12 @@ async function load(): Promise<void> {
 
 watch([baselineId, () => props.snapshotId], () => void load(), { immediate: true })
 
-function display(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'boolean') return value ? '是' : '否'
-  if (Array.isArray(value)) return value.length ? value.map(display).join('、') : '—'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
+function display(value: unknown, key: string): string {
+  return formatReadableValue(value, fields.value.get(key), {
+    userName: (id) => org.userName(id),
+    deptName: (id) => org.deptName(id),
+    attachmentName: (id) => attachmentNames.value.get(id),
+  })
 }
 
 const columns = [
@@ -138,10 +146,10 @@ const columns = [
           {{ labels[record.key] ?? record.key }}
         </template>
         <template v-else-if="column.key === 'old'">
-          <span class="text-muted">{{ display(record.old) }}</span>
+          <span class="text-muted">{{ display(record.old, record.key) }}</span>
         </template>
         <template v-else>
-          <span class="new-value">{{ display(record.new) }}</span>
+          <span class="new-value">{{ display(record.new, record.key) }}</span>
         </template>
       </template>
     </ATable>

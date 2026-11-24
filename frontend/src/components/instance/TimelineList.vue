@@ -7,20 +7,45 @@
  */
 import { ClockCircleOutlined, HistoryOutlined } from '@ant-design/icons-vue'
 import { Tag, Timeline } from 'ant-design-vue'
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
+import { useOrgStore } from '@/stores/org'
+import type { FormSchema } from '@/types/form'
 import type { ActionEntry } from '@/types/instance'
 import { formatDateTime } from '@/utils/datetime'
 import { downloadFile } from '@/utils/download'
 import { feedback } from '@/utils/feedback'
+import { buildFieldIndex, formatReadableValue } from '@/utils/fieldValueDisplay'
 
-defineProps<{
+const props = defineProps<{
   actions: ActionEntry[]
   /** 已选中的快照 id（用于高亮） */
   activeSnapshotId?: number | null
+  /** 当前查看者可见的 schema，用来把选项/人员/附件值换成人话 */
+  schema?: FormSchema
+  attachments?: Array<{ id: number; file_name: string }>
 }>()
 
 const emit = defineEmits<{ 'view-snapshot': [snapshotId: number] }>()
+
+const org = useOrgStore()
+const fields = computed(() => buildFieldIndex(props.schema))
+const attachmentNames = computed(
+  () => new Map((props.attachments ?? []).map((att) => [att.id, att.file_name])),
+)
+
+onMounted(() => {
+  // 部门字段的值是 id，只读展示要换成部门名
+  void org.loadDeptTree()
+})
+
+function formatChangeValue(value: unknown, key: string): string {
+  return formatReadableValue(value, fields.value.get(key), {
+    userName: (id) => org.userName(id),
+    deptName: (id) => org.deptName(id),
+    attachmentName: (id) => attachmentNames.value.get(id),
+  })
+}
 
 const ATimeline = Timeline
 const ATimelineItem = Timeline.Item
@@ -58,19 +83,6 @@ function colorOf(action: string): string {
   if (action === 'AGREE' || action === 'SUBMIT') return 'green'
   if (action === 'TERMINATE') return 'gray'
   return 'blue'
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '（空）'
-  if (Array.isArray(value)) {
-    if (!value.length) return '（空）'
-    // 子表：显示行数；普通数组：拼起来
-    if (typeof value[0] === 'object' && value[0] !== null) return `${value.length} 行`
-    return value.map((v) => String(v)).join('、')
-  }
-  if (typeof value === 'object') return JSON.stringify(value)
-  if (typeof value === 'boolean') return value ? '是' : '否'
-  return String(value)
 }
 
 function hasDetail(action: ActionEntry): boolean {
@@ -111,9 +123,9 @@ function hasDetail(action: ActionEntry): boolean {
             <div class="field-label">字段变更：</div>
             <div v-for="change in action.changed_fields" :key="change.key" class="change-row">
               <span class="change-label">{{ change.label }}</span>
-              <span class="old">{{ formatValue(change.old) }}</span>
+              <span class="old">{{ formatChangeValue(change.old, change.key) }}</span>
               <span class="arrow">→</span>
-              <span class="new">{{ formatValue(change.new) }}</span>
+              <span class="new">{{ formatChangeValue(change.new, change.key) }}</span>
             </div>
           </div>
 
