@@ -796,9 +796,9 @@ class EngineService:
         )
         # 发起人指定审批人的选择结果不是表单字段，会被 apply_field_patch 过滤；
         # 但派发首个节点时必须让 initiator_select 来源读到它。派发后再移除。
-        select_picks = values_in.get("__initiator_select__")
-        if select_picks is not None:
-            values["__initiator_select__"] = select_picks
+        if initiator_select is not None:
+            values["__initiator_select__"] = initiator_select
+        select_picks = values.get("__initiator_select__")
         # 提交是「整单提交」，必填要全量校验（动作处理时只做增量校验）
         self._assert_required(permissions, values, form_schema)
         # 谁填的值谁负责：只校验发起阶段可编辑的那些字段
