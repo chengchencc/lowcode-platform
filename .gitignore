@@ -32,6 +32,8 @@ coverage/
 
 # ---- 运行时数据 ----
 /backend/storage/
+# 组织数据导出文件含 bcrypt 密码 hash，只在环境间传递，不要提交
+/org-data*.json
 # storage/
 uploads/
 logs/
