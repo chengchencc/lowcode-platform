@@ -251,7 +251,7 @@ function checkDefinitionShape(def: FlowDefinition): string | null {
   return walk(def.steps)
 }
 
-function onNodeChange(node?: StepNode): void {
+function onNodeChange(): void {
   // 节点属性任何改动都会来这里，包括改 node.id。
   // 绝对不要在这里手动同步 selectedId ——
   //   - 改 id 时 findNode(def, newId) 可能找不到（空字符串）或找错

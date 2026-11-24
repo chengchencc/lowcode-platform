@@ -48,10 +48,6 @@ const viewMode = computed(() => !editable.value)
 /** 这些控件用 disabled 属性来禁用交互，然后 CSS 覆盖禁用态样式 */
 const disableInteraction = computed(() => viewMode.value && !['radio', 'checkbox', 'switch'].includes(props.field.type))
 const label = computed(() => props.field.label)
-/** 附件/图片即使只读也要由专门控件渲染，才能点开下载和显示缩略图 */
-const isFileField = computed(() =>
-  ['attachment', 'image'].includes(props.field.type),
-)
 
 onMounted(() => {
   // 只读态不经过 OrgPickerControl（它在可编辑时才挂载），部门 id 换名字要先有部门树

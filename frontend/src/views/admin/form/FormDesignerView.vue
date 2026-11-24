@@ -280,8 +280,8 @@ function checkSchemaShape(s: FormSchema): string | null {
   return null
 }
 
-/** 属性面板的任何改动都会回调这里；传入当前 field 引用以便保存刷新。 */
-function onFieldChange(field: FieldDef): void {
+/** 属性面板的任何改动都会回调这里；负责序号整理与自动保存。 */
+function onFieldChange(): void {
   // 绝对不要在这里手动同步 selected.value 的 key ——
   //   - 改 key 时同容器 find 可能找不到（空字符串）或找错（临时冲突）
   //   - selectedField computed 里的缓存回退已经能处理这些中间态

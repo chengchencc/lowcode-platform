@@ -75,12 +75,10 @@ function stateOf(key: string): FieldState {
           <RightOutlined v-if="collapsed" />
           <DownOutlined v-else />
         </button>
-        <div class="block-title">
-          {{ section.title }}
-        </div>
-        <!-- <a-tag :color="STAGE_COLORS[stage]" class="stage-tag">
+        {{ section.title }}
+        <a-tag :color="STAGE_COLORS[stage]" class="stage-tag">
           {{ SECTION_STAGE_LABELS[stage] }}
-        </a-tag> -->
+        </a-tag>
       </span>
     </template>
 
@@ -119,25 +117,16 @@ function stateOf(key: string): FieldState {
 </template>
 
 <style scoped lang="scss">
-
-
-
 .section-block {
+  margin-bottom: 16px;
   background: #fff;
   border-radius: 8px;
-  box-shadow: none;
-
-  :deep(.ant-card-head) {
-    background: #cdcdcd;
-    border-radius: 4px 4px 0 0;
-  }
 }
 
 .section-title {
-  // display: inline-flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #cdcdcd;
 }
 
 .collapse-btn {
@@ -167,10 +156,5 @@ function stateOf(key: string): FieldState {
 .section-desc {
   margin: 0 0 12px;
   font-size: 12px;
-}
-
-.block-title {
-  font-size: 16px;
-  font-weight: 600;
 }
 </style>
