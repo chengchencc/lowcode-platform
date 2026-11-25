@@ -17,6 +17,7 @@ import { ApiError } from '@/api/http'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import type { TodoSummary } from '@/types/instance'
+import { appInitial, appName } from '@/utils/appMeta'
 import { feedback } from '@/utils/feedback'
 
 /** 待办角标轮询间隔（F7.2 要求 ≤10s 感知） */
@@ -160,8 +161,10 @@ async function handleLogout(): Promise<void> {
       :width="220"
     >
       <div class="logo">
-        <span class="logo-mark">一</span>
-        <span v-if="!app.sidebarCollapsed" class="logo-text">流程平台</span>
+        <span class="logo-mark">{{ appInitial }}</span>
+        <span v-if="!app.sidebarCollapsed" class="logo-text" :title="appName">
+          {{ appName }}
+        </span>
       </div>
       <a-menu         theme="dark"
         mode="inline"
@@ -222,8 +225,8 @@ async function handleLogout(): Promise<void> {
       :body-style="{ padding: 0, background: '#001529' }"
     >
       <div class="logo">
-        <span class="logo-mark">FF</span>
-        <span class="logo-text">FlowForm</span>
+        <span class="logo-mark">{{ appInitial }}</span>
+        <span class="logo-text" :title="appName">{{ appName }}</span>
       </div>
       <a-menu
         theme="dark"
@@ -310,9 +313,12 @@ async function handleLogout(): Promise<void> {
 }
 
 .logo-text {
+  min-width: 0;
+  overflow: hidden;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  text-overflow: ellipsis;
 }
 
 .app-header {

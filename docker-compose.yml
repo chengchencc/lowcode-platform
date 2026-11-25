@@ -49,6 +49,8 @@ services:
     environment:
       # 与开发期唯一的差别就是这一行（决策 D1：切库只改连接串）
       DATABASE_URL: postgresql+psycopg://${PG_USER:-flowform}:${PG_PASSWORD:-flowform123}@postgres:5432/${PG_DATABASE:-flowform}
+      # 系统名称：登录页、侧边栏、浏览器标题都读它，改完重启后端即可
+      APP_NAME: ${APP_NAME:-FlowForm}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET}
       DEBUG: "false"
       # 浏览器与前端同源（nginx 反代 /api），因此这里不需要放行跨域来源

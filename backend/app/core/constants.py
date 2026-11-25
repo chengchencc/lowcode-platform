@@ -346,6 +346,7 @@ class CancelReason(StrEnum):
     TRANSFERRED = "TRANSFERRED"        # 转办（M14）
     REJECTED = "REJECTED"
     RETURNED = "RETURNED"
+    REVOKED = "REVOKED"                # 审批人撤回自己的同意
     WITHDRAWN = "WITHDRAWN"
     TERMINATED = "TERMINATED"
     RESUBMITTED = "RESUBMITTED"

@@ -3,7 +3,8 @@
 覆盖：
 - schema 校验：只允许顶层且类型匹配的人员/部门控件
 - 取值：单选给标量、多选给列表；部门缺失时跳过
-- 审批人解析：上一节点=发起人时允许自审（其他来源仍剔除发起人）
+- 审批人解析：上一节点=发起人时允许自审（其他来源默认剔除发起人）
+- 流程级 `prevent_self_approval` 开关：关闭后角色等宽口径来源也允许发起人
 """
 
 from __future__ import annotations
@@ -141,6 +142,7 @@ class _Provider:
     def users_by_role(self, role_ids: Sequence[int]) -> list[int]:
         return [99]
 
+
     def dept_manager(self, dept_id: int) -> list[int]:
         return [55]
 
@@ -152,6 +154,13 @@ class _Provider:
 
     def current_active_users(self) -> list[int]:
         return [1, 2, 3]
+
+
+class _SelfRoleProvider(_Provider):
+    """角色成员里只有发起人本人 —— 用来验证防自审开关。"""
+
+    def users_by_role(self, role_ids: Sequence[int]) -> list[int]:
+        return [1]
 
 
 def test_prev_node_start_allows_self_approval() -> None:
@@ -192,3 +201,25 @@ def test_prev_node_real_task_still_excludes_initiator() -> None:
     # 发起人自己作为上一节点处理人时不应自审 → 无人可派，转管理员并标记异常
     assert resolution.user_ids == []
     assert resolution.abnormal is True
+
+
+def test_role_source_excludes_initiator_by_default() -> None:
+    rule = AssigneeRule(
+        mode="SINGLE", sources=[AssigneeSource(type="role", role_ids=[6])]
+    )
+    ctx = ApproverContext(initiator_id=1, start_node_id="start")
+    resolution = resolve_approvers(rule, ctx, _SelfRoleProvider())
+    assert resolution.user_ids == []
+    assert resolution.abnormal is True
+
+
+def test_role_source_allows_initiator_when_prevent_disabled() -> None:
+    rule = AssigneeRule(
+        mode="SINGLE", sources=[AssigneeSource(type="role", role_ids=[6])]
+    )
+    ctx = ApproverContext(
+        initiator_id=1, start_node_id="start", prevent_self_approval=False
+    )
+    resolution = resolve_approvers(rule, ctx, _SelfRoleProvider())
+    assert resolution.user_ids == [1]
+    assert resolution.abnormal is False

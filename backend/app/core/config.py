@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 目录，用于把相对路径（SQLite 文件、.env）解析成绝对路径，
@@ -73,6 +74,12 @@ class Settings(BaseSettings):
     seed_demo_accounts: bool = False
     #: 示例流程库（请假 / 报销）。预置数据本身也要发布得出来，走的是同一套校验
     seed_sample_flows: bool = True
+
+    @field_validator("app_name")
+    @classmethod
+    def _normalize_app_name(cls, value: str) -> str:
+        """系统名称会显示在登录页、侧边栏和浏览器标题上，空值退回默认名。"""
+        return value.strip() or "FlowForm"
 
     @property
     def cors_origin_list(self) -> list[str]:

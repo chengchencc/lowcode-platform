@@ -70,6 +70,10 @@ class WithdrawRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=255)
 
 
+class RevokeApprovalRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
 class StartOptionsOut(BaseModel):
     flow_template_id: int
     flow_template_name: str

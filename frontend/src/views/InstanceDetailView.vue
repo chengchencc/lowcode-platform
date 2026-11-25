@@ -17,13 +17,14 @@ import {
   HistoryOutlined,
   PrinterOutlined,
   RollbackOutlined,
+  UndoOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Card, Modal, Space, Tag } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/http'
-import { instanceApi } from '@/api/modules/instance'
+import { instanceApi, taskApi } from '@/api/modules/instance'
 import { userApi } from '@/api/modules/user'
 import { FormRenderer } from '@/components/form-renderer'
 import ActionPanel from '@/components/instance/ActionPanel.vue'
@@ -163,9 +164,8 @@ const terminateOpen = ref(false)
 const terminateReason = ref('')
 const operating = ref(false)
 
-const canWithdraw = computed(
-  () => data.value?.my_role === 'INITIATOR' && data.value.instance.status === 'RUNNING',
-)
+/** 服务端判定「运行中 + 发起人 + 尚无人处理过」；前端不再自行推导，避免点了才报错 */
+const canWithdraw = computed(() => data.value?.can_withdraw === true)
 const canAbandon = computed(
   () => data.value?.my_role === 'INITIATOR' && data.value.instance.status === 'REJECTED',
 )
@@ -173,6 +173,11 @@ const canTerminate = computed(
   () =>
     data.value?.my_role === 'ADMIN' &&
     !['APPROVED', 'WITHDRAWN', 'TERMINATED'].includes(data.value?.instance.status ?? ''),
+)
+/** 本人已同意、且下游尚未处理时，服务端会下发可撤回的审批 */
+const revocableApproval = computed(() => data.value?.revocable_approval ?? null)
+const canRevokeApproval = computed(
+  () => revocableApproval.value !== null && !activeSnapshotId.value,
 )
 
 /**
@@ -199,7 +204,12 @@ function onExtFieldUpdated(fresh: InstanceRender): void {
 const showHeaderActions = computed(() => canEditForm.value && !activeSnapshotId.value)
 /** 实例级操作（撤回/撤销/终止）是否有可见项 —— 用于决定要不要分隔线 */
 const showInstanceOps = computed(
-  () => canWithdraw.value || canAbandon.value || canTerminate.value || !!activeSnapshotId.value,
+  () =>
+    canWithdraw.value ||
+    canAbandon.value ||
+    canTerminate.value ||
+    canRevokeApproval.value ||
+    !!activeSnapshotId.value,
 )
 
 async function doWithdraw(): Promise<void> {
@@ -213,6 +223,26 @@ async function doWithdraw(): Promise<void> {
   try {
     await instanceApi.withdraw(instanceId.value, null)
     feedback.success('已撤回')
+    await load()
+  } finally {
+    operating.value = false
+  }
+}
+
+async function doRevokeApproval(): Promise<void> {
+  const target = revocableApproval.value
+  if (!target) return
+  const ok = await feedback.confirm({
+    title: `撤回「${target.node_name}」的审批？`,
+    content:
+      '该节点会重新派回处理人，后续节点的待办全部取消；已填写的数据与处理记录保留。',
+    danger: true,
+  })
+  if (!ok) return
+  operating.value = true
+  try {
+    await taskApi.revokeApproval(target.assignment_id, null)
+    feedback.success('已撤回审批')
     await load()
   } finally {
     operating.value = false
@@ -354,6 +384,10 @@ async function doExport(): Promise<void> {
                 正在查看历史快照
                 <a @click="activeSnapshotId = null">退出</a>
               </Tag>
+              <Button v-if="canRevokeApproval" :loading="operating" @click="doRevokeApproval">
+                <template #icon><UndoOutlined /></template>
+                撤回审批
+              </Button>
               <Button v-if="canWithdraw" :loading="operating" @click="doWithdraw">
                 <template #icon><RollbackOutlined /></template>
                 撤回

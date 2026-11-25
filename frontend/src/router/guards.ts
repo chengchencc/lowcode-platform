@@ -1,13 +1,17 @@
 import type { Router } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
+import { loadAppMeta, pageTitle } from '@/utils/appMeta'
 
 export function setupGuards(router: Router): void {
   router.beforeEach(async (to) => {
     const auth = useAuthStore()
 
+    // 不阻塞导航：名称到达后会由 main.ts 的 watch 重新套用标题
+    void loadAppMeta()
+
     if (to.meta.title) {
-      document.title = `${to.meta.title} · FlowForm`
+      document.title = pageTitle(to.meta.title)
     }
 
     // 刷新页面后先用已有 token 恢复登录态（只做一次）

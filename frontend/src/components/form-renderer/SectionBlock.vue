@@ -62,25 +62,26 @@ function stateOf(key: string): FieldState {
 </script>
 
 <template>
-  <a-card v-if="visible" :bordered="false" class="section-block" :body-style="{ paddingTop: '12px' }">
-    <template #title>
-      <span class="section-title">
-        <button
-          v-if="section.collapsible"
-          type="button"
-          class="collapse-btn"
-          :title="collapsed ? '展开分区' : '折叠分区'"
-          @click.stop="collapsed = !collapsed"
-        >
-          <RightOutlined v-if="collapsed" />
-          <DownOutlined v-else />
-        </button>
-        {{ section.title }}
-        <a-tag :color="STAGE_COLORS[stage]" class="stage-tag">
-          {{ SECTION_STAGE_LABELS[stage] }}
-        </a-tag>
-      </span>
-    </template>
+  <section v-if="visible" class="section-block">
+    <!-- 分区标题做成「组标题条」而不是卡片头：外层已有「表单信息」卡片，
+         再套一层卡片会出现两个头，层级也分不清。 -->
+    <div class="section-head">
+      <button
+        v-if="section.collapsible"
+        type="button"
+        class="collapse-btn"
+        :title="collapsed ? '展开分区' : '折叠分区'"
+        @click.stop="collapsed = !collapsed"
+      >
+        <RightOutlined v-if="collapsed" />
+        <DownOutlined v-else />
+      </button>
+      <span class="stage-accent" :class="`accent-${stage}`" />
+      <span class="section-title">{{ section.title }}</span>
+      <a-tag :color="STAGE_COLORS[stage]" class="stage-tag">
+        {{ SECTION_STAGE_LABELS[stage] }}
+      </a-tag>
+    </div>
 
     <template v-if="!collapsed">
       <p v-if="section.description" class="text-muted section-desc">{{ section.description }}</p>
@@ -113,20 +114,55 @@ function stateOf(key: string): FieldState {
         </a-col>
       </a-row>
     </template>
-  </a-card>
+  </section>
 </template>
 
 <style scoped lang="scss">
 .section-block {
-  margin-bottom: 16px;
-  background: #fff;
-  border-radius: 8px;
+  & + & {
+    margin-top: 22px;
+  }
+}
+
+/* 组标题条：浅灰底 + 阶段色标记，和外层卡片标题拉开层级 */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  margin-bottom: 14px;
+  border-radius: 6px;
+  background: #f6f8fa;
+}
+
+.stage-accent {
+  flex: 0 0 3px;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #8c8c8c;
+}
+
+.accent-apply {
+  background: #1677ff;
+}
+
+.accent-approve {
+  background: #faad14;
+}
+
+.accent-supplement {
+  background: #722ed1;
+}
+
+.accent-archive {
+  background: #8c8c8c;
 }
 
 .section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
 }
 
 .collapse-btn {
@@ -149,12 +185,23 @@ function stateOf(key: string): FieldState {
 }
 
 .stage-tag {
+  margin-left: auto;
   font-size: 11px;
   font-weight: normal;
 }
 
 .section-desc {
-  margin: 0 0 12px;
+  margin: -4px 0 14px;
   font-size: 12px;
+}
+
+@media (max-width: 576px) {
+  .section-head {
+    flex-wrap: wrap;
+  }
+
+  .stage-tag {
+    margin-left: 0;
+  }
 }
 </style>

@@ -9,7 +9,7 @@
 |---|---|---|
 | 当前处理人（有待办） | 该节点的权限矩阵 | 可编辑本节点开放的字段 |
 | 任意人看已终态实例 | 归档视角（全可见只读） | 补充字段此时才揭晓 |
-| 运行中的历史处理人 | 按流程级 `history_view` 配置：本人已办节点并集 / 全量只读 / 仅发起视角 | 默认保留自己处理过的区域 |
+| 运行中的历史处理人 | 按流程级 `history_view` 配置（取模板当前发布版本）：本人已办节点并集 / 全量只读 / 仅发起视角 | 默认保留自己处理过的区域；发布即对运行中实例生效 |
 | 其他（发起人 / 抄送人 / 无关参与者） | **发起节点**权限 | 补充字段仍隐藏 |
 
 后两档是 PRD 验收点的关键：「申请人全程看不到实际核销金额，直至通过后归档可见」。
@@ -42,10 +42,13 @@ from app.engine.permissions import (
     resolve_view_permissions,
 )
 from app.engine.router import allowed_return_targets
+from app.engine.service import can_withdraw, revocable_approval
 from app.engine.types import NODE_TYPE_LABELS, CompiledFlow, Cursor
 from app.models import (
     DataSnapshot,
     FlowInstance,
+    FlowTemplate,
+    FlowVersion,
     Task,
     TaskAssignment,
     User,
@@ -130,6 +133,7 @@ def render_instance(
 
     # ---- 我在这张单上的角色 ----
     my_role = _viewer_role(db, instance, viewer, assignment)
+    revocable = revocable_approval(db, instance, compiled, viewer)
     permission_map = {k: v.to_dict() for k, v in permissions.items()}
     base_map = {k: v.to_dict() for k, v in base_permissions.items()}
     schema_data = form_schema.model_dump(mode="json")
@@ -143,6 +147,17 @@ def render_instance(
         "instance": instance_service.to_out(db, instance, viewer=viewer),
         "my_role": my_role,
         "assignment": _assignment_out(assignment) if assignment else None,
+        # 撤回入口由服务端判定：发起人 + 运行中 + 尚无人处理过
+        "can_withdraw": can_withdraw(db, instance, viewer),
+        # 本人已同意且下游未处理时的「撤回审批」入口；由服务端判定，前端不自行推导
+        "revocable_approval": (
+            {
+                "assignment_id": revocable.id,
+                "node_name": revocable.task.node_name,
+            }
+            if revocable is not None
+            else None
+        ),
         "current_node": (
             {
                 "node_id": current_node.id,
@@ -244,7 +259,7 @@ def _resolve_permissions(
         return resolve_view_permissions(form_schema)
 
     # 运行中的历史处理人 → 按流程级 history_view 决定可见范围
-    policy = compiled.definition.history_view
+    policy = _history_view_policy(db, instance, compiled)
     if policy != "start":
         historical = _historical_permissions(
             db,
@@ -273,6 +288,29 @@ def _resolve_permissions(
     return apply_ext_fields(
         permissions, ext_views, node_id=start_id, node_ancestors=[start_id]
     )
+
+
+HISTORY_VIEWS = ("own_nodes", "full", "start")
+
+
+def _history_view_policy(
+    db: Session, instance: FlowInstance, compiled: CompiledFlow
+) -> str:
+    """已办可见范围是**运行期展示策略**，取流程模板当前发布版本。
+
+    实例锁版本保证节点结构、字段权限与发起时一致；「已办打开能看到多少」
+    属于操作策略，管理员调完并发布后，运行中的单据也应立即跟随，
+    否则每次验证都得重新发起一张单。
+    """
+    template = db.get(FlowTemplate, instance.flow_template_id)
+    current_id = template.current_version_id if template is not None else None
+    if current_id and current_id != instance.flow_version_id:
+        current = db.get(FlowVersion, current_id)
+        if current is not None:
+            policy = (current.definition or {}).get("history_view", "own_nodes")
+            if policy in HISTORY_VIEWS:
+                return policy
+    return compiled.definition.history_view
 
 
 def _historical_permissions(

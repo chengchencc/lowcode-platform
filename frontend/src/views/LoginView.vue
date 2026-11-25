@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { appInitial, appName } from '@/utils/appMeta'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,10 +43,10 @@ async function handleSubmit(): Promise<void> {
   <div class="login-page">
     <div class="login-card">
       <div class="brand">
-        <span class="brand-mark">FF</span>
+        <span class="brand-mark">{{ appInitial }}</span>
         <div>
-          <h1>FlowForm</h1>
-          <p>低代码表单 + 审批流平台</p>
+          <h1 :title="appName">{{ appName }}</h1>
+          <!-- <p>低代码表单 + 审批流平台</p> -->
         </div>
       </div>
 
@@ -133,6 +134,8 @@ async function handleSubmit(): Promise<void> {
     margin: 0;
     font-size: 20px;
     font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   p {

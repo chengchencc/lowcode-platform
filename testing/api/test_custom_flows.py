@@ -15,6 +15,7 @@ from support.factories import (
     parallel_any_definition,
     parallel_return_definition,
     render,
+    sequential_definition,
     simple_data,
     submit,
     todo,
@@ -165,3 +166,95 @@ def test_parallel_member_return_cancels_group_and_redispatches_target(
     finally:
         wangwu_client.close()
         zhaoliu_client.close()
+
+
+def _revoke_flow(
+    admin_client: ApiClient,
+    seed: dict[str, Any],
+) -> dict[str, Any]:
+    form = create_form_and_publish(admin_client, name="E2E 撤回审批表单")
+    return create_flow_and_publish(
+        admin_client,
+        form_template_id=form["id"],
+        name="E2E 撤回审批流程",
+        definition=sequential_definition(
+            [
+                ("a1", "一级审批", seed["users"]["lisi"]["id"]),
+                ("a2", "二级审批", seed["users"]["wangwu"]["id"]),
+                ("a3", "三级审批", seed["users"]["zhaoliu"]["id"]),
+            ]
+        ),
+    )
+
+
+def test_approver_can_revoke_own_approval_before_downstream_acts(
+    admin_client: ApiClient,
+    zhangsan_client: ApiClient,
+    lisi_client: ApiClient,
+    wangwu_client: ApiClient,
+    seed: dict[str, Any],
+) -> None:
+    """TASK-08：本人同意、下游未处理时可撤回；下游待办取消并重派本人节点。"""
+    flow = _revoke_flow(admin_client, seed)
+    instance_id = _submit(zhangsan_client, flow["id"], "TASK-08 撤回审批")
+
+    first = find_assignment(lisi_client, instance_id)
+    assert act(lisi_client, first["assignment_id"], opinion="先同意").status_code == 200
+    # 下游已派给王五
+    assert find_assignment(wangwu_client, instance_id)["node_name"] == "二级审批"
+
+    detail = render(lisi_client, instance_id).json()
+    assert detail["revocable_approval"] == {
+        "assignment_id": first["assignment_id"],
+        "node_name": "一级审批",
+    }
+
+    revoked = lisi_client.post(
+        f"tasks/assignments/{first['assignment_id']}/revoke",
+        json={"reason": "意见要改"},
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["status"] == "RUNNING"
+
+    # 下游待办被取消；一级节点重新派回李四
+    assert [row for row in todo(wangwu_client) if row["instance_id"] == instance_id] == []
+    reopened = find_assignment(lisi_client, instance_id)
+    assert reopened["node_name"] == "一级审批"
+    assert reopened["assignment_id"] != first["assignment_id"]
+
+    # 历史动作保留，并出现「撤回审批」
+    actions = render(lisi_client, instance_id).json()["actions"]
+    assert any(action["action"] == "AGREE" for action in actions)
+    assert any(
+        action["action"] == "REVOKE_APPROVAL" and action["action_label"] == "撤回审批"
+        for action in actions
+    )
+    # 撤回后本人处于待办中，不应再显示撤回入口
+    assert render(lisi_client, instance_id).json()["revocable_approval"] is None
+
+
+def test_revoke_blocked_when_downstream_has_acted(
+    admin_client: ApiClient,
+    zhangsan_client: ApiClient,
+    lisi_client: ApiClient,
+    wangwu_client: ApiClient,
+    seed: dict[str, Any],
+) -> None:
+    flow = _revoke_flow(admin_client, seed)
+    instance_id = _submit(zhangsan_client, flow["id"], "TASK-08 下游已处理")
+    # 尚无人处理：发起人详情页应给出撤回入口
+    assert render(zhangsan_client, instance_id).json()["can_withdraw"] is True
+
+    first = find_assignment(lisi_client, instance_id)
+    assert act(lisi_client, first["assignment_id"], opinion="同意").status_code == 200
+    # 已有人处理：撤回按钮不再下发（不是点了才报错）
+    assert render(zhangsan_client, instance_id).json()["can_withdraw"] is False
+    second = find_assignment(wangwu_client, instance_id)
+    assert act(wangwu_client, second["assignment_id"], opinion="二级同意").status_code == 200
+
+    response = lisi_client.post(
+        f"tasks/assignments/{first['assignment_id']}/revoke", json={}
+    )
+    assert response.status_code == 422, response.text
+    assert "后续节点已有处理" in response.text
+    assert render(lisi_client, instance_id).json()["revocable_approval"] is None

@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-24（修复 BUG-UI-003：处理历史/快照对照的字段值可读化；G1/G2/G3 计数沿用 R18/R17）
+> 最近更新：2026-11-25（系统名称改为 `APP_NAME` 可配置，新增 ENV-04 与公开 `GET /meta`；修复 BUG-UI-005：审批弹窗的改动预览显示字段名称而非字段 key；新增流程级「防自审」开关并覆盖默认/关闭两态；新增 TASK-08 审批人「撤回审批」并转 PASS；发起人撤回收敛为服务端下发 `can_withdraw`，按钮不再常驻；此前 BUG-UI-004 只读态标量字段统一纯文本、BUG-API-016 流程设置按当前发布版本生效、BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
 
 ## 0. 汇总
 
@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001..003 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..005 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -53,7 +53,7 @@
 | FORM-01 | P0 | PRD F1.2–F1.7 | 全控件表单设计→发布→发起页渲染；子表/公式/级联/附件/人员正确 | API+E2E | `testing/api/test_form_controls.py` | PARTIAL | R14: 全控件发布/发起页/提交/公式/子表/人员部门/附件图片 PASS；设计器拖拽/预览待执行 | — |
 | FORM-02 | P0 | PRD F1.5；F2.6 | 旧实例锁旧版；新流程锁最新已发布版；草稿不影响线上 | API+E2E | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 版本发布/旧流程锁旧版/新流程锁新版 PASS；旧实例详情待执行 | — |
 | FORM-03 | P0 | PRD F3.2；§7 安全 | 绕过前端直接调 API：hidden/必填/值规则仍被服务端拦截 | API | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 必填缺失、草稿/提交伪造 hidden 值被拦 PASS；值规则/子表待执行 | BUG-API-012（已修） |
-| FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E | `testing/api/test_form_rules.py` | PARTIAL | R15: 布局列数/分区折叠/展示控件/联动规则隐藏+清空 PASS；设计器预览待执行 | — |
+| FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E+vitest | `testing/api/test_form_rules.py`；`frontend/src/__tests__/render.spec.ts` | PARTIAL | R15: 布局列数/分区折叠/展示控件/联动规则隐藏+清空 PASS；R20（2026-11-25）：只读态标量字段统一纯文本（无禁用输入框/选择器/开关），设计器预览锁定 auto_fill/auto_number 与真实发起页一致 PASS；设计器拖拽/预览拖拽待执行 | BUG-UI-004（已修） |
 | FORM-05 | P0 | PRD F1.5；F2.6 | 发布后不自动产生空草稿；打开设计器默认只读查看已发布版本；可显式新建草稿，也可删除未发布草稿 | E2E | `testing/e2e/specs/design.spec.ts` | PASS | 本轮：表单/流程发布后无新草稿，新建→删除草稿链路通过 | BUG-UI-002（已修） |
 
 ## 3. 流程设计与发布
@@ -72,7 +72,7 @@
 | PERM-02 | P0 | PRD §3.4；§7 安全；D-04 | hidden 字段不出现在响应/快照/导出/打印；伪造提交值被过滤 | API+E2E | `testing/api/test_snapshots.py` | PARTIAL | R7: hidden key/值、导出、快照/对照 PASS；打印/附件待执行 | BUG-API-001/004/008（已修） |
 | PERM-03 | P0 | PRD §2；§7；F6 | 参与者/管理员/设计者/无关人员四视角正确；越权 ID 返回 403/404 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R2: 无关人/设计者实例访问 PASS；快照/导出/任务 IDOR 待执行 | — |
 | PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策；D-04 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定；hidden 字段附件不可见 | API+E2E | `testing/api/test_hidden_attachment.py` | PARTIAL | R11: 临时/提交绑定/参与者/无关人/非法扩展名/hidden 附件元数据+下载 PASS；打印待执行 | BUG-API-009/010（已修） |
-| PERM-05 | P0 | PRD F8.1；§3.4 | 流程级 `history_view` 可配置已办处理人打开运行中单据的字段范围：`own_nodes` 本人节点并集（默认）/ `full` 全部只读 / `start` 仅发起阶段；均只读，发起人视角不泄露补充字段；终态仍按归档视角 | API+E2E | `backend/tests/test_instances_api.py`、`testing/e2e/specs/permissions.spec.ts`、`testing/e2e/specs/design.spec.ts` | PASS | 本轮：三种策略后端单测、已办入口 E2E、设计器设置持久化 E2E 均通过 | — |
+| PERM-05 | P0 | PRD F8.1；§3.4 | 流程级 `history_view` 可配置已办处理人打开运行中单据的字段范围：`own_nodes` 本人节点并集（默认）/ `full` 全部只读 / `start` 仅发起阶段；均只读，发起人视角不泄露补充字段；终态仍按归档视角 | API+E2E | `backend/tests/test_instances_api.py`、`testing/e2e/specs/permissions.spec.ts`、`testing/e2e/specs/design.spec.ts` | PASS | 本轮：三种策略后端单测、已办入口 E2E、设计器设置持久化 E2E 均通过；补运行中实例跟随当前发布版本（无需新单）用例 PASS | BUG-API-016（已修） |
 | SEC-01 | P0 | PRD §7 安全 | IDOR：实例/任务/附件/模板/审计/导出接口逐一用无关用户访问 | API | `testing/api/test_security_extra.py` | PARTIAL | R14: 任务/模板/审计/终止/快照 IDOR PASS；附件/导出全接口待执行 | — |
 | SEC-02 | P0 | PRD §7 安全；PHASE2 M10 | 富文本 XSS、CSV 注入、上传白名单/大小/路径穿越 | API+手工 | `testing/api/test_security_extra.py` | PARTIAL | R14: 富文本原始 HTML 拒绝、CSV 注入转义、上传白名单 PASS；路径穿越/大小待执行 | — |
 
@@ -83,7 +83,7 @@
 | INIT-01 | P0 | PRD F2.5；F3.1 | 发起范围（全员/角色/部门）正确；无权限看不到入口，直接访问也被拒 | API+E2E | `testing/api/test_initiate_scope.py` | PARTIAL | R13: 角色范围、部门范围（含子部门）、直接访问拒绝 PASS；全员范围已由样例流程覆盖 | — |
 | INIT-02 | P0 | PRD F3.2；F3.3；D-04 | 自动填充、标题字段、隐藏字段、只读字段、草稿保存/恢复正确 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R3: 发起页/草稿/提交 PASS；hidden schema 裁剪 PASS；其余待执行 | BUG-API-001（已修） |
 | INIT-03 | P0 | PRD F3.4；§7 一致性 | 连点/刷新/网络重试只产生一个实例和一套任务 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R2: 单会话重复提交 PASS；双会话并发待执行 | — |
-| INIT-04 | P0 | PRD F3.5；§3.3.2；D-01 | 表单人员/部门主管/指定部门/角色/发起人自审规则正确 | API+E2E | `testing/api/test_approver_sources.py` | PARTIAL | R15: 表单人员/表单部门主管/发起人指定/角色剔除发起人 PASS；指定部门/上一节点来源待执行 | BUG-API-013（已修） |
+| INIT-04 | P0 | PRD F3.5；§3.3.2；D-01 | 表单人员/部门主管/指定部门/角色/发起人自审规则正确；流程级「防自审」开关默认开启、关闭后允许发起人 | API+E2E | `testing/api/test_approver_sources.py`；`backend/tests/test_auto_fill.py` | PARTIAL | R15: 表单人员/表单部门主管/发起人指定/角色剔除发起人 PASS；R21（2026-11-25）：防自审开关默认/关闭两态（角色来源）单测与 API PASS；指定部门/上一节点来源待执行 | BUG-API-013（已修） |
 
 ## 6. 审批处理与流程状态
 
@@ -93,9 +93,10 @@
 | TASK-02 | P0 | PRD F4.2/F4.3；§3.5.4 | 同意/驳回/退回/撤回/终止在合法与非法状态下的守卫、提示、通知 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R4: 同意/驳回/撤回/终止守卫 PASS；退回/通知待执行 | — |
 | TASK-03 | P0 | PRD §3.5.3；F4.3 | 会签 all/any：同时待办、分别操作、一人驳回、或签后取消其余 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: 会签 all 正向、或签 any 取消其余 PASS；组内驳回待执行 | — |
 | TASK-04 | P0 | PRD §3.5.3；D-03 | 并行组 all/any 汇合正确；不提前推进、不永久卡住；退回取消整组并重派 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: all/any 汇合、并行组退回整组重派 PASS；提前推进/卡死边界待执行 | — |
-| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；附件下载权限待执行 | BUG-UI-003（已修） |
+| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts`；`frontend/src/__tests__/render.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；R21（2026-11-25）：审批弹窗改动预览显示字段名称/子表列，不再露 key PASS；附件下载权限待执行 | BUG-UI-003、BUG-UI-005（已修） |
 | TASK-06 | P0 | PRD F4.3；§7 | 同一任务两人同时处理、同一人双击、多标签页：结果唯一且可解释 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R2: 重复提交/重复处理 PASS；双会话并发待执行 | — |
 | TASK-07 | P0 | PHASE3 M14 §4 | 转办/委托：派单、可见性、留痕、窗口边界/重叠/撤销正确 | API+E2E | `testing/api/test_delegation.py` | PARTIAL | R5: 转办推进、委托派单/委托人可见、自委托/重叠拒绝 PASS；通知/时间线/会签组转办待执行 | BUG-API-006/007（已修） |
+| TASK-08 | P1 | PRD §3.5.4；F4.3 | 审批人「撤回审批」：本人同意且下游未处理时可撤回，下游待办取消、本节点重派；下游已处理/会签未完成/并行分支活跃时拒绝；实例状态与字段数据不变 | API+E2E+vitest | `backend/tests/test_engine_service.py`、`testing/api/test_custom_flows.py`、`testing/e2e/specs/approve.spec.ts` | PASS | R21（2026-11-25）：引擎 3 条 + API 2 条 + E2E @p1 覆盖撤回成功、下游已处理拒绝、非本人拒绝、实例结束拒绝；同轮发起人撤回守卫 E2E 改为服务端隐藏入口 + 接口兜底 422 PASS | — |
 
 ## 7. 驳回、退回与异常路径
 
@@ -127,6 +128,7 @@
 | ENV-01 | P0 | PRD §7 部署；README Docker | Docker PostgreSQL 16（默认）/ MySQL 8 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-02 | P0 | PRD §7；TECH §3.1 | 空库迁移、上一版本升级迁移成功；SQLite/MySQL/PG 核心链路一致 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-03 | P0 | TECH §9 时间统一；PRD §7 | UTC 存储与 Asia/Shanghai 展示边界；首页今日/本周/本月跨日正确 | API+手工 | 待建 | DESIGNED | — | — |
+| ENV-04 | P1 | PRD 决策 12 | 系统名称由 `APP_NAME` 配置，公开 `GET /meta` 下发；登录页、侧边栏、浏览器标题跟随；空值/空白退回默认名 | API+vitest | `testing/api/test_meta.py`；`backend/tests/test_config.py`；`frontend/src/__tests__/appMeta.spec.ts` | PASS | R21（2026-11-25）：公开读取、名称去空白与空值兜底、Logo 缩写与标题格式通过 | — |
 | PERF-01 | P0 | PRD §7 规模；TEST-PLAN §10.3 | 1k/10k 实例列表与筛选、100 节点设计器、待办/首页达到基线 | 脚本 | 待建 | DESIGNED | — | — |
 | UAT-01 | P0 | TEST-PLAN §13.2 | 产品负责人独立走完：配置新流程、发起审批、驳回重提、检索导出 | 手工 | — | PARTIAL | R19: 主链路走查完成，3 个问题已修；A4 打印待最终确认 | UAT-001..003（已修） |
 

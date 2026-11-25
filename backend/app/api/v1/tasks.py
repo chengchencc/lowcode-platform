@@ -10,7 +10,13 @@ from app.core.deps import CurrentUser, DbSession
 from app.core.pagination import Page, PageParams, build_page, paginate
 from app.schemas.common import OkResp
 from app.schemas.delegation import TransferRequest
-from app.schemas.instance import AssignmentActRequest, InstanceOut, TaskRow, TodoSummary
+from app.schemas.instance import (
+    AssignmentActRequest,
+    InstanceOut,
+    RevokeApprovalRequest,
+    TaskRow,
+    TodoSummary,
+)
 from app.services import instance_service, search_service, task_service
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
@@ -154,6 +160,34 @@ def transfer(
     )
     from app.services import instance_service
 
+    assignment = task_service.get_assignment_or_404(db, assignment_id)
+    instance = instance_service.get_or_404(db, assignment.instance_id)
+    return instance_service.to_out(db, instance, viewer=user)
+
+
+@router.post(
+    "/assignments/{assignment_id}/revoke",
+    response_model=InstanceOut,
+    summary="撤回自己的审批（PRD §3.5.4）",
+)
+def revoke_approval(
+    assignment_id: int,
+    payload: RevokeApprovalRequest,
+    db: DbSession,
+    user: CurrentUser,
+    x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+) -> dict:
+    """本人已同意、且下游节点尚未处理时，把本节点重新派回处理。
+
+    实例保持 RUNNING，下游待办全部取消；字段数据与历史动作保留。
+    """
+    task_service.revoke_approval(
+        db,
+        assignment_id=assignment_id,
+        actor=user,
+        reason=payload.reason,
+        request_id=x_request_id,
+    )
     assignment = task_service.get_assignment_or_404(db, assignment_id)
     instance = instance_service.get_or_404(db, assignment.instance_id)
     return instance_service.to_out(db, instance, viewer=user)

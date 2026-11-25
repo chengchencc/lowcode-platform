@@ -24,6 +24,7 @@ import { useAuthStore } from '@/stores/auth'
 // 真实路由表：菜单跳转的 bug 只有用它才测得出来（测试里的 STUB 路由是自己写的）
 import { routes as realRoutes } from '@/router'
 import { instanceApi } from '@/api/modules/instance'
+import type { FormSchema } from '@/types/form'
 import type { ActionEntry, InstanceRender } from '@/types/instance'
 import { Menu } from 'ant-design-vue'
 
@@ -229,7 +230,7 @@ vi.mock('@/api/modules/instance', () => {
       mine: vi.fn().mockResolvedValue(emptyPage),
       summary: vi.fn().mockResolvedValue({ todo: 2, cc_unread: 1, mine_running: 0 }),
       getAssignment: vi.fn(), returnTargets: vi.fn().mockResolvedValue([]),
-      act: vi.fn(), markRead: vi.fn(),
+      act: vi.fn(), revokeApproval: vi.fn(), markRead: vi.fn(),
     },
     notificationApi: {
       list: vi.fn().mockResolvedValue(emptyPage),
@@ -482,6 +483,7 @@ vi.mock('@/api/modules/form', () => {
   }
 })
 
+import ActionPanel from '@/components/instance/ActionPanel.vue'
 import AuditLogView from '@/views/admin/AuditLogView.vue'
 import InstanceArchiveView from '@/views/admin/InstanceArchiveView.vue'
 import InstanceManageView from '@/views/admin/InstanceManageView.vue'
@@ -650,7 +652,7 @@ describe('表单渲染器（三态）', () => {
     wrapper.unmount()
   })
 
-  it('只读态下所有字段都渲染且没有可编辑输入框', async () => {
+  it('只读态下所有字段都渲染且不保留任何输入框', async () => {
     const router = makeRouter()
     await router.push('/')
     await router.isReady()
@@ -661,12 +663,132 @@ describe('表单渲染器（三态）', () => {
     expect(wrapper.text()).toContain('事由')
     expect(wrapper.text()).toContain('发票号')
     expect(wrapper.text()).toContain('INV-1')
-    // 数字控件只读时仍保留 disabled 的 input（保持正常外观），
-    // 关键是没有任何可编辑的输入框。
-    const editable = wrapper
-      .findAll('input')
-      .filter((el) => !(el.element as HTMLInputElement).disabled)
-    expect(editable).toHaveLength(0)
+    // 只读值统一纯文本：连 disabled 的框也不留，避免同一表单里框和文本混用。
+    expect(wrapper.findAll('input')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-select')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-picker')).toHaveLength(0)
+    wrapper.unmount()
+  })
+})
+
+describe('只读值统一为纯文本', () => {
+  const schema: FormSchema = {
+    sections: [
+      {
+        key: 's',
+        title: '申请信息',
+        stage: 'apply',
+        fields: [
+          {
+            key: 'type',
+            label: '类型',
+            type: 'select',
+            options: [
+              { label: '差旅', value: 'travel' },
+              { label: '办公', value: 'office' },
+            ],
+          },
+          { key: 'amount', label: '金额', type: 'number' },
+          { key: 'when', label: '日期', type: 'date' },
+          { key: 'flag', label: '开关', type: 'switch' },
+          { key: 'reason', label: '事由', type: 'text' },
+        ],
+      },
+    ],
+  }
+  const values = { type: 'travel', amount: 1200, when: '2026-11-25', flag: true, reason: '出差' }
+
+  it('只读态下选择/数字/日期/开关都按文本展示', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(FormRenderer, {
+      props: { schema, modelValue: values, mode: 'readonly' },
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+
+    // 选项显示标签而不是 code；日期格式化；开关显示是/否。
+    expect(wrapper.text()).toContain('差旅')
+    expect(wrapper.text()).not.toContain('travel')
+    expect(wrapper.text()).toContain('1200')
+    expect(wrapper.text()).toContain('2026-11-25')
+    expect(wrapper.text()).toContain('是')
+    expect(wrapper.findAll('input')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-select')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-picker')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-switch')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('发起页上被锁定（不可编辑）的自动填充字段也按文本展示，其余仍是输入框', async () => {
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(FormRenderer, {
+      props: {
+        schema,
+        modelValue: values,
+        mode: 'edit',
+        permissions: {
+          type: { visible: true, editable: false, required: false },
+          amount: { visible: true, editable: false, required: false },
+          when: { visible: true, editable: false, required: false },
+          flag: { visible: true, editable: false, required: false },
+          reason: { visible: true, editable: true, required: true },
+        },
+      },
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+
+    expect(wrapper.text()).toContain('差旅')
+    expect(wrapper.text()).toContain('1200')
+    expect(wrapper.text()).toContain('2026-11-25')
+    // 只有发起点可编辑的「事由」还是输入框
+    expect(wrapper.findAll('input')).toHaveLength(1)
+    expect(wrapper.find('input').element.value).toBe('出差')
+    expect(wrapper.findAll('.ant-select')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-picker')).toHaveLength(0)
+    expect(wrapper.findAll('.ant-switch')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('设计器编辑预览里自动填充/自动编号字段与真实发起页一致：锁定为文本', async () => {
+    const lockedSchema: FormSchema = {
+      sections: [
+        {
+          key: 's',
+          title: '申请信息',
+          stage: 'apply',
+          fields: [
+            { key: 'applyAt', label: '申请时间', type: 'datetime', auto_fill: 'start_time' },
+            {
+              key: 'code',
+              label: '编号',
+              type: 'text',
+              auto_number: { prefix: 'REQ', seq_length: 4 },
+            },
+            { key: 'reason', label: '事由', type: 'text' },
+          ],
+        },
+      ],
+    }
+    const router = makeRouter()
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(FormRenderer, {
+      props: {
+        schema: lockedSchema,
+        modelValue: { applyAt: '2026-11-25 10:30:00', code: 'REQ20261125-0001', reason: '出差' },
+        mode: 'edit',
+      },
+      global: { plugins: [createPinia(), router, Antd] },
+    })
+
+    expect(wrapper.text()).toContain('2026-11-25 10:30')
+    expect(wrapper.text()).toContain('REQ20261125-0001')
+    // 只有普通的「事由」还是输入框；自动填充/自动编号不会被画成可编辑框。
+    expect(wrapper.findAll('input')).toHaveLength(1)
+    expect(wrapper.find('input').element.value).toBe('出差')
     wrapper.unmount()
   })
 })
@@ -954,6 +1076,108 @@ describe('实例详情页版面', () => {
     expect(at('审批进度'), '审批进度应在表单之后').toBeGreaterThan(at('申请信息'))
 
     wrapper.unmount()
+  })
+
+  it('服务端下发可撤回审批时显示「撤回审批」入口', async () => {
+    const api = vi.mocked(instanceApi)
+    const base = (await api.render(1)) as unknown as InstanceRender
+    api.render.mockResolvedValue({
+      ...base,
+      my_role: 'PARTICIPANT',
+      assignment: null,
+      revocable_approval: { assignment_id: 42, node_name: '一级审批' },
+    })
+
+    const wrapper = await mountView(InstanceDetailView, '/instance/1')
+    await flushPromises()
+
+    const button = wrapper
+      .findAll('button')
+      .find((b) => b.text().replace(/\s/g, '') === '撤回审批')
+    expect(button, '下游未处理时应显示撤回审批入口').toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('审批弹窗的改动预览显示字段名称而不是字段 key', async () => {
+    // 审批过程中补充/修改字段后，弹窗会列出本次提交了哪些字段。
+    // 早期实现直接 join(fieldPatch 的 key)，界面上露出 reason/amount 这类编号。
+    const data = {
+      assignment: {
+        assignment_id: 1, task_id: 1, user_id: 1, status: 'PENDING', seq: 0, acted_at: null,
+      },
+      current_node: {
+        node_id: 's1', name: '直属上级审批', type: 'approval', type_label: '审批',
+        assignee_mode: 'SINGLE', opinion_required: false, attachment_required: false,
+      },
+      allowed_actions: ['AGREE'],
+      return_targets: [],
+      schema_data: {
+        sections: [{
+          key: 's', title: '申请信息', stage: 'apply',
+          fields: [
+            { key: 'reason', label: '事由', type: 'text' },
+            { key: 'amount', label: '金额', type: 'number' },
+          ],
+        }],
+      },
+    } as unknown as InstanceRender
+
+    const wrapper = mount(ActionPanel, {
+      props: { data, fieldPatch: { reason: '新事由', amount: 200 } },
+      global: { plugins: [Antd] },
+    })
+    const agree = wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '') === '同意')
+    expect(agree, '应渲染出「同意」按钮').toBeTruthy()
+    await agree!.trigger('click')
+    await flushPromises()
+
+    const changeMessage = Array.from(document.body.querySelectorAll('.ant-alert-message'))
+      .map((node) => node.textContent?.replace(/\s+/g, '') ?? '')
+      .find((text) => text.includes('本次将提交')) ?? ''
+    expect(changeMessage).toContain('本次将提交2个字段的修改')
+    expect(changeMessage).toContain('事由')
+    expect(changeMessage).toContain('金额')
+    expect(changeMessage).not.toContain('reason')
+    expect(changeMessage).not.toContain('amount')
+
+    wrapper.unmount()
+  })
+
+  it('撤回按钮跟随服务端 can_withdraw，已有人处理时不显示', async () => {
+    const api = vi.mocked(instanceApi)
+    const base = (await api.render(1)) as unknown as InstanceRender
+
+    api.render.mockResolvedValue({
+      ...base,
+      my_role: 'INITIATOR',
+      assignment: null,
+      current_node: null,
+      allowed_actions: [],
+      can_withdraw: false,
+    })
+    const blocked = await mountView(InstanceDetailView, '/instance/1')
+    await flushPromises()
+    expect(
+      blocked.findAll('button').find((b) => b.text().replace(/\s/g, '') === '撤回'),
+      '已有人处理过时不应显示撤回按钮',
+    ).toBeFalsy()
+    blocked.unmount()
+
+    api.render.mockResolvedValue({
+      ...base,
+      my_role: 'INITIATOR',
+      assignment: null,
+      current_node: null,
+      allowed_actions: [],
+      can_withdraw: true,
+    })
+    const allowed = await mountView(InstanceDetailView, '/instance/1')
+    await flushPromises()
+    expect(
+      allowed.findAll('button').find((b) => b.text().replace(/\s/g, '') === '撤回'),
+      '尚无人处理时应显示撤回按钮',
+    ).toBeTruthy()
+    allowed.unmount()
   })
 })
 

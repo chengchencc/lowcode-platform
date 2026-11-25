@@ -215,6 +215,18 @@ def _assignment_of(db, instance_id: int, user: User) -> TaskAssignment:
     return row
 
 
+def _done_assignment_of(db, instance_id: int, user: User) -> TaskAssignment:
+    row = db.scalar(
+        select(TaskAssignment).where(
+            TaskAssignment.instance_id == instance_id,
+            TaskAssignment.user_id == user.id,
+            TaskAssignment.status == AssignmentStatus.DONE,
+        ).order_by(TaskAssignment.id.desc())
+    )
+    assert row is not None, f"用户 {user.id} 没有已办记录"
+    return row
+
+
 # --------------------------------------------------------------------------- 提交
 
 
@@ -921,6 +933,101 @@ class TestWithdrawAndTerminate:
         assert _pending_tasks(db, instance.id) == []
 
 
+# --------------------------------------------------------------------------- 撤回审批
+
+
+class TestRevokeApproval:
+    def _build(self, db):
+        initiator = _user(db)
+        first, second, third = _user(db), _user(db), _user(db)
+        form = _published_form(db, initiator)
+        flow = _published_flow(db, initiator, form, {
+            "steps": [
+                {"id": "s1", "type": "approval", "name": "一级",
+                 "fields_permission": {"base": "readonly", "overrides": {"amount": "editable"}},
+                 "assignee": {"sources": [{"type": "user", "user_ids": [first.id]}]}},
+                {"id": "s2", "type": "approval", "name": "二级",
+                 "assignee": {"sources": [{"type": "user", "user_ids": [second.id]}]}},
+                {"id": "s3", "type": "approval", "name": "三级",
+                 "assignee": {"sources": [{"type": "user", "user_ids": [third.id]}]}},
+            ],
+        })
+        instance = _draft_instance(db, flow, form, initiator)
+        db.commit()
+        engine = _engine(db)
+        engine.submit(instance=instance, actor=initiator, data={"reason": "x", "amount": 120})
+        return engine, instance, initiator, first, second
+
+    def test_revoke_reopens_node_and_cancels_downstream(self, db):
+        engine, instance, _, first, second = self._build(db)
+        engine.act(
+            assignment_id=_assignment_of(db, instance.id, first).id,
+            actor=first, action="AGREE", opinion="先同意", field_patch={"amount": 200},
+        )
+        done = _done_assignment_of(db, instance.id, first)
+
+        engine.revoke_approval(assignment_id=done.id, actor=first, reason="要改意见")
+
+        # 实例仍是 RUNNING；字段不回滚
+        assert instance.status == InstanceStatus.RUNNING
+        assert instance.current_data["amount"] == 200
+
+        # 下游 s2 的令牌被取消
+        pending = _pending_tasks(db, instance.id)
+        assert [t.node_key for t in pending] == ["s1"]
+        assert pending[0].activation_seq == 2
+        cancelled = db.scalar(
+            select(Task).where(
+                Task.instance_id == instance.id,
+                Task.node_key == "s2",
+                Task.status == TaskStatus.CANCELLED,
+            )
+        )
+        assert cancelled is not None
+        assert cancelled.cancel_reason == "REVOKED"
+
+        # 一级节点重新派回本人
+        reopened = _assignment_of(db, instance.id, first)
+        assert reopened.status == AssignmentStatus.PENDING
+        assert reopened.seq == 0
+
+    def test_revoke_blocked_after_downstream_acted(self, db):
+        engine, instance, _, first, second = self._build(db)
+        engine.act(assignment_id=_assignment_of(db, instance.id, first).id, actor=first, action="AGREE")
+        done = _done_assignment_of(db, instance.id, first)
+        engine.act(assignment_id=_assignment_of(db, instance.id, second).id, actor=second, action="AGREE")
+
+        with pytest.raises(AppError, match="后续节点已有处理"):
+            engine.revoke_approval(assignment_id=done.id, actor=first)
+
+    def test_revoke_only_own_approval(self, db):
+        engine, instance, _, first, second = self._build(db)
+        engine.act(assignment_id=_assignment_of(db, instance.id, first).id, actor=first, action="AGREE")
+        done = _done_assignment_of(db, instance.id, first)
+
+        with pytest.raises(AppError, match="只能撤回自己的审批"):
+            engine.revoke_approval(assignment_id=done.id, actor=second)
+
+    def test_revoke_requires_running_instance(self, db):
+        initiator = _user(db)
+        approver = _user(db)
+        form = _published_form(db, initiator)
+        flow = _published_flow(db, initiator, form, {
+            "steps": [{"id": "s1", "type": "approval", "name": "A",
+                       "assignee": {"sources": [{"type": "user", "user_ids": [approver.id]}]}}],
+        })
+        instance = _draft_instance(db, flow, form, initiator)
+        db.commit()
+        engine = _engine(db)
+        engine.submit(instance=instance, actor=initiator, data={"reason": "x"})
+        engine.act(assignment_id=_assignment_of(db, instance.id, approver).id, actor=approver, action="AGREE")
+        assert instance.status == InstanceStatus.APPROVED
+        done = _done_assignment_of(db, instance.id, approver)
+
+        with pytest.raises(AppError, match="单据已结束"):
+            engine.revoke_approval(assignment_id=done.id, actor=approver)
+
+
 # --------------------------------------------------------------------------- 权限与可见性
 
 
@@ -1218,6 +1325,25 @@ class TestApproverResolution:
         tasks = _pending_tasks(db, instance.id)
         # 发起人被剔除后无人可派 → 转管理员（这里 admin 就是唯一用户，仍标记异常）
         assert tasks[0].abnormal is True
+
+    def test_self_approval_allowed_when_prevent_disabled(self, db):
+        """流程关闭防自审后，指定人员就是发起人时应正常派给本人。"""
+        admin = _user(db)
+        form = _published_form(db, admin)
+        flow = _published_flow(db, admin, form, {
+            "prevent_self_approval": False,
+            "steps": [{"id": "s1", "type": "approval", "name": "自审",
+                       "assignee": {"sources": [{"type": "user", "user_ids": [admin.id]}]}}],
+        })
+        instance = _draft_instance(db, flow, form, admin)
+        db.commit()
+
+        _engine(db).submit(instance=instance, actor=admin, data={"reason": "x"})
+        tasks = _pending_tasks(db, instance.id)
+        assert len(tasks) == 1
+        assert tasks[0].abnormal is False
+        assert instance.abnormal is False
+        assert [a.user_id for a in tasks[0].assignments] == [admin.id]
 
 
 # --------------------------------------------------------------------------- 抄送

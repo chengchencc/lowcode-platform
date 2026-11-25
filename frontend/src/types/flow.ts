@@ -137,6 +137,11 @@ export interface FlowDefinition {
   model_version: number
   /** 已办处理人打开运行中实例时的字段范围；旧版定义可能没有，按默认值处理 */
   history_view?: HistoryView
+  /**
+   * 防自审开关（流程级）：默认开启，角色/部门/指定人员等来源剔除发起人；
+   * 关闭后允许解析到发起人。旧版定义可能没有，按开启处理。
+   */
+  prevent_self_approval?: boolean
   start: StartNode
   steps: StepNode[]
   end: EndNode

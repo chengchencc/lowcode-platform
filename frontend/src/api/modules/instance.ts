@@ -228,6 +228,11 @@ export const taskApi = {
     return request.post<InstanceItem>(`/tasks/assignments/${assignmentId}/act`, payload)
   },
 
+  /** 撤回自己已提交的「同意」（下游未处理时可用） */
+  revokeApproval(assignmentId: number, reason?: string | null) {
+    return request.post<InstanceItem>(`/tasks/assignments/${assignmentId}/revoke`, { reason })
+  },
+
   markRead(assignmentId: number) {
     return request.post<OkResp>(`/tasks/assignments/${assignmentId}/read`)
   },

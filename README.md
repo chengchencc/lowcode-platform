@@ -168,6 +168,8 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/   # 200
 - 数据库迁移在后端容器**启动时**执行（`docker-entrypoint.sh`），首次启动即建好全部表
 - 切换 MySQL / PostgreSQL 不需要改代码：`DATABASE_URL` 由 compose 注入，镜像里两个驱动都装了
 - 附件落在独立卷 `flowform-storage`，容器重建不丢文件
+- 系统名称在根目录 `.env` 里用 `APP_NAME` 配置（默认 `FlowForm`）：登录页、侧边栏、
+  浏览器标题都跟随它，改完重启后端即可，前端不用重新构建
 - 数据库刻意不对外暴露（compose 里没写 `ports`）；要本机连库排查再临时加
 - 用 `http://局域网IP:8080` 访问也能正常登录：请求幂等键不要直接调
   `crypto.randomUUID()`，它只在 HTTPS / localhost 等安全上下文可用，在局域网

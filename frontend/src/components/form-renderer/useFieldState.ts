@@ -44,10 +44,13 @@ function resolveOne(field: FieldDef, mode: RenderMode): FieldState {
   // edit 态：发起阶段的默认语义（PRD §3.2.2）
   //   visible_at_start = true  → 可见可编辑
   //   visible_at_start = false → 该字段是「某节点专属的补充字段」，发起阶段隐藏
+  // 自动填充/自动编号由系统写入并锁定（服务端发起页同样如此）；
+  // 设计器预览要与真实发起页一致，这里也不能把它们画成可编辑输入框。
+  const lockedAtStart = Boolean(field.auto_fill || field.auto_number)
   return {
     visible: field.visible_at_start !== false,
-    editable: !isComputed(field),
-    required,
+    editable: !isComputed(field) && !lockedAtStart,
+    required: lockedAtStart ? false : required,
   }
 }
 

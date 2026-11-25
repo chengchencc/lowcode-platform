@@ -40,6 +40,7 @@ def _flow_with_source(
     *,
     name: str,
     initiator_select_scope: dict[str, Any] | None = None,
+    prevent_self_approval: bool | None = None,
 ) -> dict[str, Any]:
     definition = sequential_definition(
         [("a1", "审批", seed["users"]["lisi"]["id"])]
@@ -50,6 +51,8 @@ def _flow_with_source(
         "on_empty": "to_admin",
         "initiator_select": initiator_select_scope,
     }
+    if prevent_self_approval is not None:
+        definition["prevent_self_approval"] = prevent_self_approval
     return create_flow_and_publish(
         admin,
         form_template_id=form_id,
@@ -174,3 +177,36 @@ def test_role_source_excludes_initiator(
     # 宽口径来源剔除发起人后为空 → 转管理员兜底，发起人不应拿到任务
     assert [item for item in todo(zhangsan_client) if item["instance_id"] == draft["id"]] == []
     assert find_assignment(admin_client, draft["id"])["user_id"] == seed["users"]["admin"]["id"]
+
+
+def test_role_source_allows_initiator_when_prevent_self_approval_off(
+    admin_client: ApiClient,
+    zhangsan_client: ApiClient,
+    seed: dict[str, Any],
+) -> None:
+    """流程关闭防自审后，角色里只有发起人时也应派给发起人。"""
+    role = create_role(
+        admin_client,
+        code=f"e2e_self_off_{uuid.uuid4().hex[:6]}",
+        name="E2E 允许自审角色",
+    )
+    set_role_members(admin_client, role["id"], [seed["users"]["zhangsan"]["id"]])
+    form = create_form_and_publish(
+        admin_client, name="E2E 允许自审表单", schema=_schema()
+    )
+    flow = _flow_with_source(
+        admin_client,
+        form["id"],
+        seed,
+        {"type": "role", "role_ids": [role["id"]]},
+        name="E2E 允许自审流程",
+        prevent_self_approval=False,
+    )
+    data = {"reason": "发起人自审"}
+    draft = create_draft(zhangsan_client, flow["id"], data)
+    submitted = submit(zhangsan_client, draft["id"], data)
+    assert submitted.status_code == 200, submitted.text
+
+    task = find_assignment(zhangsan_client, draft["id"])
+    assert task["user_id"] == seed["users"]["zhangsan"]["id"]
+    assert task["node_name"] == "审批"
