@@ -357,7 +357,8 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
 - **表单**：`/form-templates`、`/form-templates/{id}/versions`、`/form-versions/{vid}`、
   `/{vid}/validate`、`/{vid}/publish`、`/{vid}/preview`、`/form-templates/{id}/export|import`
 - **流程**：`/flow-templates`、`/{id}/versions`、`/flow-versions/{vid}`、`/{vid}/validate`、
-  `/{vid}/publish`（锁定表单版本）、`/{vid}/preview-permissions`、`/{vid}/return-targets`
+  `/{vid}/publish`（锁定表单版本）、`/{vid}/preview-permissions`、`/{vid}/return-targets`、
+  `/flow-templates/{id}/export|import`
 - **实例**：`POST /instances/drafts`、`GET /instances/drafts`、`POST /instances/{id}/submit|resubmit|withdraw|abandon|terminate`、
   **`GET /instances/{id}/render`（详情页一次取全）**、`/{id}/progress`、`/{id}/timeline`、`/{id}/snapshots/{sid}`、`/{id}/snapshots/diff`、`POST /instances/{id}/ext-fields`
 - **任务**：`GET /tasks/todo|done|cc|mine`、`GET /tasks/assignments/{aid}`、`/{aid}/return-targets`、
@@ -367,6 +368,13 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
 
 > 详情页的 `?assignment=` 只接受**仍为 PENDING** 的待办。审批完成后 URL 上残留的旧 id
 > 会回落到查看者在该实例的其他待办（没有则按只读展示），不会继续显示审批按钮与可编辑表单。
+
+> **流程配置导出/导入**（F2.9）：导出 = 元信息（名称/编码/分类/说明/发起范围）+
+> 当前发布版本的 `definition`（无发布则退最新版本），另附源表单的 `form_name` /
+> `form_code` 供人识别。导入在目标环境**生成草稿**并绑定当场选择的表单；
+> `definition` 与 `initiator_scope` 里的角色/部门/用户 id **原样保留** ——
+> 跨环境这些自增 id 未必对得上，导入后需在设计器里重新梳理审批人/发起范围，
+> 再走校验发布。导入不复制实例、版本历史与审计。
 
 ---
 

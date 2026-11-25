@@ -1,13 +1,25 @@
 <script setup lang="ts">
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   SettingOutlined,
+  UploadOutlined,
 } from '@ant-design/icons-vue'
-import { Button, Card, Input, Select, Space, Table, Tag, Tooltip } from 'ant-design-vue'
+import {
+  Button,
+  Card,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Upload,
+} from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -15,7 +27,7 @@ import { ApiError } from '@/api/http'
 import { flowApi } from '@/api/modules/flow'
 import { formApi } from '@/api/modules/form'
 import type { FormTemplate } from '@/types/form'
-import type { FlowStatus, FlowTemplate } from '@/types/flow'
+import type { FlowStatus, FlowTemplate, FlowTemplateExport } from '@/types/flow'
 import { formatDateTime } from '@/utils/datetime'
 import { feedback } from '@/utils/feedback'
 
@@ -38,8 +50,8 @@ const columns = [
   { title: '当前版本', key: 'version', width: 180 },
   { title: '状态', key: 'status', width: 100 },
   { title: '更新时间', key: 'updated_at', width: 150 },
-  // 四个操作都带图标 + 文字，固定宽度按实测留足，避免换行
-  { title: '操作', key: 'action', width: 280, fixed: 'right' as const },
+  // 五个操作都带图标 + 文字，固定宽度按实测留足，避免换行
+  { title: '操作', key: 'action', width: 350, fixed: 'right' as const },
 ]
 
 const STATUS_META: Record<FlowStatus, { text: string; color: string }> = {
@@ -200,6 +212,81 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
     if (error instanceof ApiError) feedback.error(error.message)
   }
 }
+
+// --------------------------------------------------------------------------- 导入导出
+
+async function exportTemplate(record: FlowTemplate): Promise<void> {
+  const data = await flowApi.exportTemplate(record.id)
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${record.name}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+const importOpen = ref(false)
+const importing = ref(false)
+const importFileName = ref('')
+const importPayload = ref<FlowTemplateExport | null>(null)
+const importFormId = ref<number | undefined>(undefined)
+
+/** 交给 Upload 的 beforeUpload：读文件后打开「选择目标表单」弹窗 */
+async function handleImportFile(file: File): Promise<boolean> {
+  try {
+    const payload = JSON.parse(await file.text()) as FlowTemplateExport
+    if (!payload || typeof payload !== 'object' || !payload.definition) {
+      throw new SyntaxError('缺少 definition')
+    }
+    importPayload.value = payload
+    importFileName.value = file.name
+    // 源表单编码/名称能对上就预选；对不上让用户手动选
+    const matched = forms.value.find(
+      (f) =>
+        f.status === 'PUBLISHED' &&
+        ((payload.form_code && f.code === payload.form_code) ||
+          (!payload.form_code && payload.form_name && f.name === payload.form_name)),
+    )
+    importFormId.value = matched?.id
+    importOpen.value = true
+  } catch (error) {
+    if (error instanceof SyntaxError) feedback.error('文件不是合法的流程配置 JSON')
+    // 其他错误（如读取失败）已由上层提示
+  }
+  return false
+}
+
+async function submitImport(): Promise<void> {
+  if (!importPayload.value) return
+  if (!importFormId.value) {
+    feedback.error('请选择要绑定的表单')
+    return
+  }
+  importing.value = true
+  try {
+    const payload = { ...importPayload.value, form_template_id: importFormId.value }
+    let created: FlowTemplate
+    try {
+      // 优先保留源编码；目标环境已被占用时退化为无编码，避免导入被卡死
+      created = await flowApi.importTemplate(payload)
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== 'FLOW_CODE_EXISTS') throw error
+      created = await flowApi.importTemplate({ ...payload, code: null })
+      feedback.info('目标环境已存在相同编码，本次导入未带编码')
+    }
+    importOpen.value = false
+    feedback.success('导入成功：已生成草稿，请检查审批人与发起范围后发布')
+    await load()
+    await router.push({ name: 'flow-designer', params: { id: created.id } })
+  } catch (error) {
+    if (error instanceof ApiError) feedback.error(error.message)
+  } finally {
+    importing.value = false
+  }
+}
 </script>
 
 <template>
@@ -236,10 +323,22 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
           <Button @click="resetQuery">重置</Button>
         </Space>
 
-        <Button type="primary" @click="openCreate">
-          <template #icon><PlusOutlined /></template>
-          新建流程
-        </Button>
+        <Space>
+          <Upload
+            :before-upload="handleImportFile"
+            :show-upload-list="false"
+            accept=".json,application/json"
+          >
+            <Button :loading="importing">
+              <template #icon><UploadOutlined /></template>
+              导入 JSON
+            </Button>
+          </Upload>
+          <Button type="primary" @click="openCreate">
+            <template #icon><PlusOutlined /></template>
+            新建流程
+          </Button>
+        </Space>
       </div>
 
       <Table
@@ -248,7 +347,7 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
         :loading="loading"
         row-key="id"
         size="middle"
-        :scroll="{ x: 1250 }"
+        :scroll="{ x: 1340 }"
         :pagination="{ pageSize: 20, showTotal: (total: number) => `共 ${total} 条流程` }"
       >
         <template #bodyCell="{ column, record }">
@@ -333,6 +432,16 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
                   {{ record.status === 'DISABLED' ? '恢复' : '停用' }}
                 </Button>
               </Tooltip>
+              <Tooltip title="导出为 JSON 文件，可在其他环境导入">
+                <Button
+                  type="link"
+                  size="small"
+                  @click="exportTemplate(record as FlowTemplate)"
+                >
+                  <template #icon><DownloadOutlined /></template>
+                  导出
+                </Button>
+              </Tooltip>
               <Tooltip title="删除流程及全部版本，不可恢复">
                 <Button
                   type="link"
@@ -401,6 +510,45 @@ async function toggleStatus(record: FlowTemplate): Promise<void> {
         </a-form-item>
         <a-form-item label="说明">
           <a-textarea v-model:value="form.description" :rows="2" placeholder="选填" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="importOpen"
+      title="导入流程配置"
+      :confirm-loading="importing"
+      ok-text="导入"
+      cancel-text="取消"
+      :width="520"
+      @ok="submitImport"
+    >
+      <a-alert
+        type="info"
+        show-icon
+        class="form-hint"
+        :message="`来源：${importPayload?.name || '未命名流程'}（${importFileName}）`"
+        :description="
+          `${
+            importPayload?.form_name
+              ? `源环境绑定的表单：${importPayload.form_name}。`
+              : ''
+          }角色/部门/人员引用按源环境 id 保留，可能与目标环境不一致；请在设计器里逐项核对审批人与发起范围后再发布。`
+        "
+      />
+      <a-form layout="vertical">
+        <a-form-item
+          label="绑定目标环境的表单"
+          required
+          help="只有已发布的表单可选；导入不会复制源环境的组织数据"
+        >
+          <Select
+            v-model:value="importFormId"
+            :options="bindableForms"
+            placeholder="选择表单模板"
+            show-search
+            option-filter-prop="label"
+          />
         </a-form-item>
       </a-form>
     </a-modal>

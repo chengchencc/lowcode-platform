@@ -14,6 +14,7 @@ from app.core.deps import ClientIp, DbSession, DesignerUser
 from app.schemas.common import OkResp
 from app.schemas.flow import (
     FlowTemplateCreate,
+    FlowTemplateImport,
     FlowTemplateOut,
     FlowTemplateStatusRequest,
     FlowTemplateUpdate,
@@ -65,9 +66,38 @@ def create_template(
     return flow_service.to_out(db, template)
 
 
+@router.post(
+    "/import",
+    response_model=FlowTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="从 JSON 导入（导入为草稿）",
+)
+def import_template(
+    payload: FlowTemplateImport, db: DbSession, actor: DesignerUser, ip: ClientIp
+) -> dict:
+    template = flow_service.import_template(
+        db,
+        name=payload.name or "导入的流程",
+        form_template_id=payload.form_template_id,
+        code=payload.code,
+        category=payload.category,
+        description=payload.description,
+        initiator_scope=payload.initiator_scope.model_dump() if payload.initiator_scope else None,
+        definition=payload.definition.model_dump(mode="json"),
+        actor=actor,
+        ip=ip,
+    )
+    return flow_service.to_out(db, template)
+
+
 @router.get("/{template_id}", response_model=FlowTemplateOut, summary="流程模板详情")
 def get_template(template_id: int, db: DbSession, _: DesignerUser) -> dict:
     return flow_service.to_out(db, flow_service.get_or_404(db, template_id))
+
+
+@router.get("/{template_id}/export", summary="导出为 JSON")
+def export_template(template_id: int, db: DbSession, _: DesignerUser) -> dict:
+    return flow_service.export_template(db, flow_service.get_or_404(db, template_id))
 
 
 @router.put("/{template_id}", response_model=FlowTemplateOut, summary="修改流程模板")

@@ -1,8 +1,16 @@
+import { readFile } from 'node:fs/promises'
+
 import { expect, test } from '@playwright/test'
 
 import { openAs } from '../fixtures/auth'
 import { uniqueReason } from '../fixtures/data'
-import { createFormAndPublish, uniqueCode } from '../fixtures/factories'
+import {
+  createFlowAndPublish,
+  createFormAndPublish,
+  seedUsers,
+  sequentialDefinition,
+  uniqueCode,
+} from '../fixtures/factories'
 import { buttonName } from '../fixtures/ui'
 
 test.describe('@p0 设计者旅程', () => {
@@ -133,6 +141,57 @@ test.describe('@p0 设计者旅程', () => {
       ).toBeVisible()
     } finally {
       await initiator.context.close()
+    }
+  })
+
+  test('@p1 流程配置可导出 JSON 并导入为草稿', async ({ browser }) => {
+    const users = await seedUsers()
+    const form = await createFormAndPublish('E2E 迁移源表单')
+    const flowName = uniqueReason('E2E 迁移源流程')
+    await createFlowAndPublish(
+      form.id,
+      flowName,
+      sequentialDefinition([{ id: 'a1', name: '审批', userId: users.lisi.id }]),
+    )
+
+    const designer = await openAs(browser, 'zhaoliu')
+    try {
+      await designer.page.goto('/admin/flows')
+
+      // 导出：下载文件内容应带元信息与源表单名称
+      const row = designer.page.locator('tbody tr').filter({ hasText: flowName })
+      const [download] = await Promise.all([
+        designer.page.waitForEvent('download'),
+        row.getByRole('button', { name: buttonName('导出') }).click(),
+      ])
+      const path = await download.path()
+      if (!path) throw new Error('浏览器没有给出下载文件路径')
+      const exported = JSON.parse(await readFile(path, 'utf8')) as {
+        name: string
+        form_name: string
+        definition: Record<string, unknown>
+      }
+      expect(exported.name).toBe(flowName)
+      expect(exported.form_name).toBe(form.name)
+      expect(exported.definition).toBeTruthy()
+
+      // 导入：Upload 的隐藏 input 直接投喂文件即可；选回同一张已发布表单，生成草稿并进入设计器
+      await designer.page.locator('input[type="file"]').setInputFiles({
+        name: `${flowName}.json`,
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(exported)),
+      })
+
+      const dialog = designer.page.getByRole('dialog')
+      await expect(dialog.getByText(`来源：${flowName}`)).toBeVisible()
+      // 源表单编码/名称能对上时预选目标表单；对不上才需要人工选择
+      await expect(dialog.locator('.ant-select-selection-item')).toHaveText(form.name)
+      await dialog.getByRole('button', { name: buttonName('导入') }).click()
+
+      await expect(designer.page).toHaveURL(/\/admin\/flows\/\d+\/design/)
+      await expect(designer.page.getByText(/v1\s*·\s*草稿/)).toBeVisible()
+    } finally {
+      await designer.context.close()
     }
   })
 })

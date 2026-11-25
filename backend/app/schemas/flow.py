@@ -61,6 +61,23 @@ class FlowTemplateCreate(BaseModel):
     initiator_scope: InitiatorScope | None = None
 
 
+class FlowTemplateImport(BaseModel):
+    """从 JSON 导入流程配置（F2.9）。
+
+    导入结果始终是**草稿**：绑定目标环境里重新选择的表单，定义里的角色/部门/
+    用户 id 原样保留（跨环境未必对得上），由用户在设计器里梳理后再发布。
+    导出 JSON 里的 `form_name` / `form_code` 仅作参考，导入时忽略。
+    """
+
+    name: str | None = Field(default=None, max_length=128)
+    code: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
+    category: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=512)
+    initiator_scope: InitiatorScope | None = None
+    form_template_id: int
+    definition: FlowDefinition
+
+
 class FlowTemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     category: str | None = Field(default=None, max_length=64)

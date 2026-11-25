@@ -3,6 +3,7 @@ import type { OkResp } from '@/types/api'
 import type {
   FlowDefinition,
   FlowTemplate,
+  FlowTemplateExport,
   FlowValidateResult,
   FlowVersion,
   FlowVersionBrief,
@@ -22,6 +23,18 @@ export const flowApi = {
 
   getTemplate(id: number) {
     return request.get<FlowTemplate>(`/flow-templates/${id}`)
+  },
+
+  exportTemplate(id: number) {
+    return request.get<FlowTemplateExport>(`/flow-templates/${id}/export`)
+  },
+
+  /**
+   * 导入流程配置（F2.9）：后端生成草稿并绑定 `form_template_id`。
+   * 定义里的角色/部门/用户引用原样保留，需在设计器里按目标环境梳理后再发布。
+   */
+  importTemplate(payload: FlowTemplateExport & { form_template_id: number }) {
+    return request.post<FlowTemplate>('/flow-templates/import', payload)
   },
 
   createTemplate(payload: {

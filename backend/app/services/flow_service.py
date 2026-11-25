@@ -226,6 +226,89 @@ def create_template(
     return template
 
 
+def import_template(
+    db: Session,
+    *,
+    name: str,
+    form_template_id: int,
+    code: str | None,
+    category: str | None,
+    description: str | None,
+    initiator_scope: dict[str, Any] | None,
+    definition: dict[str, Any],
+    actor: User,
+    ip: str | None = None,
+) -> FlowTemplate:
+    """从 JSON 导入流程配置（F2.9），结果始终是草稿。
+
+    定义里的角色/部门/用户 id 保持原值 —— 跨环境这些自增 id 未必对得上，
+    导入后由用户在设计器里重新梳理审批人/发起范围，再走校验发布。
+    """
+    _assert_code_available(db, code)
+    _assert_form_template(db, form_template_id)
+    parsed = FlowDefinition.model_validate(definition)
+
+    template = FlowTemplate(
+        name=name,
+        code=code,
+        form_template_id=form_template_id,
+        category=category,
+        description=description,
+        initiator_scope=initiator_scope or {"type": "all"},
+        status=FlowStatus.DRAFT,
+        created_by=actor.id,
+    )
+    db.add(template)
+    db.flush()
+
+    version = FlowVersion(
+        template_id=template.id,
+        version_no=1,
+        definition=parsed.model_dump(mode="json"),
+        # 草稿先指向表单当前版本；发布时会按目标环境的表单重新锁定
+        locked_form_version_id=_resolve_form_version_id(db, form_template_id),
+        status=FlowVersionStatus.DRAFT,
+        created_by=actor.id,
+    )
+    db.add(version)
+    db.flush()
+
+    audit_service.record(
+        db,
+        actor=actor,
+        biz_type=AuditBizType.FLOW_TEMPLATE,
+        biz_id=template.id,
+        action=AuditAction.CREATE,
+        summary=f"从 JSON 导入流程模板「{template.name}」",
+        detail={"name": template.name, "form_template_id": form_template_id},
+        ip=ip,
+    )
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+def export_template(db: Session, template: FlowTemplate) -> dict[str, Any]:
+    """导出为可迁移的 JSON（F2.9）：只带当前发布版本（无则最新版本）。"""
+    version = _current_version(db, template)
+    if version is None:
+        versions = _versions_of(db, template.id)
+        version = versions[0] if versions else None
+
+    form = db.get(FormTemplate, template.form_template_id)
+    return {
+        "name": template.name,
+        "code": template.code,
+        "category": template.category,
+        "description": template.description,
+        "initiator_scope": template.initiator_scope or {"type": "all"},
+        # 仅作人工识别：导入到目标环境时要重新选择绑定的表单
+        "form_name": form.name if form else None,
+        "form_code": form.code if form else None,
+        "definition": version.definition if version else default_definition(),
+    }
+
+
 def _resolve_form_version_id(db: Session, form_template_id: int) -> int:
     """绑定用的表单版本：优先已发布的，没有则用最新草稿（供设计期预览）。"""
     template = form_service.get_or_404(db, form_template_id)

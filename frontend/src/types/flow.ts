@@ -174,6 +174,19 @@ export interface FlowTemplate {
   updated_at: string | null
 }
 
+/** 流程配置导出/导入载荷（F2.9）。导出 JSON 加 `form_template_id` 后可回传导入。 */
+export interface FlowTemplateExport {
+  name: string
+  code: string | null
+  category: string | null
+  description: string | null
+  initiator_scope: InitiatorScope
+  /** 源环境绑定的表单，仅作人工识别；导入时按目标环境重新选择 */
+  form_name: string | null
+  form_code: string | null
+  definition: FlowDefinition
+}
+
 export interface InitiatorScope {
   type: 'all' | 'role' | 'dept'
   role_ids?: number[]

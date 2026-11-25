@@ -501,3 +501,138 @@ def test_return_targets_unknown_node(client, designer_headers):
     )
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "NODE_NOT_FOUND"
+
+
+# --------------------------------------------------------------------------- 导入导出
+
+
+def test_export_import_roundtrip(client, designer_headers):
+    """F2.9：导出的 JSON 加上目标表单即可直接回传导入，定义保持原样。"""
+    form_id = _published_form(client, designer_headers)
+    template = _flow(
+        client,
+        designer_headers,
+        form_id,
+        code="EXPORT_FLOW",
+        category="财务",
+        initiator_scope={"type": "role", "role_ids": [1]},
+    )
+    vid = template["draft_version_id"]
+    client.put(
+        f"{BASE}/flow-versions/{vid}", headers=designer_headers,
+        json={"definition": REIMBURSE_FLOW},
+    )
+    client.post(f"{BASE}/flow-versions/{vid}/publish", headers=designer_headers, json={})
+
+    exported = client.get(
+        f"{BASE}/flow-templates/{template['id']}/export", headers=designer_headers
+    ).json()
+    assert exported["name"] == "费用报销流程"
+    assert exported["code"] == "EXPORT_FLOW"
+    assert exported["category"] == "财务"
+    assert exported["form_name"] == "报销单"
+    assert exported["initiator_scope"]["type"] == "role"
+    assert exported["initiator_scope"]["role_ids"] == [1]
+    assert len(exported["definition"]["steps"]) == 4
+
+    imported = client.post(
+        f"{BASE}/flow-templates/import",
+        headers=designer_headers,
+        json={
+            **exported,
+            "name": "费用报销流程(导入)",
+            "code": None,
+            "form_template_id": form_id,
+        },
+    )
+    assert imported.status_code == 201, imported.text
+    body = imported.json()
+    assert body["name"] == "费用报销流程(导入)"
+    assert body["status"] == "DRAFT"
+    assert body["form_template_id"] == form_id
+    assert body["current_version_id"] is None
+    assert body["draft_version_id"] is not None
+
+    version = client.get(
+        f"{BASE}/flow-versions/{body['draft_version_id']}", headers=designer_headers
+    ).json()
+    assert version["definition"]["steps"] == exported["definition"]["steps"]
+    assert version["status"] == "DRAFT"
+
+    # 导入后无需改定义即可校验通过（组织引用是否有效由用户在目标环境梳理）
+    result = client.post(
+        f"{BASE}/flow-versions/{body['draft_version_id']}/validate",
+        headers=designer_headers,
+    ).json()
+    assert result["valid"] is True, result["errors"]
+
+    published = client.post(
+        f"{BASE}/flow-versions/{body['draft_version_id']}/publish",
+        headers=designer_headers,
+        json={},
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["locked_form_version_no"] == 1
+
+
+def test_import_rejects_duplicate_code(client, designer_headers):
+    form_id = _published_form(client, designer_headers)
+    template = _flow(client, designer_headers, form_id, code="IMPORT_DUP")
+    exported = client.get(
+        f"{BASE}/flow-templates/{template['id']}/export", headers=designer_headers
+    ).json()
+
+    resp = client.post(
+        f"{BASE}/flow-templates/import",
+        headers=designer_headers,
+        json={**exported, "form_template_id": form_id},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "FLOW_CODE_EXISTS"
+
+
+def test_import_rejects_disabled_form(client, designer_headers):
+    form_id = _published_form(client, designer_headers)
+    template = _flow(client, designer_headers, form_id)
+    exported = client.get(
+        f"{BASE}/flow-templates/{template['id']}/export", headers=designer_headers
+    ).json()
+    client.post(
+        f"{BASE}/form-templates/{form_id}/status",
+        headers=designer_headers,
+        json={"status": "DISABLED"},
+    )
+
+    resp = client.post(
+        f"{BASE}/flow-templates/import",
+        headers=designer_headers,
+        json={**exported, "form_template_id": form_id},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "FORM_TEMPLATE_DISABLED"
+
+
+def test_import_rejects_malformed_definition(client, designer_headers):
+    form_id = _published_form(client, designer_headers)
+    resp = client.post(
+        f"{BASE}/flow-templates/import",
+        headers=designer_headers,
+        json={
+            "name": "坏流程",
+            "form_template_id": form_id,
+            "definition": {"steps": [{"id": "x", "type": "nope", "name": "X"}]},
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "VALIDATION_ERROR"
+
+
+def test_export_import_require_designer(client, normal_headers):
+    assert client.get(
+        f"{BASE}/flow-templates/1/export", headers=normal_headers
+    ).status_code == 403
+    assert client.post(
+        f"{BASE}/flow-templates/import",
+        headers=normal_headers,
+        json={"form_template_id": 1, "definition": {"steps": []}},
+    ).status_code == 403
