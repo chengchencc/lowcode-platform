@@ -215,6 +215,8 @@ function normalizeDefinition(input: FlowDefinition): FlowDefinition {
   const def: FlowDefinition = {
     model_version: input.model_version ?? 1,
     history_view: input.history_view ?? 'own_nodes',
+    // 旧版定义没有这个字段：默认保持「防自审」，避免升级后行为突变
+    prevent_self_approval: input.prevent_self_approval ?? true,
     start: input.start ?? { id: 'start', type: 'start', name: '发起', fields_permission: null },
     steps: (input.steps ?? []).map(normalizeStep),
     end: input.end ?? { id: 'end', type: 'end', name: '结束' },
@@ -501,6 +503,16 @@ const historyViewHint = computed(() => {
   }
 })
 
+/** 「防自审」：默认开启；关闭后角色/部门/指定人员都可能解析到发起人本人 */
+const preventSelfApproval = computed<boolean>({
+  get: () => definition.value?.prevent_self_approval ?? true,
+  set: (value) => {
+    if (!definition.value || readonly.value) return
+    definition.value.prevent_self_approval = value
+    scheduleSave()
+  },
+})
+
 const versionLabel = computed(() => {
   if (!version.value) return ''
   const status = version.value.status
@@ -633,6 +645,18 @@ const treeItems = computed<TreeItem[]>(() => {
           <div class="text-muted tiny settings-hint">{{ historyViewHint }}</div>
           <div class="text-muted tiny">
             发布后对该流程下运行中的单据立即生效；实例办结后仍按归档视角全量只读展示，不受此设置影响。
+          </div>
+        </a-form-item>
+        <a-form-item label="防自审（禁止发起人审批自己提交的单据）">
+          <a-switch v-model:checked="preventSelfApproval" :disabled="readonly" />
+          <div class="text-muted tiny settings-hint">
+            开启时，角色 / 部门 / 指定人员等来源会剔除发起人；若剔除后无人，
+            按节点「未命中」策略处理（默认转平台管理员并标记异常）。
+            关闭后允许解析到发起人本人，适合「唯一审批人就是发起人」的场景。
+            表单人员字段、发起人指定、上一节点=发起人本来就允许自审，不受此开关影响。
+          </div>
+          <div class="text-muted tiny">
+            取单据锁定的流程版本：发布后只影响新发起的单据，运行中单据的后续派单语义不变。
           </div>
         </a-form-item>
       </a-form>

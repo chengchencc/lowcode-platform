@@ -8,6 +8,7 @@
     {
       "model_version": 1,
       "history_view": "own_nodes",  // own_nodes | full | start
+      "prevent_self_approval": true,  // 防自审；关闭后允许发起人作为审批人
       "start": {"id": "start", "type": "start", ...},
       "steps": [
         {"id": "s1", "type": "approval",  ...},
@@ -247,6 +248,10 @@ class FlowDefinition(BaseModel):
     #: 已办处理人打开运行中实例时的字段范围（详见 HistoryView）。
     #: 终态实例仍按归档视角全量只读，不受此配置影响。
     history_view: HistoryView = "own_nodes"
+    #: 防自审开关。开启（默认）时，角色/部门/指定人员等来源会剔除发起人；
+    #: 关闭后允许解析到发起人，适用于「唯一审批人就是发起人」的场景。
+    #: 表单人员字段 / 发起人指定 / 上一节点=发起人本来就允许自审，不受影响。
+    prevent_self_approval: bool = True
     start: StartNode = Field(default_factory=lambda: StartNode(id="start", name="发起"))
     steps: list[StepNode] = Field(default_factory=list)
     end: EndNode = Field(default_factory=lambda: EndNode(id="end", name="结束"))

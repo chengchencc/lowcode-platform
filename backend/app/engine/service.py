@@ -445,6 +445,74 @@ class EngineService:
         self.db.commit()
         return result
 
+    def revoke_approval(
+        self,
+        *,
+        assignment_id: int,
+        actor: User,
+        reason: str | None = None,
+        request_id: str | None = None,
+    ) -> EngineResult:
+        """撤回本人已提交的「同意」（PRD §3.5.4）。
+
+        与「撤回申请」不同：实例保持 RUNNING，只把本人所在节点重开，
+        取消该节点之后的全部待办（含抄送知会）。字段与历史快照不回滚。
+        """
+        assignment = self.db.get(TaskAssignment, assignment_id)
+        if assignment is None:
+            raise NotFoundError("任务不存在", code="ASSIGNMENT_NOT_FOUND")
+        instance = self._lock(assignment.instance_id)
+        compiled = self._compiled(instance)
+        task = assert_can_revoke_approval(
+            self.db, instance, compiled, assignment, actor
+        )
+
+        now = self.clock()
+        action_row = self._write_action(
+            instance=instance, task=task, assignment=assignment, actor=actor,
+            action="REVOKE_APPROVAL", opinion=reason, attachment_ids=(),
+            changed_fields=[], request_id=request_id, to_status=instance.status,
+        )
+        result = EngineResult(instance_status=instance.status)
+        result.action_id = action_row.id
+
+        # 取消本节点之后的全部待办；并行分支的待办不在此列（校验已保证没有）
+        for pending in self._pending_tasks(instance.id):
+            if task.node_key not in compiled.ancestors(
+                Cursor(pending.node_key, tuple(pending.gates), pending.round)
+            ):
+                continue
+            pending.status = TaskStatus.CANCELLED
+            pending.cancelled_at = now
+            pending.cancel_reason = CancelReason.REVOKED
+            self._cancel_assignments(
+                pending, reason=CancelReason.REVOKED, instance=instance,
+                result=result, notify_users=True,
+            )
+            result.cancelled.append(
+                TokenOp(kind="cancel", node_key=pending.node_key,
+                        gates=tuple(pending.gates), reason=CancelReason.REVOKED)
+            )
+
+        result.events.append(
+            self._event("APPROVAL_REVOKED", instance, task.node_key, {
+                "assignment_id": assignment.id, "actor_id": actor.id,
+            })
+        )
+        # 本节点 activation_seq + 1 重派；下游在新审批通过后自然重新展开
+        self._dispatch(
+            instance, compiled,
+            [Cursor(task.node_key, tuple(task.gates), task.round)],
+            actor, result, reactivate=True,
+        )
+        instance.last_action_at = now
+
+        self._persist_notifications(result.notifications)
+        self.db.commit()
+        self.db.refresh(instance)
+        result.instance_status = instance.status
+        return result
+
     def abandon(
         self, *, instance: FlowInstance, actor: User, request_id: str | None = None
     ) -> EngineResult:
@@ -1687,6 +1755,9 @@ class EngineService:
             prev_actors=prev_actors,
             last_completed_node_id=completed[-1].node_key if completed else None,
             start_node_id=compiled.definition.start.id,
+            # 取实例锁定的流程版本：发布后只影响新发起的单据，
+            # 不会因为改配置让运行中单据的后续派单语义突然变化。
+            prevent_self_approval=compiled.definition.prevent_self_approval,
         )
 
     def _pending_tasks(self, instance_id: int, *, exclude_task_id: int | None = None) -> list[Task]:
@@ -1983,6 +2054,7 @@ class EngineService:
             CancelReason.ANY_SIGN_DONE: "其他人已处理",
             CancelReason.REJECTED: "流程被驳回",
             CancelReason.RETURNED: "流程被退回",
+            CancelReason.REVOKED: "审批人撤回",
             CancelReason.WITHDRAWN: "发起人撤回",
             CancelReason.TERMINATED: "管理员终止",
             CancelReason.RESUBMITTED: "发起人重新提交",
@@ -2025,6 +2097,153 @@ class EngineService:
             payload={"instance_id": instance.id, "node_key": node_key, **payload},
             at=utcnow(),
         )
+
+
+def assert_can_revoke_approval(
+    db: Session,
+    instance: FlowInstance,
+    compiled: CompiledFlow,
+    assignment: TaskAssignment,
+    actor: User,
+) -> Task:
+    """校验「撤回审批」并返回被撤回的 task。
+
+    条件见 PRD §3.5.4 / TECH-DESIGN §4.3：
+    本人已同意、节点已聚合完成、后续没有处理、当前待办都在本节点下游。
+    """
+    task = db.get(Task, assignment.task_id)
+    if task is None:
+        raise NotFoundError("任务不存在", code="TASK_NOT_FOUND")
+
+    if assignment.user_id != actor.id:
+        raise ForbiddenError("只能撤回自己的审批", code="REVOKE_FORBIDDEN")
+    if instance.status != InstanceStatus.RUNNING:
+        raise UnprocessableError(
+            "单据已结束，不能撤回审批", code="REVOKE_NOT_RUNNING"
+        )
+    if task.node_type != TaskType.APPROVAL:
+        raise UnprocessableError(
+            "只有审批节点的处理可以撤回", code="REVOKE_NOT_APPROVAL"
+        )
+    if (
+        assignment.status != AssignmentStatus.DONE
+        or assignment.result != AssignmentResult.AGREE
+    ):
+        raise UnprocessableError(
+            "只有已提交的「同意」可以撤回", code="REVOKE_NOT_AGREE"
+        )
+    if task.status != TaskStatus.COMPLETED:
+        raise UnprocessableError(
+            "当前节点尚未完成审批，暂不支持撤回", code="REVOKE_NODE_OPEN"
+        )
+    if task.group_id:
+        raise UnprocessableError(
+            "并行组节点暂不支持撤回审批", code="REVOKE_PARALLEL"
+        )
+
+    newer = db.scalar(
+        select(Task.id)
+        .where(
+            Task.instance_id == instance.id,
+            Task.node_key == task.node_key,
+            Task.round == task.round,
+            Task.activation_seq > task.activation_seq,
+        )
+        .limit(1)
+    )
+    if newer is not None:
+        raise UnprocessableError(
+            "该节点已重新激活，不能撤回之前的审批", code="REVOKE_STALE"
+        )
+
+    # 同任务的其他会签人属于本节点，不算「下游已处理」。
+    later = db.scalar(
+        select(TaskAssignment.id)
+        .join(Task, Task.id == TaskAssignment.task_id)
+        .where(
+            TaskAssignment.instance_id == instance.id,
+            TaskAssignment.status == AssignmentStatus.DONE,
+            Task.node_type != TaskType.CC,
+            TaskAssignment.task_id != task.id,
+            TaskAssignment.acted_at.is_not(None),
+            TaskAssignment.acted_at > assignment.acted_at,
+        )
+        .limit(1)
+    )
+    if later is not None:
+        raise UnprocessableError(
+            "后续节点已有处理，不能撤回这次审批",
+            code="REVOKE_DOWNSTREAM_PROCESSED",
+        )
+
+    pending = list(
+        db.scalars(
+            select(Task).where(
+                Task.instance_id == instance.id, Task.status == TaskStatus.PENDING
+            )
+        ).all()
+    )
+    blocking = [t for t in pending if t.blocks_flow]
+    if not blocking:
+        raise UnprocessableError(
+            "当前没有可重新派发的后续待办", code="REVOKE_NO_FRONTIER"
+        )
+    for item in blocking:
+        if task.node_key not in compiled.ancestors(
+            Cursor(item.node_key, tuple(item.gates), item.round)
+        ):
+            raise UnprocessableError(
+                "流程还有其他并行分支，暂不支持撤回", code="REVOKE_OTHER_BRANCH"
+            )
+    return task
+
+
+def can_withdraw(db: Session, instance: FlowInstance, viewer: User) -> bool:
+    """查看者此刻能否「撤回申请」—— 与 `_assert_can_withdraw` 同一口径。"""
+    if instance.status != InstanceStatus.RUNNING or instance.initiator_id != viewer.id:
+        return False
+    handled = db.scalar(
+        select(TaskAssignment.id)
+        .join(Task, Task.id == TaskAssignment.task_id)
+        .where(
+            TaskAssignment.instance_id == instance.id,
+            TaskAssignment.status == AssignmentStatus.DONE,
+            Task.node_type != TaskType.CC,
+        )
+        .limit(1)
+    )
+    return handled is None
+
+
+def revocable_approval(
+    db: Session,
+    instance: FlowInstance,
+    compiled: CompiledFlow,
+    viewer: User,
+) -> TaskAssignment | None:
+    """查看者当前可撤回的那条审批（供详情页决定是否显示按钮）。"""
+    if instance.status != InstanceStatus.RUNNING:
+        return None
+    assignment = db.scalar(
+        select(TaskAssignment)
+        .join(Task, Task.id == TaskAssignment.task_id)
+        .where(
+            TaskAssignment.instance_id == instance.id,
+            TaskAssignment.user_id == viewer.id,
+            TaskAssignment.status == AssignmentStatus.DONE,
+            TaskAssignment.result == AssignmentResult.AGREE,
+            Task.node_type == TaskType.APPROVAL,
+        )
+        .order_by(TaskAssignment.acted_at.desc(), TaskAssignment.id.desc())
+        .limit(1)
+    )
+    if assignment is None:
+        return None
+    try:
+        assert_can_revoke_approval(db, instance, compiled, assignment, viewer)
+    except (UnprocessableError, ForbiddenError, NotFoundError):
+        return None
+    return assignment
 
 
 def _status_label(status: str) -> str:

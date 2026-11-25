@@ -133,6 +133,13 @@ export interface InstanceRender {
     seq: number
     acted_at: string | null
   } | null
+  /** 发起人此刻能否撤回申请（服务端判定：运行中 + 尚无人处理过） */
+  can_withdraw?: boolean
+  /** 本人已同意且下游未处理时的「撤回审批」入口（服务端判定） */
+  revocable_approval?: {
+    assignment_id: number
+    node_name: string
+  } | null
   current_node: {
     node_id: string
     name: string

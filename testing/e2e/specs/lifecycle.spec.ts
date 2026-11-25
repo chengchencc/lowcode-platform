@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { openAs } from '../fixtures/auth'
+import { apiAs, openAs } from '../fixtures/auth'
 import { renderAs, uniqueReason } from '../fixtures/data'
 import {
   approveViaApi,
@@ -52,7 +52,7 @@ test.describe('@p0 撤回/终止/退回', () => {
     expect(await todoInstanceIds('lisi')).not.toContain(instance.id)
   })
 
-  test('@p0 已被处理过的实例撤回会被服务端拒绝', async ({ browser }) => {
+  test('@p0 已被处理过的实例不再显示撤回入口，服务端仍兜底拒绝', async ({ browser }) => {
     const { flow } = await setupSequential()
     const instance = await submitFor('zhangsan', flow.id, {
       reason: uniqueReason('E2E 撤回守卫'),
@@ -64,15 +64,28 @@ test.describe('@p0 撤回/终止/退回', () => {
     try {
       await initiator.page.goto(`/instance/${instance.id}`)
       await expect(initiator.page.getByText('审批中').first()).toBeVisible()
-      await initiator.page.getByRole('button', { name: buttonName('撤回') }).click()
-      await initiator.page.getByRole('button', { name: buttonName('确定') }).click()
+      // 服务端判定 can_withdraw=false：不渲染按钮，而不是渲染后点了才报错
       await expect(
-        initiator.page.getByText('已经有任务被处理过，不能撤回；如需终止请联系管理员'),
-      ).toBeVisible()
-      await expect(initiator.page.getByText('审批中').first()).toBeVisible()
+        initiator.page.getByRole('button', { name: buttonName('撤回') }),
+      ).toHaveCount(0)
     } finally {
       await initiator.context.close()
     }
+
+    // 直接调接口仍被拒：前端隐藏入口只是 UX，规则由服务端兜底
+    const api = await apiAs('zhangsan')
+    try {
+      const response = await api.post(`instances/${instance.id}/withdraw`, {
+        data: { reason: null },
+      })
+      expect(response.status()).toBe(422)
+      expect(await response.text()).toContain('不能撤回')
+    } finally {
+      await api.dispose()
+    }
+
+    const rendered = await renderAs('zhangsan', instance.id)
+    expect(rendered.instance.status).toBe('RUNNING')
   })
 
   test('@p0 管理员终止后所有待办取消', async ({ browser }) => {

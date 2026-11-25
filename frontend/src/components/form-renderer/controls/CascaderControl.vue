@@ -8,7 +8,8 @@
 import { computed } from 'vue'
 
 import type { FieldDef } from '@/types/form'
-import { cascaderOptions, formatValue } from '@/utils/formValue'
+import { formatReadableValue } from '@/utils/fieldValueDisplay'
+import { cascaderOptions } from '@/utils/formValue'
 
 const props = defineProps<{
   field: FieldDef
@@ -34,7 +35,7 @@ const options = computed(() =>
   })),
 )
 
-const readonlyText = computed(() => formatValue(props.field, props.modelValue))
+const readonlyText = computed(() => formatReadableValue(props.modelValue, props.field))
 </script>
 
 <template>
@@ -62,6 +63,9 @@ const readonlyText = computed(() => formatValue(props.field, props.modelValue))
 
 <style scoped>
 .readonly-value {
+  display: block;
+  min-height: 22px;
+  line-height: 1.5715;
   white-space: pre-wrap;
   word-break: break-word;
 }

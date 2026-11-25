@@ -82,6 +82,9 @@ function onDeptChange(value: unknown): void {
 
 <style scoped>
 .readonly-value {
+  display: block;
+  min-height: 22px;
+  line-height: 1.5715;
   white-space: pre-wrap;
   word-break: break-word;
 }

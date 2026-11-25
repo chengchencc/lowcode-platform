@@ -283,6 +283,25 @@ def transfer(
     )
 
 
+def revoke_approval(
+    db: Session,
+    *,
+    assignment_id: int,
+    actor: User,
+    reason: str | None = None,
+    request_id: str | None = None,
+):
+    """撤回本人已提交的「同意」—— 直接转发给引擎。"""
+    from app.services.instance_service import engine_for
+
+    return engine_for(db).revoke_approval(
+        assignment_id=assignment_id,
+        actor=actor,
+        reason=reason,
+        request_id=request_id,
+    )
+
+
 def act(
     db: Session,
     *,

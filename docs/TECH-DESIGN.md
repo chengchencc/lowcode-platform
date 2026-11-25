@@ -137,12 +137,23 @@ aggregate / machine / router）不得 import db
 发起阶段强制只读；之后按普通字段权限处理。
 只支持顶层字段 —— 子表列没有「发起时」这一层语义，发布校验会拦。
 
+**只读渲染**：`FieldControl` 的 `editable = state.editable && mode === 'edit'`；
+不可交互时，标量控件（文本/数字/单选/复选/下拉/日期时间/开关/公式）统一渲染为
+纯文本 `.readonly-value`，不再输出禁用输入框或选择器；人员/部门（org store 换名）、
+附件（下载入口/缩略图）、子表（表格）、级联下拉保留各自专用只读形态。
+设计器的编辑态预览没有权限矩阵，`useFieldState` 同样把 `auto_fill` / `auto_number`
+字段锁定为只读，保证预览与真实发起页一致。
+
 **发起时默认值**（`field.default_source`）：人员/部门控件可带入「当前发起人」/
 「发起人所在部门」，但发起人**可以修改**。与 `auto_fill` 互斥（发布校验会拦）；
 只在字段为空时写入，不覆盖用户填的值。
 
-**自审例外**：`form_user_field` 显式选到发起人时允许自审（例如「需求负责人」默认选自己），
-`prev_node_actors` 指向发起节点同理；角色/部门等宽口径来源仍会剔除发起人，避免无意自审。
+**自审规则**：默认开启「防自审」——角色/部门/指定人员等宽口径来源会剔除发起人，
+避免无意自审；`form_user_field` 显式选到发起人、`prev_node_actors` 指向发起节点、
+`initiator_select` 主动选自己属于显式指定，本来就允许自审，不受开关影响。
+流程级「流程设置 → 防自审」可关闭该过滤（`prevent_self_approval=false`），
+关闭后所有来源都允许解析到发起人本人；解析取实例锁定的流程版本，
+发布只影响新发起的单据，运行中单据的派单语义不变。
 
 **自动编号**（`field.auto_number`）：顶层单行文本可配置标识位与流水号位数，
 服务端在首次暂存/提交时生成 `标识位 + YYYYMMDD + 当日流水号`（本地日期），
@@ -217,6 +228,7 @@ key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
 | `REJECT` | 审批节点处理人 | `rejectPolicy` 允许 | 取消**全部** PENDING 令牌 | RUNNING → REJECTED |
 | `RETURN` | 审批/填写处理人 | `target ∈ allowed_return_targets()` | 取消 target 之后的全部令牌；target 上 `activation_seq+1` 重派 | **不变（仍 RUNNING）** |
 | `WITHDRAW` | 发起人 | **不存在任何 DONE 的 assignment**（抄送已读不算） | 取消全部 PENDING | RUNNING → WITHDRAWN |
+| `REVOKE_APPROVAL` | 审批节点处理人（本人） | assignment DONE/AGREE；task COMPLETED；无下游 DONE；全部 PENDING 都在本节点下游；非并行组、未重激活 | 取消本节点之后的全部 PENDING；本节点 `activation_seq+1` 重派 | 不变（仍 RUNNING） |
 | `ABANDON` | 发起人 | status=REJECTED | 无活跃令牌 | REJECTED → WITHDRAWN |
 | `TERMINATE` | 管理员 | reason 必填 | 取消全部 PENDING | * → TERMINATED |
 | `CC_READ` | 被抄送人 | — | 无 | 不变 |
@@ -233,6 +245,16 @@ key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
 由此自然满足 PRD：「取消被退回节点及后续全部令牌；已通过的更早节点不重走；字段数据保留（**不回滚 `current_data`**）」。
 
 > **已确认（D-03）**：并行组内任一成员退回，取消整个并行组及后续令牌（含此前已同意的成员），实例保持 RUNNING，在目标节点整组重派。替代方案（只重派未完成成员）会让组语义出现「半激活」状态，V1 不采用。
+
+**撤回审批（REVOKE_APPROVAL）** 复用同一套「取消后续 + 原节点重派」机制，但入口是**已完成**的本人 assignment，而非待办：
+
+1. 本人最新一条 `DONE/AGREE` 的非抄送 assignment；
+2. 其任务已 `COMPLETED`（会签未完成、并行组未汇合不支持）；
+3. 该任务之后不存在其他 `DONE` 的 assignment（同任务的其他会签人除外）；
+4. 该节点没有更新的 `activation_seq`；当前全部 `PENDING` 阻塞令牌的祖先链都包含本节点（否则说明还有并行分支在跑，拒绝）；
+5. 取消这些下游 `PENDING`（含抄送知会），在本节点 `activation_seq+1` 重派，字段与快照不回滚。
+
+因此「撤回审批」不会把实例拉回 `DRAFT` 或绕过任何审批，只是让本人重新处理该节点；历史动作、原 assignment 与通知均保留。
 
 ### 4.5 字段权限矩阵求值（PRD §3.4 机制 A/B）
 

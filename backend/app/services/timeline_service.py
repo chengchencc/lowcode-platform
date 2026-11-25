@@ -21,6 +21,7 @@ ACTION_LABELS: dict[str, str] = {
     "AGREE": "同意",
     "REJECT": "驳回",
     "RETURN": "退回",
+    "REVOKE_APPROVAL": "撤回审批",
     "WITHDRAW": "撤回",
     "ABANDON": "撤销",
     "TERMINATE": "终止",

@@ -42,6 +42,7 @@ from app.engine.permissions import (
     resolve_view_permissions,
 )
 from app.engine.router import allowed_return_targets
+from app.engine.service import can_withdraw, revocable_approval
 from app.engine.types import NODE_TYPE_LABELS, CompiledFlow, Cursor
 from app.models import (
     DataSnapshot,
@@ -132,6 +133,7 @@ def render_instance(
 
     # ---- 我在这张单上的角色 ----
     my_role = _viewer_role(db, instance, viewer, assignment)
+    revocable = revocable_approval(db, instance, compiled, viewer)
     permission_map = {k: v.to_dict() for k, v in permissions.items()}
     base_map = {k: v.to_dict() for k, v in base_permissions.items()}
     schema_data = form_schema.model_dump(mode="json")
@@ -145,6 +147,17 @@ def render_instance(
         "instance": instance_service.to_out(db, instance, viewer=viewer),
         "my_role": my_role,
         "assignment": _assignment_out(assignment) if assignment else None,
+        # 撤回入口由服务端判定：发起人 + 运行中 + 尚无人处理过
+        "can_withdraw": can_withdraw(db, instance, viewer),
+        # 本人已同意且下游未处理时的「撤回审批」入口；由服务端判定，前端不自行推导
+        "revocable_approval": (
+            {
+                "assignment_id": revocable.id,
+                "node_name": revocable.task.node_name,
+            }
+            if revocable is not None
+            else None
+        ),
         "current_node": (
             {
                 "node_id": current_node.id,

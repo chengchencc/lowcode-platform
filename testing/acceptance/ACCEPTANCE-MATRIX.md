@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-25（修复 BUG-API-016：流程设置改为按当前发布版本读取，发布后对运行中实例立即生效；此前 BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
+> 最近更新：2026-11-25（新增流程级「防自审」开关并覆盖默认/关闭两态；新增 TASK-08 审批人「撤回审批」并转 PASS；发起人撤回收敛为服务端下发 `can_withdraw`，按钮不再常驻；此前 BUG-UI-004 只读态标量字段统一纯文本、BUG-API-016 流程设置按当前发布版本生效、BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
 
 ## 0. 汇总
 
@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..003 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..004 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -53,7 +53,7 @@
 | FORM-01 | P0 | PRD F1.2–F1.7 | 全控件表单设计→发布→发起页渲染；子表/公式/级联/附件/人员正确 | API+E2E | `testing/api/test_form_controls.py` | PARTIAL | R14: 全控件发布/发起页/提交/公式/子表/人员部门/附件图片 PASS；设计器拖拽/预览待执行 | — |
 | FORM-02 | P0 | PRD F1.5；F2.6 | 旧实例锁旧版；新流程锁最新已发布版；草稿不影响线上 | API+E2E | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 版本发布/旧流程锁旧版/新流程锁新版 PASS；旧实例详情待执行 | — |
 | FORM-03 | P0 | PRD F3.2；§7 安全 | 绕过前端直接调 API：hidden/必填/值规则仍被服务端拦截 | API | `testing/api/test_form_flow_design.py` | PARTIAL | R12: 必填缺失、草稿/提交伪造 hidden 值被拦 PASS；值规则/子表待执行 | BUG-API-012（已修） |
-| FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E | `testing/api/test_form_rules.py` | PARTIAL | R15: 布局列数/分区折叠/展示控件/联动规则隐藏+清空 PASS；设计器预览待执行 | — |
+| FORM-04 | P0 | PRD F1.4；F2.3；PHASE2 M8/M9 | 布局/展示控件/联动规则在发起与审批视角的显隐/只读/必填正确 | E2E+vitest | `testing/api/test_form_rules.py`；`frontend/src/__tests__/render.spec.ts` | PARTIAL | R15: 布局列数/分区折叠/展示控件/联动规则隐藏+清空 PASS；R20（2026-11-25）：只读态标量字段统一纯文本（无禁用输入框/选择器/开关），设计器预览锁定 auto_fill/auto_number 与真实发起页一致 PASS；设计器拖拽/预览拖拽待执行 | BUG-UI-004（已修） |
 | FORM-05 | P0 | PRD F1.5；F2.6 | 发布后不自动产生空草稿；打开设计器默认只读查看已发布版本；可显式新建草稿，也可删除未发布草稿 | E2E | `testing/e2e/specs/design.spec.ts` | PASS | 本轮：表单/流程发布后无新草稿，新建→删除草稿链路通过 | BUG-UI-002（已修） |
 
 ## 3. 流程设计与发布
@@ -83,7 +83,7 @@
 | INIT-01 | P0 | PRD F2.5；F3.1 | 发起范围（全员/角色/部门）正确；无权限看不到入口，直接访问也被拒 | API+E2E | `testing/api/test_initiate_scope.py` | PARTIAL | R13: 角色范围、部门范围（含子部门）、直接访问拒绝 PASS；全员范围已由样例流程覆盖 | — |
 | INIT-02 | P0 | PRD F3.2；F3.3；D-04 | 自动填充、标题字段、隐藏字段、只读字段、草稿保存/恢复正确 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R3: 发起页/草稿/提交 PASS；hidden schema 裁剪 PASS；其余待执行 | BUG-API-001（已修） |
 | INIT-03 | P0 | PRD F3.4；§7 一致性 | 连点/刷新/网络重试只产生一个实例和一套任务 | API+E2E | `testing/api/test_initiate.py` | PARTIAL | R2: 单会话重复提交 PASS；双会话并发待执行 | — |
-| INIT-04 | P0 | PRD F3.5；§3.3.2；D-01 | 表单人员/部门主管/指定部门/角色/发起人自审规则正确 | API+E2E | `testing/api/test_approver_sources.py` | PARTIAL | R15: 表单人员/表单部门主管/发起人指定/角色剔除发起人 PASS；指定部门/上一节点来源待执行 | BUG-API-013（已修） |
+| INIT-04 | P0 | PRD F3.5；§3.3.2；D-01 | 表单人员/部门主管/指定部门/角色/发起人自审规则正确；流程级「防自审」开关默认开启、关闭后允许发起人 | API+E2E | `testing/api/test_approver_sources.py`；`backend/tests/test_auto_fill.py` | PARTIAL | R15: 表单人员/表单部门主管/发起人指定/角色剔除发起人 PASS；R21（2026-11-25）：防自审开关默认/关闭两态（角色来源）单测与 API PASS；指定部门/上一节点来源待执行 | BUG-API-013（已修） |
 
 ## 6. 审批处理与流程状态
 
@@ -96,6 +96,7 @@
 | TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；附件下载权限待执行 | BUG-UI-003（已修） |
 | TASK-06 | P0 | PRD F4.3；§7 | 同一任务两人同时处理、同一人双击、多标签页：结果唯一且可解释 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R2: 重复提交/重复处理 PASS；双会话并发待执行 | — |
 | TASK-07 | P0 | PHASE3 M14 §4 | 转办/委托：派单、可见性、留痕、窗口边界/重叠/撤销正确 | API+E2E | `testing/api/test_delegation.py` | PARTIAL | R5: 转办推进、委托派单/委托人可见、自委托/重叠拒绝 PASS；通知/时间线/会签组转办待执行 | BUG-API-006/007（已修） |
+| TASK-08 | P1 | PRD §3.5.4；F4.3 | 审批人「撤回审批」：本人同意且下游未处理时可撤回，下游待办取消、本节点重派；下游已处理/会签未完成/并行分支活跃时拒绝；实例状态与字段数据不变 | API+E2E+vitest | `backend/tests/test_engine_service.py`、`testing/api/test_custom_flows.py`、`testing/e2e/specs/approve.spec.ts` | PASS | R21（2026-11-25）：引擎 3 条 + API 2 条 + E2E @p1 覆盖撤回成功、下游已处理拒绝、非本人拒绝、实例结束拒绝；同轮发起人撤回守卫 E2E 改为服务端隐藏入口 + 接口兜底 422 PASS | — |
 
 ## 7. 驳回、退回与异常路径
 

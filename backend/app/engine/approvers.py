@@ -53,6 +53,9 @@ class ApproverContext:
     #: 发布时校验过「无审批人」的节点：这些节点即使未命中也不算异常
     #: （on_empty="block_publish" 的节点在发布阶段就该被拦下）
     strict_on_empty: bool = False
+    #: 流程级「防自审」开关：开启时剔除发起人；关闭后允许发起人自审
+    #: （显式指定来源本来就允许自审，两种取值下均不受影响）。
+    prevent_self_approval: bool = True
 
 
 @dataclass
@@ -180,9 +183,10 @@ def resolve_approvers(
 
     for source in rule.sources:
         ids, description = resolve_source(source, ctx, provider)
-        # 发起人自己不做自己的审批人（避免自审）；
-        # 但表单人员字段 / 上一节点=发起人属于显式配置，允许自审。
-        if _allows_self_approval(source, ctx):
+        # 发起人默认不做自己的审批人（避免自审）；
+        # 但表单人员字段 / 上一节点=发起人属于显式配置，允许自审；
+        # 流程关闭防自审后，全部来源都允许解析到发起人。
+        if _allows_self_approval(source, ctx) or not ctx.prevent_self_approval:
             filtered = list(ids)
         else:
             filtered = [uid for uid in ids if uid != ctx.initiator_id]
