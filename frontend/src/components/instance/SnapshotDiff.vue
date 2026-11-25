@@ -15,7 +15,7 @@ import { instanceApi } from '@/api/modules/instance'
 import { useOrgStore } from '@/stores/org'
 import type { FormSchema } from '@/types/form'
 import type { ActionEntry } from '@/types/instance'
-import { buildFieldIndex, formatReadableValue } from '@/utils/fieldValueDisplay'
+import { buildFieldIndex, fieldLabelIndex, formatReadableValue } from '@/utils/fieldValueDisplay'
 
 const props = defineProps<{
   instanceId: number
@@ -74,18 +74,7 @@ const rows = ref<Array<{ key: string; old: unknown; new: unknown }>>([])
 const loading = ref(false)
 
 /** 字段引用 → 中文标签（含子表列），差异表里要给人看的是标签 */
-const labels = computed<Record<string, string>>(() => {
-  const out: Record<string, string> = {}
-  for (const section of props.schema?.sections ?? []) {
-    for (const field of section.fields) {
-      out[field.key] = field.label
-      for (const col of field.columns ?? []) {
-        out[`${field.key}.${col.key}`] = `${field.label} · ${col.label}`
-      }
-    }
-  }
-  return out
-})
+const labels = computed<Record<string, string>>(() => fieldLabelIndex(props.schema))
 
 async function load(): Promise<void> {
   const baseline = baselineId.value

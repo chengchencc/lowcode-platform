@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-25（新增流程级「防自审」开关并覆盖默认/关闭两态；新增 TASK-08 审批人「撤回审批」并转 PASS；发起人撤回收敛为服务端下发 `can_withdraw`，按钮不再常驻；此前 BUG-UI-004 只读态标量字段统一纯文本、BUG-API-016 流程设置按当前发布版本生效、BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
+> 最近更新：2026-11-25（系统名称改为 `APP_NAME` 可配置，新增 ENV-04 与公开 `GET /meta`；修复 BUG-UI-005：审批弹窗的改动预览显示字段名称而非字段 key；新增流程级「防自审」开关并覆盖默认/关闭两态；新增 TASK-08 审批人「撤回审批」并转 PASS；发起人撤回收敛为服务端下发 `can_withdraw`，按钮不再常驻；此前 BUG-UI-004 只读态标量字段统一纯文本、BUG-API-016 流程设置按当前发布版本生效、BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
 
 ## 0. 汇总
 
@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..004 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..005 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -93,7 +93,7 @@
 | TASK-02 | P0 | PRD F4.2/F4.3；§3.5.4 | 同意/驳回/退回/撤回/终止在合法与非法状态下的守卫、提示、通知 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R4: 同意/驳回/撤回/终止守卫 PASS；退回/通知待执行 | — |
 | TASK-03 | P0 | PRD §3.5.3；F4.3 | 会签 all/any：同时待办、分别操作、一人驳回、或签后取消其余 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: 会签 all 正向、或签 any 取消其余 PASS；组内驳回待执行 | — |
 | TASK-04 | P0 | PRD §3.5.3；D-03 | 并行组 all/any 汇合正确；不提前推进、不永久卡住；退回取消整组并重派 | API+E2E | `testing/api/test_custom_flows.py` | PARTIAL | R6: all/any 汇合、并行组退回整组重派 PASS；提前推进/卡死边界待执行 | — |
-| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；附件下载权限待执行 | BUG-UI-003（已修） |
+| TASK-05 | P0 | PRD F4.3/F4.4/F4.6 | 处理意见/附件/字段修改：必填可配、diff 留痕且以选项标签/文件名/人名展示（不露 code）、附件权限正确 | API+E2E+vitest | `testing/api/test_task_notify.py`；`frontend/src/__tests__/fieldValueDisplay.spec.ts`；`frontend/src/__tests__/render.spec.ts` | PARTIAL | R13: 意见/附件必填、附件绑定 PASS；R19（2026-11-24）：处理历史与快照对照的选择框/附件/人员/部门/日期改为可读文本 PASS；R21（2026-11-25）：审批弹窗改动预览显示字段名称/子表列，不再露 key PASS；附件下载权限待执行 | BUG-UI-003、BUG-UI-005（已修） |
 | TASK-06 | P0 | PRD F4.3；§7 | 同一任务两人同时处理、同一人双击、多标签页：结果唯一且可解释 | API+E2E | `testing/api/test_tasks.py` | PARTIAL | R2: 重复提交/重复处理 PASS；双会话并发待执行 | — |
 | TASK-07 | P0 | PHASE3 M14 §4 | 转办/委托：派单、可见性、留痕、窗口边界/重叠/撤销正确 | API+E2E | `testing/api/test_delegation.py` | PARTIAL | R5: 转办推进、委托派单/委托人可见、自委托/重叠拒绝 PASS；通知/时间线/会签组转办待执行 | BUG-API-006/007（已修） |
 | TASK-08 | P1 | PRD §3.5.4；F4.3 | 审批人「撤回审批」：本人同意且下游未处理时可撤回，下游待办取消、本节点重派；下游已处理/会签未完成/并行分支活跃时拒绝；实例状态与字段数据不变 | API+E2E+vitest | `backend/tests/test_engine_service.py`、`testing/api/test_custom_flows.py`、`testing/e2e/specs/approve.spec.ts` | PASS | R21（2026-11-25）：引擎 3 条 + API 2 条 + E2E @p1 覆盖撤回成功、下游已处理拒绝、非本人拒绝、实例结束拒绝；同轮发起人撤回守卫 E2E 改为服务端隐藏入口 + 接口兜底 422 PASS | — |
@@ -128,6 +128,7 @@
 | ENV-01 | P0 | PRD §7 部署；README Docker | Docker MySQL 8 / PostgreSQL 16 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-02 | P0 | PRD §7；TECH §3.1 | 空库迁移、上一版本升级迁移成功；SQLite/MySQL/PG 核心链路一致 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-03 | P0 | TECH §9 时间统一；PRD §7 | UTC 存储与 Asia/Shanghai 展示边界；首页今日/本周/本月跨日正确 | API+手工 | 待建 | DESIGNED | — | — |
+| ENV-04 | P1 | PRD 决策 12 | 系统名称由 `APP_NAME` 配置，公开 `GET /meta` 下发；登录页、侧边栏、浏览器标题跟随；空值/空白退回默认名 | API+vitest | `testing/api/test_meta.py`；`backend/tests/test_config.py`；`frontend/src/__tests__/appMeta.spec.ts` | PASS | R21（2026-11-25）：公开读取、名称去空白与空值兜底、Logo 缩写与标题格式通过 | — |
 | PERF-01 | P0 | PRD §7 规模；TEST-PLAN §10.3 | 1k/10k 实例列表与筛选、100 节点设计器、待办/首页达到基线 | 脚本 | 待建 | DESIGNED | — | — |
 | UAT-01 | P0 | TEST-PLAN §13.2 | 产品负责人独立走完：配置新流程、发起审批、驳回重提、检索导出 | 手工 | — | PARTIAL | R19: 主链路走查完成，3 个问题已修；A4 打印待最终确认 | UAT-001..003（已修） |
 

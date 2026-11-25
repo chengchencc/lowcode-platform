@@ -483,6 +483,7 @@ vi.mock('@/api/modules/form', () => {
   }
 })
 
+import ActionPanel from '@/components/instance/ActionPanel.vue'
 import AuditLogView from '@/views/admin/AuditLogView.vue'
 import InstanceArchiveView from '@/views/admin/InstanceArchiveView.vue'
 import InstanceManageView from '@/views/admin/InstanceManageView.vue'
@@ -1094,6 +1095,51 @@ describe('实例详情页版面', () => {
       .findAll('button')
       .find((b) => b.text().replace(/\s/g, '') === '撤回审批')
     expect(button, '下游未处理时应显示撤回审批入口').toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('审批弹窗的改动预览显示字段名称而不是字段 key', async () => {
+    // 审批过程中补充/修改字段后，弹窗会列出本次提交了哪些字段。
+    // 早期实现直接 join(fieldPatch 的 key)，界面上露出 reason/amount 这类编号。
+    const data = {
+      assignment: {
+        assignment_id: 1, task_id: 1, user_id: 1, status: 'PENDING', seq: 0, acted_at: null,
+      },
+      current_node: {
+        node_id: 's1', name: '直属上级审批', type: 'approval', type_label: '审批',
+        assignee_mode: 'SINGLE', opinion_required: false, attachment_required: false,
+      },
+      allowed_actions: ['AGREE'],
+      return_targets: [],
+      schema_data: {
+        sections: [{
+          key: 's', title: '申请信息', stage: 'apply',
+          fields: [
+            { key: 'reason', label: '事由', type: 'text' },
+            { key: 'amount', label: '金额', type: 'number' },
+          ],
+        }],
+      },
+    } as unknown as InstanceRender
+
+    const wrapper = mount(ActionPanel, {
+      props: { data, fieldPatch: { reason: '新事由', amount: 200 } },
+      global: { plugins: [Antd] },
+    })
+    const agree = wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '') === '同意')
+    expect(agree, '应渲染出「同意」按钮').toBeTruthy()
+    await agree!.trigger('click')
+    await flushPromises()
+
+    const changeMessage = Array.from(document.body.querySelectorAll('.ant-alert-message'))
+      .map((node) => node.textContent?.replace(/\s+/g, '') ?? '')
+      .find((text) => text.includes('本次将提交')) ?? ''
+    expect(changeMessage).toContain('本次将提交2个字段的修改')
+    expect(changeMessage).toContain('事由')
+    expect(changeMessage).toContain('金额')
+    expect(changeMessage).not.toContain('reason')
+    expect(changeMessage).not.toContain('amount')
+
     wrapper.unmount()
   })
 

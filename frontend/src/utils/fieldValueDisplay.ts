@@ -16,6 +16,20 @@ export interface ValueLookups {
 }
 
 /** 字段引用 → 字段定义。子表列同时收录 `a[].b` 与 `a.b` 两种写法。 */
+/** {字段引用: 中文标签}；子表列记法 `items[].amount`（与后端 diff 一致）。 */
+export function fieldLabelIndex(schema?: FormSchema | null): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const section of schema?.sections ?? []) {
+    for (const field of section.fields) {
+      out[field.key] = field.label
+      for (const column of field.columns ?? []) {
+        out[`${field.key}[].${column.key}`] = `${field.label} · ${column.label}`
+      }
+    }
+  }
+  return out
+}
+
 export function buildFieldIndex(schema?: FormSchema | null): Map<string, FieldDef> {
   const out = new Map<string, FieldDef>()
   for (const section of schema?.sections ?? []) {

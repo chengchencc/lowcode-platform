@@ -19,6 +19,7 @@ import type { AttachmentInfo } from '@/types/form'
 import type { ActPayload, InstanceRender, TaskAction } from '@/types/instance'
 import { ACTION_LABELS } from '@/types/instance'
 import { feedback } from '@/utils/feedback'
+import { fieldLabelIndex } from '@/utils/fieldValueDisplay'
 
 const props = defineProps<{
   data: InstanceRender
@@ -45,6 +46,11 @@ const uploading = ref(false)
 const node = computed(() => props.data.current_node)
 const targets = computed(() => props.data.return_targets)
 const changedKeys = computed(() => Object.keys(props.fieldPatch))
+/** 预览给人看的字段名；schema 里找不到时才退回 key */
+const changedLabels = computed(() => {
+  const labels = fieldLabelIndex(props.data.schema_data)
+  return changedKeys.value.map((key) => labels[key] ?? key)
+})
 
 /** 该动作是否需要意见（驳回必填；节点可配「意见必填」） */
 const opinionRequired = computed(() => {
@@ -207,7 +213,7 @@ const ACTION_HINTS: Record<TaskAction, string> = {
         type="warning"
         show-icon
         class="hint"
-        :message="`本次将提交 ${changedKeys.length} 个字段的修改：${changedKeys.join('、')}`"
+        :message="`本次将提交 ${changedKeys.length} 个字段的修改：${changedLabels.join('、')}`"
       />
     </a-modal>
   </span>

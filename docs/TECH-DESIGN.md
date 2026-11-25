@@ -337,6 +337,11 @@ apply_field_patch(instance, patch, *, node_id, actor_id, action_id, permissions)
 | 角色 | `GET/POST /roles`、`GET/PUT/DELETE /roles/{id}`、`GET/PUT /roles/{id}/members` |
 | 审计 | `GET /admin/audit-logs` |
 | 探活 | `GET /healthz` `GET /readyz` |
+| 应用信息 | `GET /meta`（公开：系统名称 / 版本） |
+
+> **系统名称**（决策 12）只由后端 `APP_NAME` 决定，经 `GET /meta` 下发给前端。
+> 前端启动时异步取一次（失败退回 “FlowForm”，不阻塞首屏），登录页、侧边栏、
+> 浏览器标题都读同一个响应式值 —— 改名只需重启后端，不必重新构建前端。
 
 ### 5.2 鉴权依赖
 
@@ -647,3 +652,6 @@ bash scripts/migrate.sh        # alembic upgrade head
 **切 MySQL**：`docker compose -f docker-compose.dev.yml up -d`，
 把 `backend/.env` 的 `DATABASE_URL` 换成 `mysql+pymysql://...`，
 再 `alembic upgrade head`。**不需要改任何模型或迁移代码** —— 这是 D1 的验收点。
+
+**改系统名称**：本机直跑改 `backend/.env` 的 `APP_NAME`，容器形态改根目录 `.env` 的
+`APP_NAME`；重启后端后前端从 `GET /api/v1/meta` 自动读取。

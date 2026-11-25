@@ -1,6 +1,6 @@
 import Antd from 'ant-design-vue'
 import { createPinia } from 'pinia'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 
 import 'ant-design-vue/dist/reset.css'
 import '@/styles/index.scss'
@@ -9,6 +9,7 @@ import App from '@/App.vue'
 import { setupDirectives } from '@/directives/permission'
 import router from '@/router'
 import { setupGuards } from '@/router/guards'
+import { appName, loadAppMeta, pageTitle } from '@/utils/appMeta'
 
 const app = createApp(App)
 
@@ -28,5 +29,11 @@ app.use(createPinia())
 setupGuards(router)
 app.use(router)
 setupDirectives(app)
+
+// 系统名称来自后端 APP_NAME，异步取、不阻塞首屏；到达后补一次浏览器标题
+void loadAppMeta()
+watch(appName, () => {
+  document.title = pageTitle(router.currentRoute.value.meta.title)
+})
 
 app.mount('#app')
