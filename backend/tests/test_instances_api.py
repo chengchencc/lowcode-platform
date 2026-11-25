@@ -405,7 +405,7 @@ class TestHistoricalHandlerVisibility:
         assert dir_detail["permissions"][ext_key]["editable"] is False
 
 
-def _finance_done_instance(db, client, *, history_view: str):
+def _finance_done_instance(db, client, *, history_view: str | None = None):
     """财务节点办完、流程停在总监时返回 (实例, 发起人/经理/财务 headers)。"""
     manager, finance, director, employee = _user(db), _user(db), _user(db), _user(db)
     template = _make_section_flow(
@@ -487,6 +487,50 @@ class TestHistoryViewPolicy:
             assert detail["permissions"]["reason"]["visible"] is True
             for key in ("actualAmount", "invoiceNo"):
                 assert key not in detail["permissions"], key
+
+    def test_published_policy_applies_to_running_instance(self, db, client):
+        """流程设置按**当前发布版本**生效，已发起的运行中实例也立刻跟随。
+
+        运行中的实例仍然锁定旧的节点结构与字段权限；已办可见范围是运行期
+        展示策略，管理员调整并发布后不应要求重新发起一张单才能验证。
+        """
+        from app.core.constants import FlowVersionStatus
+        from app.models import FlowInstance, FlowTemplate, FlowVersion
+
+        draft, _emp_h, mgr_h, _fin_h = _finance_done_instance(db, client)
+
+        # 默认 own_nodes：经理只办过申请区，看不到财务补充字段
+        before = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=mgr_h
+        ).json()
+        assert before["permissions"]["reason"]["visible"] is True
+        assert "actualAmount" not in before["permissions"]
+
+        # 管理员发布一版只改了 history_view 的新版本
+        row = db.get(FlowInstance, draft["id"])
+        template = db.get(FlowTemplate, row.flow_template_id)
+        pinned = db.get(FlowVersion, row.flow_version_id)
+        newer = FlowVersion(
+            template_id=template.id,
+            version_no=pinned.version_no + 1,
+            definition={**pinned.definition, "history_view": "full"},
+            locked_form_version_id=pinned.locked_form_version_id,
+            status=FlowVersionStatus.PUBLISHED,
+            created_by=template.created_by,
+        )
+        db.add(newer)
+        db.flush()
+        template.current_version_id = newer.id
+        db.commit()
+
+        # 实例仍锁旧版本，但可见范围立即按新策略给全量只读
+        assert row.flow_version_id == pinned.id
+        after = client.get(
+            f"{BASE}/instances/{draft['id']}/render", headers=mgr_h
+        ).json()
+        for key in ("reason", "actualAmount", "invoiceNo"):
+            assert after["permissions"][key]["visible"] is True, key
+            assert after["permissions"][key]["editable"] is False, key
 
 
 def _first_available_id(client, headers) -> int:

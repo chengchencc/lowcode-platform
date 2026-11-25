@@ -632,7 +632,7 @@ const treeItems = computed<TreeItem[]>(() => {
           </a-radio-group>
           <div class="text-muted tiny settings-hint">{{ historyViewHint }}</div>
           <div class="text-muted tiny">
-            实例办结后仍按归档视角全量只读展示，不受此设置影响。
+            发布后对该流程下运行中的单据立即生效；实例办结后仍按归档视角全量只读展示，不受此设置影响。
           </div>
         </a-form-item>
       </a-form>

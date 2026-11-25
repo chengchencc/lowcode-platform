@@ -3,7 +3,7 @@
 > 本文件是 G1 验收的**唯一汇总口径**。`bash scripts/check.sh` 全绿、代码覆盖率、单元测试数量都不能替代这里。
 >
 > 用例设计规则见 `testing/acceptance/README.md`；场景基线见 `testing/plan/TEST-PLAN.md` §6。
-> 最近更新：2026-11-24（修复 BUG-UI-003：处理历史/快照对照的字段值可读化；G1/G2/G3 计数沿用 R18/R17）
+> 最近更新：2026-11-25（修复 BUG-API-016：流程设置改为按当前发布版本读取，发布后对运行中实例立即生效；此前 BUG-UI-003 字段值可读化；G1/G2/G3 计数沿用 R18/R17）
 
 ## 0. 汇总
 
@@ -14,7 +14,7 @@
 | 已设计用例 | 132 条 + 38 项非功能检查 |
 | 已自动化 | G1 API 94 条 + 3 MySQL-only skipped；G2 E2E 41 条；G3 随机序列 200 轮 |
 | 最近一次执行通过率 | API 94/94（100%，3 条 MySQL-only skip）；E2E 41/41（100%）；G3 200/200 |
-| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..015、BUG-UI-001..003 已修） |
+| 未关闭 S1 / S2 | 0 / 0（BUG-API-001..016、BUG-UI-001..003 已修） |
 | 待确认产品决策 | 0（D-01–D-04 已确认；D-05 默认执行） |
 
 ### 0.1 用例文件
@@ -72,7 +72,7 @@
 | PERM-02 | P0 | PRD §3.4；§7 安全；D-04 | hidden 字段不出现在响应/快照/导出/打印；伪造提交值被过滤 | API+E2E | `testing/api/test_snapshots.py` | PARTIAL | R7: hidden key/值、导出、快照/对照 PASS；打印/附件待执行 | BUG-API-001/004/008（已修） |
 | PERM-03 | P0 | PRD §2；§7；F6 | 参与者/管理员/设计者/无关人员四视角正确；越权 ID 返回 403/404 | API+E2E | `testing/api/test_permissions.py` | PARTIAL | R2: 无关人/设计者实例访问 PASS；快照/导出/任务 IDOR 待执行 | — |
 | PERM-04 | P0 | PRD F3.2/F4.4；TECH M6 决策；D-04 | 附件下载权限：上传者/管理员/实例参与者；临时附件正确绑定；hidden 字段附件不可见 | API+E2E | `testing/api/test_hidden_attachment.py` | PARTIAL | R11: 临时/提交绑定/参与者/无关人/非法扩展名/hidden 附件元数据+下载 PASS；打印待执行 | BUG-API-009/010（已修） |
-| PERM-05 | P0 | PRD F8.1；§3.4 | 流程级 `history_view` 可配置已办处理人打开运行中单据的字段范围：`own_nodes` 本人节点并集（默认）/ `full` 全部只读 / `start` 仅发起阶段；均只读，发起人视角不泄露补充字段；终态仍按归档视角 | API+E2E | `backend/tests/test_instances_api.py`、`testing/e2e/specs/permissions.spec.ts`、`testing/e2e/specs/design.spec.ts` | PASS | 本轮：三种策略后端单测、已办入口 E2E、设计器设置持久化 E2E 均通过 | — |
+| PERM-05 | P0 | PRD F8.1；§3.4 | 流程级 `history_view` 可配置已办处理人打开运行中单据的字段范围：`own_nodes` 本人节点并集（默认）/ `full` 全部只读 / `start` 仅发起阶段；均只读，发起人视角不泄露补充字段；终态仍按归档视角 | API+E2E | `backend/tests/test_instances_api.py`、`testing/e2e/specs/permissions.spec.ts`、`testing/e2e/specs/design.spec.ts` | PASS | 本轮：三种策略后端单测、已办入口 E2E、设计器设置持久化 E2E 均通过；补运行中实例跟随当前发布版本（无需新单）用例 PASS | BUG-API-016（已修） |
 | SEC-01 | P0 | PRD §7 安全 | IDOR：实例/任务/附件/模板/审计/导出接口逐一用无关用户访问 | API | `testing/api/test_security_extra.py` | PARTIAL | R14: 任务/模板/审计/终止/快照 IDOR PASS；附件/导出全接口待执行 | — |
 | SEC-02 | P0 | PRD §7 安全；PHASE2 M10 | 富文本 XSS、CSV 注入、上传白名单/大小/路径穿越 | API+手工 | `testing/api/test_security_extra.py` | PARTIAL | R14: 富文本原始 HTML 拒绝、CSV 注入转义、上传白名单 PASS；路径穿越/大小待执行 | — |
 
