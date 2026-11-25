@@ -24,7 +24,7 @@
 
 | ID | 事项 | 阻塞原因 | 下一步 |
 |---|---|---|---|
-| ENV-01 | Docker MySQL 8 / PostgreSQL 16 全新部署、重启持久化、附件卷 | 等可用的 Docker（含 PG）机器 | `bash scripts/docker-up.sh` / `--postgres`，记录部署问题 |
+| ENV-01 | Docker PostgreSQL 16（默认）/ MySQL 8 全新部署、重启持久化、附件卷 | 等可用的 Docker（含 PG）机器 | `bash scripts/docker-up.sh` / `--mysql`，记录部署问题 |
 | ENV-02 | 空库迁移、上一版本升级迁移；SQLite/MySQL/PG 核心链路一致 | 依赖 ENV-01 | 三库各跑一次「登录→发起→审批→归档」 |
 | ENV-03 | UTC 存储与 Asia/Shanghai 展示边界、首页今日/本周/本月跨日 | 依赖 ENV-01 | API + 页面各验证一次边界时刻 |
 | CONC-01 | 转办 vs 同意、自动派单并发（SQLite 已 skip） | 需 MySQL 行锁 | 在 MySQL 环境运行 `test_concurrency.py` 中被 skip 的用例 |

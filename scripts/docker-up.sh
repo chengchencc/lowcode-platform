@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # 一键起完整形态：数据库 + 后端 + 前端（nginx）。
 #
-#   bash scripts/docker-up.sh              # 默认：内置 MySQL 8
-#   bash scripts/docker-up.sh --postgres   # 内置 PostgreSQL 16
+#   bash scripts/docker-up.sh              # 默认：内置 PostgreSQL 16
+#   bash scripts/docker-up.sh --mysql      # 内置 MySQL 8
 #
-# 数据都在命名卷里：MySQL 是 flowform-mysql-data，PostgreSQL 是
-# flowform-postgres-data，附件是 flowform-storage。
+# 数据都在命名卷里：PostgreSQL 是 flowform-postgres-data，MySQL 是
+# flowform-mysql-data，附件是 flowform-storage。
 #
 # 幂等：重复执行 = 重建镜像并滚动更新容器，数据在卷里不会丢。
 # 首次执行会：补 .env（并生成随机 JWT_SECRET）→ 构建镜像 → 起容器 → 等健康检查。
@@ -13,20 +13,21 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 ENV_FILE="$ROOT/.env"
-PG_OVERLAY="$ROOT/docker-compose.postgres.yml"
+MYSQL_OVERLAY="$ROOT/docker-compose.mysql.yml"
 
 # ---- 参数 ----
-WANT_POSTGRES=0
+WANT_DB=""
 for arg in "$@"; do
   case "$arg" in
-    --postgres|--pg) WANT_POSTGRES=1 ;;
+    --postgres|--pg) WANT_DB=postgres ;;
+    --mysql)         WANT_DB=mysql ;;
     -h|--help)
-      sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
       fail "未知参数：$arg"
-      printf '  用法：bash scripts/docker-up.sh [--postgres]\n' >&2
+      printf '  用法：bash scripts/docker-up.sh [--mysql|--postgres]\n' >&2
       exit 2
       ;;
   esac
@@ -66,24 +67,25 @@ fi
 
 # ---- 数据库形态 ----
 
-if [ "$WANT_POSTGRES" = 1 ]; then
-  if [ "$(read_env DB_MODE)" != "postgres" ]; then
-    # 记下来，下次直接 bash scripts/docker-up.sh 也还是 PostgreSQL
+if [ -n "$WANT_DB" ]; then
+  if [ "$(read_env DB_MODE)" != "$WANT_DB" ]; then
+    # 记下来，下次直接 bash scripts/docker-up.sh 也沿用这次的选择
     if grep -qE '^DB_MODE=' "$ENV_FILE"; then
-      sed -i.bak 's#^DB_MODE=.*#DB_MODE=postgres#' "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+      sed -i.bak "s#^DB_MODE=.*#DB_MODE=${WANT_DB}#" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
     else
-      printf '\nDB_MODE=postgres\n' >> "$ENV_FILE"
+      printf '\nDB_MODE=%s\n' "$WANT_DB" >> "$ENV_FILE"
     fi
-    ok "已在 .env 记录 DB_MODE=postgres"
+    ok "已在 .env 记录 DB_MODE=${WANT_DB}"
   fi
 fi
 
 case "$(read_env DB_MODE)" in
   postgres|postgresql|pg) DB_MODE=postgres ;;
-  ''|mysql)               DB_MODE=mysql ;;
+  mysql)                  DB_MODE=mysql ;;
+  '')                     DB_MODE=postgres ;;   # 默认 PostgreSQL 16
   *)
     fail "不支持的 DB_MODE：$(read_env DB_MODE)"
-    printf '  可用：留空 / mysql / postgres\n' >&2
+    printf '  可用：留空 / postgres / mysql\n' >&2
     exit 1
     ;;
 esac
@@ -91,16 +93,16 @@ esac
 COMPOSE=(docker compose -f "$ROOT/docker-compose.yml")
 COMPOSE_HINT="docker compose"
 
-if [ "$DB_MODE" = postgres ]; then
-  if [ ! -f "$PG_OVERLAY" ]; then
-    fail "缺少覆盖文件：$PG_OVERLAY"
+if [ "$DB_MODE" = mysql ]; then
+  if [ ! -f "$MYSQL_OVERLAY" ]; then
+    fail "缺少覆盖文件：$MYSQL_OVERLAY"
     exit 1
   fi
-  COMPOSE+=(-f "$PG_OVERLAY")
-  COMPOSE_HINT="docker compose -f docker-compose.yml -f docker-compose.postgres.yml"
-  info "数据库：PostgreSQL 16（容器内置）"
-else
+  COMPOSE+=(-f "$MYSQL_OVERLAY")
+  COMPOSE_HINT="docker compose -f docker-compose.yml -f docker-compose.mysql.yml"
   info "数据库：MySQL 8（容器内置）"
+else
+  info "数据库：PostgreSQL 16（容器内置）"
 fi
 
 # ---- 构建与启动 ----

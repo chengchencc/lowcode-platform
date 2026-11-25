@@ -13,7 +13,7 @@
 | # | PRD 原定 | 实际 | 原因 |
 |---|---|---|---|
 | 1 | §10 #2 前端组件库 Element Plus | **Ant Design Vue 4.x** | 用户指定。连带影响见 §7.3 |
-| 2 | §6 目标库 MySQL 8 | 开发期 **SQLite**，切 MySQL 只改连接串 | 用户指定。为守住 §6 的目标形态，全部模型与迁移必须方言无关（D1） |
+| 2 | §6 目标库 MySQL 8 | 开发期 **SQLite**；Docker 部署默认 **PostgreSQL 16**，可切 MySQL 8，切库只改连接串 | 用户指定。为守住 §6 的目标形态，全部模型与迁移必须方言无关（D1） |
 | 3 | §10 #1 FastAPI（异步） | FastAPI + **同步** SQLAlchemy | 见 D2。千级用户规模下同步会话完全够用，省掉 async session 与 alembic 的适配成本，引擎单测也更好写 |
 
 ---
@@ -22,7 +22,7 @@
 
 | # | 决策 | 理由 / 影响 |
 |---|---|---|
-| **D1** | **模型与迁移全程无 MySQL 专有 DDL** | 切换库只改 `DATABASE_URL`。详见 §2.4 |
+| **D1** | **模型与迁移全程无数据库专有 DDL** | 切换库（SQLite / PostgreSQL / MySQL）只改 `DATABASE_URL`。详见 §2.4 |
 | **D2** | 同步 SQLAlchemy 2.0 | 见上表 #3 |
 | **D3** | 迁移按里程碑增量建表 | M1 只建组织表；引擎设计在 M3 仍可能微调，不必提前冻结全部 16 张表 |
 | **D4** | 枚举存 `String`，Python 侧用 `StrEnum` | SQLite 无原生 ENUM；加值不需改表 |
@@ -170,7 +170,7 @@ key 本身禁止含 `.` 与 `[]`（保留给该记法），校验器会拦。
 | 实例级互斥 | 事务内 `SELECT ... FOR UPDATE` 锁 `flow_instances` 行 |
 | 客户端乐观锁 | `flow_instances.version` / `task_assignments.version`，不匹配 → 409 `STALE_VERSION` |
 
-> **不用 MySQL generated column**：`instance_actions.task_id` 设计为 `NOT NULL DEFAULT 0`，`0` 表示「实例级动作」（撤回/终止/追加字段），以此替代 `COALESCE(task_id,0)` 生成列 —— SQLite 不支持生成列。
+> **不用数据库 generated column**：`instance_actions.task_id` 设计为 `NOT NULL DEFAULT 0`，`0` 表示「实例级动作」（撤回/终止/追加字段），以此替代 `COALESCE(task_id,0)` 生成列 —— SQLite 不支持生成列。
 
 ---
 

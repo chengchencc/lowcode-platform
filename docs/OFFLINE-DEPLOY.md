@@ -10,8 +10,8 @@
 
 | 文件 | 镜像 | 用途 |
 |---|---|---|
-| `mysql_8.0.tar` | `mysql:8.0` | MySQL 部署 |
-| `postgres_16-alpine.tar` | `postgres:16-alpine` | PostgreSQL 部署（可选） |
+| `postgres_16-alpine.tar` | `postgres:16-alpine` | PostgreSQL 部署（默认） |
+| `mysql_8.0.tar` | `mysql:8.0` | MySQL 部署（可选） |
 | `python_3.12-slim.tar` | `python:3.12-slim` | 后端镜像构建基础 |
 | `node_22-alpine.tar` | `node:22-alpine` | 前端镜像构建基础 |
 | `nginx-1.27-alpine.tar` | `nginx:1.27-alpine` | 前端运行镜像基础 |
@@ -58,7 +58,7 @@ docker save \
 docker load -i flowform-all-images.tar
 ```
 
-如果 UAT 只跑 MySQL，可以去掉 postgres 镜像。
+如果 UAT 只跑默认的 PostgreSQL，可以去掉 mysql 镜像；只跑 MySQL 则反过来去掉 postgres。
 
 ### 方式 B：UAT 上构建，依赖走内网镜像源
 
@@ -79,18 +79,18 @@ docker compose up -d --build
 
 ## 4. 启动与验证
 
-MySQL：
+PostgreSQL（默认）：
 
 ```bash
 docker compose up -d
-docker compose ps                     # mysql/backend/frontend 均为 healthy
+docker compose ps                     # postgres/backend/frontend 均为 healthy
 curl -fsS http://127.0.0.1:8080/api/v1/readyz
 ```
 
-PostgreSQL：
+MySQL：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
 ```
 
 首次启动后端会执行迁移与种子；日志出现 `Uvicorn running` 且 `/readyz` 返回 200 即就绪。
@@ -99,4 +99,4 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 
 - [ ] 在本机或联网构建机执行一次方式 A，生成 `flowform-all-images.tar` 并校验 `docker load`。
 - [ ] 在 CentOS UAT 上完成一次全新部署、重启持久化、附件卷验证（ENV-01）。
-- [ ] PostgreSQL 形态同样验证一次（ENV-02）。
+- [ ] MySQL 形态同样验证一次（ENV-02）。

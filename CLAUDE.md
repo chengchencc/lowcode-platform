@@ -9,7 +9,7 @@ FlowForm 是单组织内部的低代码表单 + 审批流平台：
 
 - 后端：FastAPI + SQLAlchemy 2.0 + Alembic + Pydantic v2，Python 3.12
 - 前端：Vue 3 + TypeScript + Vite 6 + Ant Design Vue 4 + Pinia
-- 数据库：开发期 SQLite；目标 MySQL 8 / PostgreSQL 16
+- 数据库：开发期 SQLite；目标 PostgreSQL 16（Docker 默认）/ MySQL 8
 - 认证：JWT + bcrypt；`token_version` 支持改密/停用即时踢下线
 
 先读：
@@ -126,4 +126,4 @@ UAT 期间尤其如此：每次修复只重启本地服务、交给你复测；�
 - G2 浏览器旅程：41 passed（12 条 P0 核心旅程全覆盖）。
 - G3 引擎不变量：200 轮随机序列通过。
 - 全量 `check.sh`：452 pytest + 128 vitest + ruff / vue-tsc / build 全绿。
-- 剩余：Docker MySQL/PG、迁移/时区、性能、UAT、A4 打印；详见 `docs/PROJECT-PLAN.md`。
+- 剩余：Docker PG/MySQL、迁移/时区、性能、UAT、A4 打印；详见 `docs/PROJECT-PLAN.md`。

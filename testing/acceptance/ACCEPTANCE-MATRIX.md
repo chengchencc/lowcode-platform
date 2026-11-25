@@ -124,7 +124,7 @@
 | 用例 ID | 优先级 | 需求来源 | 验收点 | 验证层 | 自动化位置 | 状态 | 最近结果 | 缺陷 |
 |---|---|---|---|---|---|---|---|---|
 | CONC-01 | P0 | PRD §7 一致性 | 会签同时操作、撤回/同意、终止/同意、转办/自动派单并发时结果可解释 | API | `testing/api/test_concurrency.py` | PARTIAL | R10: 并发会签、撤回-同意、终止-同意、或签同时操作 PASS；转办-同意在 SQLite 500，需 MySQL 验证 | — |
-| ENV-01 | P0 | PRD §7 部署；README Docker | Docker MySQL 8 / PostgreSQL 16 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
+| ENV-01 | P0 | PRD §7 部署；README Docker | Docker PostgreSQL 16（默认）/ MySQL 8 全新部署可启动；重启持久化；附件卷 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-02 | P0 | PRD §7；TECH §3.1 | 空库迁移、上一版本升级迁移成功；SQLite/MySQL/PG 核心链路一致 | 手工脚本 | 待建 | DESIGNED | — | — |
 | ENV-03 | P0 | TECH §9 时间统一；PRD §7 | UTC 存储与 Asia/Shanghai 展示边界；首页今日/本周/本月跨日正确 | API+手工 | 待建 | DESIGNED | — | — |
 | PERF-01 | P0 | PRD §7 规模；TEST-PLAN §10.3 | 1k/10k 实例列表与筛选、100 节点设计器、待办/首页达到基线 | 脚本 | 待建 | DESIGNED | — | — |

@@ -38,7 +38,7 @@
 |---|---|
 | 后端 | FastAPI + SQLAlchemy 2.0 + Alembic + Pydantic v2，Python 3.12 |
 | 前端 | Vue 3 + TypeScript + Vite 6 + Ant Design Vue 4 + Pinia + Vue Router |
-| 数据库 | 开发期 SQLite；目标形态 MySQL 8（切换只改连接串） |
+| 数据库 | 开发期 SQLite；目标形态 PostgreSQL 16 / MySQL 8（Docker 默认 PG，切换只改连接串） |
 | 认证 | JWT（PyJWT）+ bcrypt；`token_version` 支持改密/停用即时踢下线 |
 
 ---
@@ -67,7 +67,7 @@ bash scripts/setup.sh
 > Python 2.7。脚本会自己按 `python3.12` → `python3.13` → `python3.14` → `python3`
 > → `python` 的顺序找可用的 3.12+，不需要手动激活什么。
 
-> **只想先看看效果？** 用 Docker 一条命令起完整形态（MySQL + 后端 + 前端），
+> **只想先看看效果？** 用 Docker 一条命令起完整形态（默认 PostgreSQL + 后端 + 前端），
 > 见下面的「一键部署」。它还会预置两套可直接发起的示例流程。
 
 ### 启动
@@ -113,8 +113,8 @@ bash scripts/dev-frontend.sh
 ## 一键部署（Docker）
 
 ```bash
-bash scripts/docker-up.sh              # 默认：内置 MySQL 8
-bash scripts/docker-up.sh --postgres   # 内置 PostgreSQL 16
+bash scripts/docker-up.sh          # 默认：内置 PostgreSQL 16
+bash scripts/docker-up.sh --mysql  # 内置 MySQL 8
 ```
 
 起「数据库 + 后端 + 前端（nginx）」，完成后输出访问地址与初始账号。
@@ -122,26 +122,36 @@ bash scripts/docker-up.sh --postgres   # 内置 PostgreSQL 16
 
 | 形态 | 数据库 | 数据卷 |
 |---|---|---|
-| 默认 | MySQL 8 | `flowform-mysql-data` |
-| `--postgres` | PostgreSQL 16 | `flowform-postgres-data` |
+| 默认 | PostgreSQL 16 | `flowform-postgres-data` |
+| `--mysql` | MySQL 8 | `flowform-mysql-data` |
 
 附件统一落在 `flowform-storage`。两种形态都只对外暴露 **8080**，数据库不映射到宿主机。
 
-`--postgres` 会把 `DB_MODE=postgres` 写进根目录 `.env`，以后直接
-`bash scripts/docker-up.sh` 也沿用；切回 MySQL 把 `.env` 里的 `DB_MODE` 清空即可。
-脚本会根据 `DB_MODE` 自动叠加 `docker-compose.postgres.yml`。
+`--mysql` 会把 `DB_MODE=mysql` 写进根目录 `.env`，以后直接
+`bash scripts/docker-up.sh` 也沿用；切回默认 PostgreSQL 把 `.env` 里的 `DB_MODE`
+改成 `postgres`（或清空）即可。脚本会根据 `DB_MODE` 自动叠加 `docker-compose.mysql.yml`。
 
-手工等价操作（PostgreSQL 形态）：
+手工等价操作（默认 PostgreSQL 形态）：
 
 ```bash
 cp .env.example .env                 # 至少改 JWT_SECRET
-echo 'DB_MODE=postgres' >> .env
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f backend
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml down
+docker compose up -d --build
+docker compose logs -f backend
+docker compose down
 ```
 
-MySQL 形态省掉 `DB_MODE` 和第二个 `-f`，直接 `docker compose up -d --build`。
+MySQL 形态叠加覆盖文件：
+
+```bash
+cp .env.example .env                 # 至少改 JWT_SECRET
+# 把 .env 里的 DB_MODE 从 postgres 改成 mysql
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
+```
+
+> **旧版本升级提示**：此前的 Docker 部署默认 MySQL，PostgreSQL 通过
+> `docker-compose.postgres.yml` 叠加；现在两者互换。若要继续使用
+> `flowform-mysql-data` 卷里的数据，把 `.env` 里的 `DB_MODE` 设为 `mysql`；否则
+> 按新默认起 PostgreSQL，旧 MySQL 数据不会自动迁移。
 
 部署后验证：
 
@@ -222,7 +232,7 @@ bash scripts/org-sync.sh import org-data.json             # 只补缺失
 | `scripts/setup.sh` | 首次搭建（幂等） |
 | `scripts/dev-backend.sh` | 启动后端，热重载。支持 `PORT=8001 bash scripts/dev-backend.sh` |
 | `scripts/dev-frontend.sh` | 启动前端 Vite |
-| `scripts/docker-up.sh` | 一键起完整形态（MySQL 或 PostgreSQL + 后端 + nginx 前端） |
+| `scripts/docker-up.sh` | 一键起完整形态（PostgreSQL 默认 / MySQL 可选 + 后端 + nginx 前端） |
 | `scripts/check.sh` | 校验。默认全量，也可只跑受影响的一部分（见下） |
 | `scripts/api.sh` | G1 API 黑盒验收（真实实现 `testing/scripts/api.sh`） |
 | `scripts/e2e.sh` | 浏览器 E2E（真实实现 `testing/scripts/e2e.sh`） |
@@ -330,7 +340,7 @@ SQLAlchemy 的可移植写法（`BigInteger().with_variant(Integer, 'sqlite')`�
 
 ```
 lowcode-platform/
-├─ docker-compose.yml     一键部署（MySQL + 后端 + nginx 前端）
+├─ docker-compose.yml     一键部署（PostgreSQL + 后端 + nginx 前端）
 ├─ docker-compose.dev.yml 只起开发用数据库（默认走 SQLite，切库时才用）
 ├─ scripts/               启动 / 校验 / 迁移 / 部署脚本
 ├─ docs/                  PRD、技术设计、引擎说明、演示脚本、Python 技术栈入门

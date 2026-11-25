@@ -114,17 +114,18 @@ generate_secret() {
 }
 
 # ---- 配置 ----
-# 只回显数据库类型（sqlite/mysql），不打印可能含密码的连接串
+# 只回显数据库类型（sqlite/postgresql/mysql），不打印可能含密码的连接串
 database_kind() {
   local env_file="$BACKEND/.env"
   [ -f "$env_file" ] || { printf '未配置'; return; }
   local url
   url="$(sed -n 's/^DATABASE_URL=\(.*\)$/\1/p' "$env_file" | head -1)"
   case "$url" in
-    sqlite*) printf 'sqlite' ;;
-    mysql*)  printf 'mysql' ;;
-    '')      printf '未配置' ;;
-    *)       printf '未知' ;;
+    sqlite*)     printf 'sqlite' ;;
+    postgres*)   printf 'postgresql' ;;
+    mysql*)      printf 'mysql' ;;
+    '')          printf '未配置' ;;
+    *)           printf '未知' ;;
   esac
 }
 

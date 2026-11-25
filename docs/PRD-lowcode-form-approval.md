@@ -87,7 +87,7 @@
 ```
 
 - 字段属于且仅属于一个分区；分区有**阶段标签**（发起 / 审批 / 补充 / 归档，可自定义名称），用于“分阶段表单区”的展示组织。
-- Schema 以 JSON 存储（MySQL JSON 列），由后端统一做结构校验。
+- Schema 以 JSON 存储（PostgreSQL JSONB / MySQL JSON 列），由后端统一做结构校验。
 
 #### 3.2.2 控件清单（V1 全量，含优先级）
 
@@ -396,7 +396,7 @@ stateDiagram-v2
 
 ---
 
-## 6. 数据模型概要（落地 MySQL 8，JSON 列存结构化定义）
+## 6. 数据模型概要（Docker 部署默认 PostgreSQL 16，可切 MySQL 8；JSON 列存结构化定义）
 
 | 表 | 关键字段 | 说明 |
 |---|---|---|
@@ -414,7 +414,7 @@ stateDiagram-v2
 | notifications | user_id, type, payload(JSON), is_read, link | 站内消息 |
 | attachments | biz_type, biz_id, file_name, path, size, uploader | 附件元数据 |
 
-要点：所有定义层 JSON 在写入前做 schema 校验；实例读多写少、按 id 分发，MySQL 足够；动作幂等靠唯一键（instance_id, task_id, actor_id, action_seq）+ 乐观锁。
+要点：所有定义层 JSON 在写入前做 schema 校验；实例读多写少、按 id 分发，PostgreSQL / MySQL 足够；动作幂等靠唯一键（instance_id, task_id, actor_id, action_seq）+ 乐观锁。
 
 ---
 
@@ -427,7 +427,7 @@ stateDiagram-v2
 | 安全 | 登录态 + 接口鉴权 + 实例可见性校验（参与者/管理员）；密码 bcrypt |
 | 审计 | 模板/流程/实例关键操作全留痕，不可篡改（追加写） |
 | 可用性 | 桌面浏览器（Chrome/Edge 近两个大版本）；页面基础自适应 |
-| 部署 | Docker Compose 一键起（frontend + backend + MySQL8）；配置项外置 |
+| 部署 | Docker Compose 一键起（frontend + backend + PostgreSQL 16，可切 MySQL 8）；配置项外置 |
 | 可维护 | 前后端同仓 TypeScript/Python 分层清晰；引擎核心单测覆盖关键语义 |
 
 ---
